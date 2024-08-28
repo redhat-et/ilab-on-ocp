@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: <NAMESPACE>
+  name: singlenode-training
+spec:
+  selector:
+    matchLabels:
+      app: singlenode-training
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: singlenode-training
+    spec:
+      containers:
+        - name: container
+          image: quay.io/michaelclifford/test-train:0.0.11
+          resources:
+            limits:
+              nvidia.com/gpu: '2'
+            requests:
+              nvidia.com/gpu: '2'
+          command:
+            - /bin/bash
+            - '-c'
+            - '--'
+          args:
+            - python3.11 -m run.py
+            - while true; do sleep 300; done

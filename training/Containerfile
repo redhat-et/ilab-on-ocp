@@ -1,0 +1,14 @@
+FROM nvcr.io/nvidia/cuda:12.4.1-devel-ubi9
+RUN dnf install -y python3.11 python3.11-devel git python3-pip make automake gcc gcc-c++
+WORKDIR /instructlab
+RUN python3.11 -m ensurepip
+RUN git clone https://github.com/instructlab/training.git
+RUN python3.11 -m pip install -e ./training
+RUN export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib" \
+    && python3.11 -m pip install -e ./training[cuda]
+ENV LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib"
+COPY run.py .
+ENV HOME=/instructlab
+RUN chmod -R 777 /instructlab
+USER 1001
+ENTRYPOINT ["/bin/bash"]
