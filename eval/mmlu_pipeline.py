@@ -1,6 +1,6 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error
-from kfp import dsl, compiler
+from kfp import dsl, compiler, kubernetes
 from kfp.dsl import component, pipeline, Input, Output, Artifact, Model, importer
 
 EVAL_IMAGE = "quay.io/sallyom/instructlab-ocp:eval"
@@ -106,7 +106,8 @@ def mmlu_pipeline(
         mmlu_output=run_mmlu_task.output,
     )
 
-    #kubernetes.set_image_pull_policy(run_mmlu_task, "Always")
+    # TODO: remove this once images are set
+    kubernetes.set_image_pull_policy(run_mmlu_task, "Always")
     run_mmlu_task.set_accelerator_type('nvidia.com/gpu')
     run_mmlu_task.set_accelerator_limit(1)
 
