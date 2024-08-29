@@ -1,0 +1,27 @@
+apiVersion: kubeflow.org/v1
+kind: PyTorchJob
+metadata:
+  name: <TEST-NAME>
+  namespace: <NAMESPACE>
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: 'false'
+        spec:
+          containers:
+            - args:
+                - |-
+                  python3.11 -u "run.py"
+              command:
+                - /bin/bash
+                - '-c'
+                - '--'
+              image: 'quay.io/michaelclifford/test-train:0.0.11'
+              name: pytorch
+              resources: {}
+  runPolicy:
+    suspend: false
