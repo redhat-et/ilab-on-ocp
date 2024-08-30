@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: ilab
+  name: sdg
+spec:
+  selector:
+    matchLabels:
+      app: sdg
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: sdg
+    spec:
+      containers:
+        - name: container
+          image: quay.io/michaelclifford/test-sdg:0.0.0
+          resources:
+          command:
+            - /bin/bash
+            - '-c'
+            - '--'
+          args:
+            - while true; do sleep 300; done
+          env:
+            - name: OPENAI_BASE_URL
+              value: "<ROUTE_TO_HOSTED_MODEL>"
+            - name: OPENAI_API_KEY
+              value: "<AUTH_TOKEN>"
+            - name: OPENAI_MODEL
+              value: "<MODEL_NAME>"

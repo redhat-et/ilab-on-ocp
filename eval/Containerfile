@@ -1,0 +1,18 @@
+FROM quay.io/centos/centos:stream9
+RUN dnf install -y python3.11 python3.11-devel git python3-pip \
+    && dnf clean all \
+    && rm -rf /var/cache/*dnf*
+WORKDIR /sdg
+RUN python3.11 -m ensurepip
+RUN git clone https://github.com/instructlab/sdg.git
+RUN git clone https://github.com/instructlab/taxonomy.git
+
+RUN python3.11 -m pip install  ./sdg
+RUN cp -r taxonomy/foundational_skills/reasoning/theory_of_mind/ \
+    taxonomy/compositional_skills/theory_of_mind/
+COPY run.py .
+RUN chmod -R 777 /sdg
+USER 1001
+ENV HOME=/sdg
+RUN git config --global --add safe.directory /sdg/taxonomy
+ENTRYPOINT [ "/bin/bash" ]
