@@ -1,0 +1,114 @@
+apiVersion: kubeflow.org/v1
+kind: PyTorchJob
+metadata:
+  name: <TEST-NAME>
+  namespace: <NAMESPACE>
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: 'false'
+        spec:
+          containers:
+            - args:
+                  [
+                    "python3.11",
+                    "-u",
+                    # TODO: provide the correct path here
+                    "instructlab/training/main_ds.py"
+                    "--model_name_or_path=ibm-granite/granite-7b-base",
+                    "--data_path=data/outputs/data.jsonl",
+                    "--output_dir=data/saved_checkpoints",
+                    "--num_epochs=2",
+                    "--effective_batch_size=3840",
+                    "--learning_rate=0.000002",
+                    "--num_warmup_steps=800",
+                    "--save_samples=0",
+                    "--log_level=INFO",
+                    "--max_batch_len=20000",
+                    "--seed=42",
+                    # TODO: provide the correct path here
+                    "--chat-tmpl-path=instructlab/training/chat_templates/ibm_generic_tmpl.py",
+                    "--checkpoint_at_epoch",
+                    "--is_granite",
+                    "--cpu_offload_optimizer",
+                    "--cpu_offload_optimizer_ratio=1"
+                    # TODO: add Lora parameters
+                  ]
+              command:
+                - /bin/bash
+                - '-c'
+                - '--'
+              image: 'quay.io/michaelclifford/test-train:0.0.11'
+              name: pytorch
+              resources:
+                limits:
+                  nvidia.com/gpu: 2 # assuming 2 GPUs per node
+              env:
+                - name: MASTER_ADDR
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: status.hostIP
+                - name: MASTER_PORT
+                  value: "12345"
+                - name: WORLD_SIZE
+                  value: "4" # Assuming 1 worker and 2 GPUs per node
+                - name: NODE_RANK
+                  value: "0" # For the master node
+    Worker:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        spec:
+          containers:
+            - args:
+                [
+                    "python3.11",
+                    "-u",
+                  # TODO: provide the correct path here
+                    "instructlab/training/main_ds.py"
+                    "--model_name_or_path=ibm-granite/granite-7b-base",
+                    "--data_path=data/outputs/data.jsonl",
+                    "--output_dir=data/saved_checkpoints",
+                    "--num_epochs=2",
+                    "--effective_batch_size=3840",
+                    "--learning_rate=0.000002",
+                    "--num_warmup_steps=800",
+                    "--save_samples=0",
+                    "--log_level=INFO",
+                    "--max_batch_len=20000",
+                    "--seed=42",
+                  # TODO: provide the correct path here
+                    "--chat-tmpl-path=instructlab/training/chat_templates/ibm_generic_tmpl.py",
+                    "--checkpoint_at_epoch",
+                    "--is_granite",
+                    "--cpu_offload_optimizer",
+                    "--cpu_offload_optimizer_ratio=1"
+                  # TODO: add Lora parameters
+                ]
+              command:
+                - /bin/bash
+                - '-c'
+                - '--'
+              image: 'quay.io/michaelclifford/test-train:0.0.11'
+              name: pytorch
+              resources:
+                limits:
+                  nvidia.com/gpu: 2 # assuming 2 GPUs per node
+              env:
+                - name: MASTER_ADDR
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: status.hostIP
+                - name: MASTER_PORT
+                  value: "12345"
+                - name: WORLD_SIZE
+                  value: "4" # Assuming 1 worker and 2 GPUs per node
+                - name: NODE_RANK
+                  value: "1" # For the worker node
+  runPolicy:
+    suspend: false
