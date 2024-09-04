@@ -19,6 +19,8 @@ spec:
             secretKeyRef:
               name: my-secret
               key: huggingtoken
+        - name: S3_FOLDER
+          value: "models"
         - name: AWS_BUCKET_NAME
           value: "model-store-def7b8ef-55e6-4042-9faa-176bf68f8523"
         - name: AWS_ACCESS_KEY
