@@ -63,7 +63,7 @@ def save_model_to_s3(local_model_path: Union[str, Path], s3_model_path: str, ver
 
     # Convert s3_model_path to lowercase
     s3_model_path = s3_model_path.lower()
-    
+
     logger.info(f"Connecting to the s3 bucket to upload the model files")
     bucket_name = os.environ.get("AWS_BUCKET_NAME")
     s3_folder = os.environ.get("S3_FOLDER")
@@ -90,11 +90,11 @@ def save_model_to_s3(local_model_path: Union[str, Path], s3_model_path: str, ver
     return s3_path
 
 # Example usage with verbosity
-save_model_to_s3(
-    local_model_path="./models",
-    s3_model_path="mixtral-8x7b-v0.1",  # Ensure the path is in lowercase
-    verbose=True  # Enable progress bar
-)
+## save_model_to_s3(
+##    local_model_path="./models",
+##    s3_model_path="mixtral-8x7b-v0.1",  # Ensure the path is in lowercase
+##    verbose=True  # Enable progress bar
+##)
 
 def save_hf_model(model_name: str, local_dir: Union[str, Path], s3_model_path: str, replace_if_exists: bool = False):
     """
@@ -154,4 +154,3 @@ save_hf_model(
     s3_model_path="models",
     replace_if_exists=False
 )
-
