@@ -1,0 +1,13 @@
+FROM registry.access.redhat.com/ubi9/ubi
+
+RUN dnf -y install python-pip && dnf -y clean all
+
+ADD pull.py /opt
+
+ADD requirements.txt /
+
+RUN pip install -r /requirements.txt
+
+WORKDIR /opt
+
+CMD ["python", "pull.py"]
