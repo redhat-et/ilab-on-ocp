@@ -17,8 +17,8 @@ spec:
         - name: HF_TOKEN
           valueFrom:
             secretKeyRef:
-              name: my-secret
-              key: huggingtoken
+              name: huggingtoken 
+              key: HF_TOKEN
         - name: S3_FOLDER
           value: "models"
         - name: AWS_BUCKET_NAME
