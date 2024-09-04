@@ -14,11 +14,12 @@ load_dotenv()
 # Set up logging
 logger = logging.getLogger(__name__)
 
-def upload_and_save_model_to_s3(local_model_path: Union[str, Path], s3_model_path: str, verbose: bool = False, replace_if_exists: bool = False) -> str:
+def upload_and_save_model_to_s3(model_name: str, local_model_path: Union[str, Path], s3_model_path: str, verbose: bool = False, replace_if_exists: bool = False) -> str:
     """
-    Upload a model directory to S3 and log the details.
+    Download a Hugging Face model, upload it to S3, and log the details.
 
     Args:
+        model_name (str): Model name/ID from Hugging Face.
         local_model_path (Union[str, Path]): Local model directory path.
         s3_model_path (str): S3 path to store the model.
         verbose (bool): If True, show a progress bar.
@@ -46,7 +47,7 @@ def upload_and_save_model_to_s3(local_model_path: Union[str, Path], s3_model_pat
         aws_secret_access_key=aws_secret_key
     )
 
-    # Handle Hugging Face model download if needed
+    # Handle Hugging Face model download
     hf_token = os.getenv('HF_TOKEN')
     if hf_token:
         hf_token = hf_token.strip()
@@ -55,8 +56,7 @@ def upload_and_save_model_to_s3(local_model_path: Union[str, Path], s3_model_pat
     else:
         raise EnvironmentError("HF_TOKEN is not defined. Please set the Hugging Face token as an environment variable.")
 
-    model_name = s3_model_path.replace("/", "-")
-    converted_model_path = os.path.join(local_model_path, model_name)
+    converted_model_path = os.path.join(local_model_path, model_name.replace("/", "-"))
 
     if Path(converted_model_path).exists() and not replace_if_exists:
         logger.info(f"Path '{converted_model_path}' already exists. Skipping download.")
@@ -64,7 +64,7 @@ def upload_and_save_model_to_s3(local_model_path: Union[str, Path], s3_model_pat
         if Path(converted_model_path).exists():
             shutil.rmtree(converted_model_path)
         snapshot_download(repo_id=model_name, local_dir=converted_model_path)
-        logger.info(f"Model downloaded and saved to {converted_model_path}")
+        logger.info(f"Model '{model_name}' downloaded and saved to {converted_model_path}")
 
     # Upload files to S3 with a progress bar
     total_files = sum(len(files) for _, _, files in os.walk(converted_model_path))
@@ -101,6 +101,7 @@ def upload_and_save_model_to_s3(local_model_path: Union[str, Path], s3_model_pat
 
 # Example usage
 upload_and_save_model_to_s3(
+    model_name="mistralai/Mixtral-8x7B-v0.1",
     local_model_path="./models",
     s3_model_path="mixtral-8x7b-v0.1",
     verbose=True,
