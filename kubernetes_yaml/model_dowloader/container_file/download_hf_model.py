@@ -58,9 +58,12 @@ def upload_directory_to_s3(local_directory: str, bucket: str, s3_prefix: str, ve
 
     return num_files
 
-def save_model_to_s3(local_model_path: Union[str, Path], s3_model_path: str, verbose: bool = False):
+def save_model_to_s3(local_model_path: Union[str, Path], s3_model_path: str, verbose: bool = False) -> str:
     """Save a model directory to s3 with verbosity and a progress bar."""
 
+    # Convert s3_model_path to lowercase
+    s3_model_path = s3_model_path.lower()
+    
     logger.info(f"Connecting to the s3 bucket to upload the model files")
     bucket_name = os.environ.get("AWS_BUCKET_NAME")
     s3_folder = os.environ.get("S3_FOLDER")
@@ -87,11 +90,9 @@ def save_model_to_s3(local_model_path: Union[str, Path], s3_model_path: str, ver
     return s3_path
 
 # Example usage with verbosity
-save_hf_model(
-    model_name="mistralai/Mixtral-8x7B-v0.1",
-    local_dir="./models",
-    s3_model_path="models",
-    replace_if_exists=False,
+save_model_to_s3(
+    local_model_path="./models",
+    s3_model_path="mixtral-8x7b-v0.1",  # Ensure the path is in lowercase
     verbose=True  # Enable progress bar
 )
 
