@@ -8,18 +8,6 @@
 #    ttl_seconds_after_finished: int [Default: -1.0]
 #    worker_replicas: int [Default: 1.0]
 components:
-  comp-create-worker-spec:
-    executorLabel: exec-create-worker-spec
-    inputDefinitions:
-      parameters:
-        worker_num:
-          defaultValue: 0.0
-          isOptional: true
-          parameterType: NUMBER_INTEGER
-    outputDefinitions:
-      parameters:
-        worker_spec:
-          parameterType: STRUCT
   comp-name:
     executorLabel: exec-name
     inputDefinitions:
@@ -65,61 +53,6 @@ components:
           parameterType: STRUCT
 deploymentSpec:
   executors:
-    exec-create-worker-spec:
-      container:
-        args:
-        - --executor_input
-        - '{{$}}'
-        - --function_to_execute
-        - create_worker_spec
-        command:
-        - sh
-        - -c
-        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
-          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.8.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
-          $0\" \"$@\"\n"
-        - sh
-        - -ec
-        - 'program_path=$(mktemp -d)
-
-
-          printf "%s" "$0" > "$program_path/ephemeral_component.py"
-
-          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
-
-          '
-        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef create_worker_spec(worker_num: int = 0) -> NamedTuple(\n    \"\
-          CreatWorkerSpec\", [(\"worker_spec\", dict)]):\n    \"\"\"\n    Creates\
-          \ pytorch-job worker spec\n    \"\"\"\n    from collections import namedtuple\n\
-          \    worker = {}\n    if worker_num > 0:\n        worker = {\n         \
-          \   \"replicas\": worker_num,\n            \"restartPolicy\": \"OnFailure\"\
-          ,\n            \"template\": {\n                \"metadata\": {\n      \
-          \              \"annotations\": {\n                        \"sidecar.istio.io/inject\"\
-          : \"false\"\n                    }\n                },\n               \
-          \ \"spec\": {\n                    \"containers\": [\n                 \
-          \       {   \"command\": [\n                            '/bin/bash',\n \
-          \                           '-c',\n                            '--'\n  \
-          \                          ],\n                            \"args\": [\n\
-          \                            \"python3.11 -u run.py\"\n                \
-          \            ],\n                            \"image\": \"quay.io/michaelclifford/test-train:0.0.11\"\
-          ,\n                            \"name\": \"pytorch\",\n                \
-          \            \"resources\": {\n                                \"requests\"\
-          : {\n                                    \"memory\": \"8Gi\",\n        \
-          \                            \"cpu\": \"2000m\",\n                     \
-          \               # Uncomment for GPU\n                                  \
-          \  \"nvidia.com/gpu\": 1,\n                                },\n        \
-          \                        \"limits\": {\n                               \
-          \     \"memory\": \"8Gi\",\n                                    \"cpu\"\
-          : \"2000m\",\n                                    # Uncomment for GPU\n\
-          \                                    \"nvidia.com/gpu\": 1,\n          \
-          \                      },\n                            },\n            \
-          \            }\n                    ]\n                },\n            },\n\
-          \        }\n\n    worker_spec_output = namedtuple(\n        \"MyWorkerOutput\"\
-          , [\"worker_spec\"]\n    )\n    return worker_spec_output(worker)\n\n"
-        image: python:slim
     exec-name:
       container:
         args:
@@ -155,24 +88,11 @@ pipelineInfo:
 root:
   dag:
     tasks:
-      create-worker-spec:
-        cachingOptions:
-          enableCache: true
-        componentRef:
-          name: comp-create-worker-spec
-        inputs:
-          parameters:
-            worker_num:
-              componentInputParameter: worker_replicas
-        taskInfo:
-          name: create-worker-spec
       name:
         cachingOptions:
           enableCache: true
         componentRef:
           name: comp-name
-        dependentTasks:
-        - create-worker-spec
         inputs:
           parameters:
             active_deadline_seconds:
@@ -218,12 +138,38 @@ root:
                 constant: pytorch-job
             namespace:
               componentInputParameter: namespace
+            pipelinechannel--worker_replicas:
+              componentInputParameter: worker_replicas
             ttl_seconds_after_finished:
               componentInputParameter: ttl_seconds_after_finished
             worker_spec:
-              taskOutputParameter:
-                outputParameterKey: worker_spec
-                producerTask: create-worker-spec
+              runtimeValue:
+                constant:
+                  replicas: '{{$.inputs.parameters[''pipelinechannel--worker_replicas'']}}'
+                  restartPolicy: OnFailure
+                  template:
+                    metadata:
+                      annotations:
+                        sidecar.istio.io/inject: 'false'
+                    spec:
+                      containers:
+                      - args:
+                        - python3.11 -u run.py
+                        command:
+                        - /bin/bash
+                        - -c
+                        - --
+                        image: quay.io/michaelclifford/test-train:0.0.11
+                        name: pytorch
+                        resources:
+                          limits:
+                            cpu: 2000m
+                            memory: 8Gi
+                            nvidia.com/gpu: 1.0
+                          requests:
+                            cpu: 2000m
+                            memory: 8Gi
+                            nvidia.com/gpu: 1.0
         taskInfo:
           name: name
   inputDefinitions:
