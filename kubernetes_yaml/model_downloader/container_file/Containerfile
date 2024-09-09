@@ -1,0 +1,15 @@
+FROM registry.access.redhat.com/ubi9/ubi
+
+RUN dnf -y install git python-pip && dnf -y clean all
+
+ADD download_hf_model.py /opt/download_hf_model.py
+
+ADD requirements.txt /
+
+RUN pip install -r /requirements.txt
+
+RUN git config --global credential.helper store
+
+WORKDIR /opt
+
+CMD ["python3", "download_hf_model.py"]
