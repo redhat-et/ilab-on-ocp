@@ -101,9 +101,9 @@ def upload_and_save_model_to_s3(model_name: str, local_model_path: Union[str, Pa
 
 # Example usage
 upload_and_save_model_to_s3(
-    model_name="mistralai/Mixtral-8x7B-v0.1",
+    model_name = os.getenv('MODEL'),
     local_model_path="./models",
-    s3_model_path="mixtral-8x7b-v0.1",
+    s3_model_path="MODEL_PATH",
     verbose=True,
     replace_if_exists=False
 )
