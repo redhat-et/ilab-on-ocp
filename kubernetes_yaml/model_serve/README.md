@@ -1,5 +1,5 @@
 # Model Serving
-To serve a model a data connetion to an object store is required. Values must be base64 encoded when using the s3.yaml file that is included.
+To serve a model a data connection to an object store is required. Values must be base64 encoded when using the s3.yaml file that is included.
 
 NOTE: When using NooBaa no Region is required.
 
