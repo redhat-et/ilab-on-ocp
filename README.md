@@ -37,3 +37,8 @@ items:
 A signed certificate ensures that there not unnecessary issues when performing the training pipeline.
 
 To deploy a signed certificate in cluster follow [trusted cluster cert](signed-certificate/README.md)
+
+### Object Storage
+This solution requires object storage to be in place either through S3 or using Noobaa.
+
+If you are using Noobaa apply the following [tuning paramters](noobaa/README.md)

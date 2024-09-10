@@ -1,0 +1,42 @@
+## Kubernetes job to download the model
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: download-job
+  namespace: default
+spec:
+  template:
+    spec:
+      containers:
+      - name: download
+        image: quay.io/rcook/model-download:latest
+        volumeMounts:
+        - name: model
+          mountPath: /opt/models
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: huggingtoken 
+              key: HF_TOKEN
+        - name: S3_FOLDER
+          value: "models"
+        - name: AWS_BUCKET_NAME
+          value: "model-store-def7b8ef-55e6-4042-9faa-176bf68f8523"
+        - name: AWS_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: model-store
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: model-store
+              key: AWS_SECRET_ACCESS_KEY
+        - name: S3_ENDPOINT
+          value: "http://s3.openshift-storage.svc"
+      volumes:
+      - name: model
+        persistentVolumeClaim:
+          claimName: model-pvc
+      restartPolicy: Never
