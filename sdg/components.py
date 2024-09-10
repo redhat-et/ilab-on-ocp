@@ -1,12 +1,9 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error,no-member
 from typing import Optional
-from kfp import dsl, compiler
-from kfp.kubernetes import use_config_map_as_env, use_secret_as_env
+from kfp import dsl
 
 IMAGE = "quay.io/tcoufal/ilab-sdg:latest"
-K8S_NAME = "kfp-model-server"
-
 
 @dsl.container_component
 def git_clone_op(
@@ -47,6 +44,9 @@ def sdg_op(
     client = openai.OpenAI(base_url=endpoint, api_key=api_key)
 
     taxonomy_base = "main" if repo_branch or repo_pr else "empty"
+
+    print("Generating syntetic dataset for:")
+    print()
     print(read_taxonomy(taxonomy.path, taxonomy_base))
 
     # generate_data has a magic word for its taxonomy_base argument - `empty`
@@ -60,36 +60,3 @@ def sdg_op(
         taxonomy_base=taxonomy_base,
         model_name=model,
     )
-
-
-@dsl.pipeline(
-    display_name="InstructLab SDG",
-    name="sdg",
-    description="SDG pipeline for InstructLab model",
-)
-def pipeline(
-    num_instructions_to_generate: int = 2,
-    repo_url: str = "https://github.com/instructlab/taxonomy.git",
-    repo_branch: Optional[str] = None,
-    repo_pr: Optional[int] = None,
-):
-    git_clone_task = git_clone_op(
-        repo_branch=repo_branch, repo_pr=repo_pr, repo_url=repo_url
-    )
-
-    sdg_task = sdg_op(
-        num_instructions_to_generate=num_instructions_to_generate,
-        taxonomy=git_clone_task.outputs["taxonomy"],
-        repo_branch=repo_branch,
-        repo_pr=repo_pr,
-    )
-
-    # For example on K8S object to populate see kfp-model-server.yaml
-    use_config_map_as_env(sdg_task, K8S_NAME, dict(endpoint="endpoint", model="model"))
-    use_secret_as_env(sdg_task, K8S_NAME, {"api_key": "api_key"})
-
-    return
-
-
-if __name__ == "__main__":
-    compiler.Compiler().compile(pipeline, "pipeline.yaml")

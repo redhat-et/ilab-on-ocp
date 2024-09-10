@@ -5,6 +5,7 @@ name = "pypi"
 
 [packages]
 kfp = {extras = ["kubernetes"], version = "*"}
+click = "*"
 
 [dev-packages]
 

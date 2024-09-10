@@ -1,0 +1,11 @@
+[project]
+name = "sdg_fixture"
+version = "0.0.1"
+
+[tool.setuptools.data-files]
+"sdg_fixtures" = ["*.jsonl", "*.yaml"]
+"sdg_fixtures/node_datasets_2024-09-09T15_30_29" = ["node_datasets_2024-09-09T15_30_29/*.jsonl"]
+
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
