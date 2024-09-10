@@ -15,7 +15,7 @@ Once all values that relate to the object storage are defined create the secret 
 oc create -f s3.yaml -n $NAMESPACE
 ```
 
-Once the secret has been defined the model serve can use the secreet.
+Once the secret has been defined the model serve can use the secret.
 
 Modify the following values in your InferenceService yaml to define the path to the model and the name of the model that will be run.
 
