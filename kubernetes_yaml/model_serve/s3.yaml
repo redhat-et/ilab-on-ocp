@@ -1,0 +1,17 @@
+apiVersion: v1
+data:
+  AWS_ACCESS_KEY_ID: YOURACCESSKEYID
+  AWS_DEFAULT_REGION: REGION_IF_USED
+  AWS_S3_BUCKET: BUCKETNAME
+  AWS_S3_ENDPOINT: AWS_ENDPOINT_OR_NOOBAA_ENDPOINT
+  AWS_SECRET_ACCESS_KEY: YOURSECRETACCESSKEY
+kind: Secret
+metadata:
+  annotations:
+    opendatahub.io/connection-type: s3
+    openshift.io/display-name: object-store
+  labels:
+    opendatahub.io/dashboard: "true"
+    opendatahub.io/managed: "true"
+  name: object-store
+type: Opaque
