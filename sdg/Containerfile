@@ -1,0 +1,12 @@
+FROM registry.access.redhat.com/ubi9/python-311:latest
+
+RUN pip install --no-cache-dir git+https://github.com/instructlab/sdg
+
+USER 1001
+
+# Set HF_HOME to volatile location. We do not preserve cache etc over restarts with this container.
+# https://huggingface.co/docs/huggingface_hub/en/guides/manage-cache
+ENV HF_HOME="/tmp"
+
+# Required to set default runtime as Python for Kubeflow Pipelines
+CMD ["python"]

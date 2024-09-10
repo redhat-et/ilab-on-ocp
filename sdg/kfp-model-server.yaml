@@ -1,0 +1,15 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: kfp-model-server
+data:
+  endpoint: "https://mistral-7b-instruct-v02-sallyom.apps.ocp-beta-test.nerc.mghpcc.org/v1"
+  model: "mistral-7b-instruct-v02"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kfp-model-server
+type: Opaque
+stringData:
+  api_key: ""

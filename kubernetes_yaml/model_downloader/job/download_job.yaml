@@ -23,6 +23,10 @@ spec:
           value: "models"
         - name: AWS_BUCKET_NAME
           value: "model-store-def7b8ef-55e6-4042-9faa-176bf68f8523"
+        - name: MODEL_PATH
+          value: mixtral-8x7b-v0.1
+        - name: MODEL
+          value: mistralai/Mixtral-8x7B-v0.1
         - name: AWS_ACCESS_KEY
           valueFrom:
             secretKeyRef:
