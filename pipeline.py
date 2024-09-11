@@ -8,7 +8,7 @@ from kfp.kubernetes import use_config_map_as_env, use_secret_as_env
 K8S_NAME = "kfp-model-server"
 MOCKED_STAGES = ['sdg', 'train', 'eval']
 
-def pipeline_wrapper(mock: List[Optional[Literal[MOCKED_STAGES]]]):
+def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
     """Wrapper for KFP pipeline, which allows for mocking individual stages."""
     if 'sdg' in mock:
         from sdg.faked import git_clone_op, sdg_op
