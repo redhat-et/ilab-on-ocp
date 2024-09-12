@@ -19,6 +19,8 @@ def pytorchjob_manifest_op(
     name = f"train-{name_suffix.rstrip('-sdg')}"
 
     image = 'quay.io/tcoufal/ilab-train:latest'
+    nprocPerNode = 2
+    nnodes = 2
 
     manifest = inspect.cleandoc(
         f"""
@@ -27,6 +29,7 @@ def pytorchjob_manifest_op(
         metadata:
           name: {name}
         spec:
+          nprocPerNode: "{nprocPerNode}"
           pytorchReplicaSpecs:
             Master:
               replicas: 1
@@ -41,7 +44,7 @@ def pytorchjob_manifest_op(
                         - |
                           mkdir -p /output/model;
                           mkdir -p /output/data;
-                          python3.11 -u run.py --nnodes 2 --nproc_per_node 2 --node_rank "$(RANK)" --rdzv_endpoint $(MASTER_ADDR):$(MASTER_PORT) --model_path /input_model --data_path /input_data/*_train_msgs*.jsonl --ckpt_output_dir /output/model --data_output_dir /output/data
+                          python3.11 -u run.py --nnodes {nnodes} --nproc_per_node {nprocPerNode} --node_rank \\$RANK --rdzv_endpoint \\$MASTER_ADDR:\\$MASTER_PORT --model_path /input_model --data_path /input_data/*_train_msgs*.jsonl --ckpt_output_dir /output/model --data_output_dir /output/data
                       command:
                         - /bin/bash
                         - '-c'
@@ -61,11 +64,11 @@ def pytorchjob_manifest_op(
                         requests:
                           memory: 8Gi
                           cpu: 2
-                          "nvidia.com/gpu": 1
+                          "nvidia.com/gpu": {nprocPerNode}
                         limits:
                           memory: 8Gi
                           cpu: 2
-                          "nvidia.com/gpu": 1
+                          "nvidia.com/gpu": {nprocPerNode}
                   volumes:
                     - name: input-data
                       persistentVolumeClaim:
@@ -77,7 +80,7 @@ def pytorchjob_manifest_op(
                       persistentVolumeClaim:
                         claimName: {output_pvc_name}
             Worker:
-              replicas: 1
+              replicas: {nnodes-1}
               restartPolicy: OnFailure
               template:
                 metadata:
@@ -87,7 +90,7 @@ def pytorchjob_manifest_op(
                   containers:
                     - args:
                         - |
-                          python3.11 -u run.py --nnodes 2 --nproc_per_node 2 --node_rank "$(RANK)" --rdzv_endpoint $(MASTER_ADDR):$(MASTER_PORT) --model_path /input_model --data_path /input_data/*_train_msgs*.jsonl --ckpt_output_dir /tmp/model --data_output_dir /tmp/data
+                          python3.11 -u run.py --nnodes {nnodes} --nproc_per_node {nprocPerNode}  --node_rank \\$RANK --rdzv_endpoint \\$MASTER_ADDR:\\$MASTER_PORT --model_path /input_model --data_path /input_data/*_train_msgs*.jsonl --ckpt_output_dir /tmp/model --data_output_dir /tmp/data
                       command:
                         - /bin/bash
                         - '-c'
@@ -105,11 +108,11 @@ def pytorchjob_manifest_op(
                         requests:
                           memory: 8Gi
                           cpu: 2
-                          "nvidia.com/gpu": 1
+                          "nvidia.com/gpu": {nprocPerNode}
                         limits:
                           memory: 8Gi
                           cpu: 2
-                          "nvidia.com/gpu": 1
+                          "nvidia.com/gpu": {nprocPerNode}
                   volumes:
                     - name: input-data
                       persistentVolumeClaim:
