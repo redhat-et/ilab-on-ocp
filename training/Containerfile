@@ -18,6 +18,14 @@ RUN export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib/python3.11/site-pack
     && python3.11 -m pip install packaging wheel setuptools-scm \
     && python3.11 -m pip install --no-cache-dir "instructlab-training[cuda]@git+https://github.com/instructlab/training.git"
 
+# We don't expect to keep Triton cache after pod is finished
+ENV TRITON_CACHE_DIR="/tmp"
+
+# Set HF_HOME to volatile location. We do not preserve cache etc over restarts with this container.
+# https://huggingface.co/docs/huggingface_hub/en/guides/manage-cache
+ENV HF_HOME="/tmp"
+ENV TRANSFORMERS_CACHE="/tmp"
+
 COPY run.py .
 
 USER 1001

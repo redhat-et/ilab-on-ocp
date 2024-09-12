@@ -492,57 +492,61 @@ deploymentSpec:
           \ 2\n    nnodes = 2\n\n    manifest = inspect.cleandoc(\n        f\"\"\"\
           \n        apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n      \
           \  metadata:\n          name: {name}\n        spec:\n          nprocPerNode:\
-          \ \"{nprocPerNode}\"\n          pytorchReplicaSpecs:\n            Master:\n\
-          \              replicas: 1\n              restartPolicy: OnFailure\n   \
-          \           template:\n                metadata:\n                  annotations:\n\
+          \ \\\\\"{nprocPerNode}\\\\\"\n          pytorchReplicaSpecs:\n         \
+          \   Master:\n              replicas: 1\n              restartPolicy: OnFailure\n\
+          \              template:\n                metadata:\n                  annotations:\n\
           \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
           \                  containers:\n                    - args:\n          \
           \              - |\n                          mkdir -p /output/model;\n\
           \                          mkdir -p /output/data;\n                    \
-          \      python3.11 -u run.py --nnodes {nnodes} --nproc_per_node {nprocPerNode}\
-          \ --node_rank \\\\$RANK --rdzv_endpoint \\\\$MASTER_ADDR:\\\\$MASTER_PORT\
-          \ --model_path /input_model --data_path /input_data/*_train_msgs*.jsonl\
-          \ --ckpt_output_dir /output/model --data_output_dir /output/data\n     \
-          \                 command:\n                        - /bin/bash\n      \
-          \                  - '-c'\n                        - '--'\n            \
-          \          image: {image}\n                      name: pytorch\n       \
-          \               volumeMounts:\n                        - mountPath: /input_data\n\
-          \                          name: input-data\n                          readOnly:\
-          \ true\n                        - mountPath: /input_model\n            \
-          \              name: model\n                          readOnly: true\n \
-          \                       - mountPath: /output\n                         \
-          \ name: output\n                      resources:\n                     \
-          \   requests:\n                          memory: 8Gi\n                 \
-          \         cpu: 2\n                          \"nvidia.com/gpu\": {nprocPerNode}\n\
+          \      python3.11 -u run.py --model_path /input_model/model --data_path\
+          \ /input_data/sdg/*_train_msgs*.jsonl --ckpt_output_dir /output/model --data_output_dir\
+          \ /output/data\n                      command:\n                       \
+          \ - /bin/bash\n                        - '-c'\n                        -\
+          \ '--'\n                      image: {image}\n                      name:\
+          \ pytorch\n                      volumeMounts:\n                       \
+          \ - mountPath: /input_data\n                          name: input-data\n\
+          \                          readOnly: true\n                        - mountPath:\
+          \ /input_model\n                          name: model\n                \
+          \          readOnly: true\n                        - mountPath: /output\n\
+          \                          name: output\n                      env:\n  \
+          \                      - name: NNODES\n                          value:\
+          \ \\\\\"{nnodes}\\\\\"\n                        - name: NPROC_PER_NODE\n\
+          \                          value: \\\\\"{nprocPerNode}\\\\\"\n         \
+          \             resources:\n                        requests:\n          \
+          \                memory: 8Gi\n                          cpu: 2\n       \
+          \                   \"nvidia.com/gpu\": {nprocPerNode}\n               \
+          \         limits:\n                          memory: 8Gi\n             \
+          \             cpu: 2\n                          \"nvidia.com/gpu\": {nprocPerNode}\n\
+          \                  volumes:\n                    - name: input-data\n  \
+          \                    persistentVolumeClaim:\n                        claimName:\
+          \ {input_pvc_name}\n                    - name: model\n                \
+          \      persistentVolumeClaim:\n                        claimName: {model_pvc_name}\n\
+          \                    - name: output\n                      persistentVolumeClaim:\n\
+          \                        claimName: {output_pvc_name}\n            Worker:\n\
+          \              replicas: {nnodes-1}\n              restartPolicy: OnFailure\n\
+          \              template:\n                metadata:\n                  annotations:\n\
+          \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
+          \                  containers:\n                    - args:\n          \
+          \              - |\n                          mkdir -p /output/model;\n\
+          \                          mkdir -p /output/data;\n                    \
+          \      python3.11 -u run.py --model_path /input_model/model --data_path\
+          \ /input_data/sdg/*_train_msgs*.jsonl --ckpt_output_dir /tmp/model --data_output_dir\
+          \ /tmp/data\n                      command:\n                        - /bin/bash\n\
+          \                        - '-c'\n                        - '--'\n      \
+          \                image: {image}\n                      name: pytorch\n \
+          \                     volumeMounts:\n                        - mountPath:\
+          \ /input_data\n                          name: input-data\n            \
+          \              readOnly: true\n                        - mountPath: /input_model\n\
+          \                          name: model\n                          readOnly:\
+          \ true\n                      env:\n                        - name: NNODES\n\
+          \                          value: \\\\\"{nnodes}\\\\\"\n               \
+          \         - name: NPROC_PER_NODE\n                          value: \\\\\"\
+          {nprocPerNode}\\\\\"\n                      resources:\n               \
+          \         requests:\n                          memory: 8Gi\n           \
+          \               cpu: 2\n                          \"nvidia.com/gpu\": {nprocPerNode}\n\
           \                        limits:\n                          memory: 8Gi\n\
           \                          cpu: 2\n                          \"nvidia.com/gpu\"\
-          : {nprocPerNode}\n                  volumes:\n                    - name:\
-          \ input-data\n                      persistentVolumeClaim:\n           \
-          \             claimName: {input_pvc_name}\n                    - name: model\n\
-          \                      persistentVolumeClaim:\n                        claimName:\
-          \ {model_pvc_name}\n                    - name: output\n               \
-          \       persistentVolumeClaim:\n                        claimName: {output_pvc_name}\n\
-          \            Worker:\n              replicas: {nnodes-1}\n             \
-          \ restartPolicy: OnFailure\n              template:\n                metadata:\n\
-          \                  annotations:\n                    sidecar.istio.io/inject:\
-          \ 'false'\n                spec:\n                  containers:\n      \
-          \              - args:\n                        - |\n                  \
-          \        python3.11 -u run.py --nnodes {nnodes} --nproc_per_node {nprocPerNode}\
-          \  --node_rank \\\\$RANK --rdzv_endpoint \\\\$MASTER_ADDR:\\\\$MASTER_PORT\
-          \ --model_path /input_model --data_path /input_data/*_train_msgs*.jsonl\
-          \ --ckpt_output_dir /tmp/model --data_output_dir /tmp/data\n           \
-          \           command:\n                        - /bin/bash\n            \
-          \            - '-c'\n                        - '--'\n                  \
-          \    image: {image}\n                      name: pytorch\n             \
-          \         volumeMounts:\n                        - mountPath: /input_data\n\
-          \                          name: input-data\n                          readOnly:\
-          \ true\n                        - mountPath: /input_model\n            \
-          \              name: model\n                          readOnly: true\n \
-          \                     resources:\n                        requests:\n  \
-          \                        memory: 8Gi\n                          cpu: 2\n\
-          \                          \"nvidia.com/gpu\": {nprocPerNode}\n        \
-          \                limits:\n                          memory: 8Gi\n      \
-          \                    cpu: 2\n                          \"nvidia.com/gpu\"\
           : {nprocPerNode}\n                  volumes:\n                    - name:\
           \ input-data\n                      persistentVolumeClaim:\n           \
           \             claimName: {input_pvc_name}\n                    - name: model\n\
@@ -840,8 +844,7 @@ root:
         taskInfo:
           name: pvc-to-model-op
       pytorchjob-manifest-op:
-        cachingOptions:
-          enableCache: true
+        cachingOptions: {}
         componentRef:
           name: comp-pytorchjob-manifest-op
         dependentTasks:

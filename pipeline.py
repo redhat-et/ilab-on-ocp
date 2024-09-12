@@ -126,6 +126,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             name_suffix=sdg_input_pvc_task.output,
             output_pvc_name=output_pvc_task.output,
         )
+        pytorchjob_manifest_task.set_caching_options(False)
 
         kubectl_apply_task = kubectl_apply_op(
             manifest=pytorchjob_manifest_task.outputs["manifest"]

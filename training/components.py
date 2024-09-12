@@ -29,7 +29,7 @@ def pytorchjob_manifest_op(
         metadata:
           name: {name}
         spec:
-          nprocPerNode: "{nprocPerNode}"
+          nprocPerNode: \\"{nprocPerNode}\\"
           pytorchReplicaSpecs:
             Master:
               replicas: 1
@@ -44,7 +44,7 @@ def pytorchjob_manifest_op(
                         - |
                           mkdir -p /output/model;
                           mkdir -p /output/data;
-                          python3.11 -u run.py --nnodes {nnodes} --nproc_per_node {nprocPerNode} --node_rank \\$RANK --rdzv_endpoint \\$MASTER_ADDR:\\$MASTER_PORT --model_path /input_model --data_path /input_data/*_train_msgs*.jsonl --ckpt_output_dir /output/model --data_output_dir /output/data
+                          python3.11 -u run.py --model_path /input_model/model --data_path /input_data/sdg/*_train_msgs*.jsonl --ckpt_output_dir /output/model --data_output_dir /output/data
                       command:
                         - /bin/bash
                         - '-c'
@@ -60,6 +60,11 @@ def pytorchjob_manifest_op(
                           readOnly: true
                         - mountPath: /output
                           name: output
+                      env:
+                        - name: NNODES
+                          value: \\"{nnodes}\\"
+                        - name: NPROC_PER_NODE
+                          value: \\"{nprocPerNode}\\"
                       resources:
                         requests:
                           memory: 8Gi
@@ -90,7 +95,9 @@ def pytorchjob_manifest_op(
                   containers:
                     - args:
                         - |
-                          python3.11 -u run.py --nnodes {nnodes} --nproc_per_node {nprocPerNode}  --node_rank \\$RANK --rdzv_endpoint \\$MASTER_ADDR:\\$MASTER_PORT --model_path /input_model --data_path /input_data/*_train_msgs*.jsonl --ckpt_output_dir /tmp/model --data_output_dir /tmp/data
+                          mkdir -p /output/model;
+                          mkdir -p /output/data;
+                          python3.11 -u run.py --model_path /input_model/model --data_path /input_data/sdg/*_train_msgs*.jsonl --ckpt_output_dir /tmp/model --data_output_dir /tmp/data
                       command:
                         - /bin/bash
                         - '-c'
@@ -104,6 +111,11 @@ def pytorchjob_manifest_op(
                         - mountPath: /input_model
                           name: model
                           readOnly: true
+                      env:
+                        - name: NNODES
+                          value: \\"{nnodes}\\"
+                        - name: NPROC_PER_NODE
+                          value: \\"{nprocPerNode}\\"
                       resources:
                         requests:
                           memory: 8Gi
