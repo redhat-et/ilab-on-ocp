@@ -57,7 +57,7 @@ def run_mmlu(
     }
 
     with open(mmlu_output_file.path, 'w') as f:
-        json.dump(evaluation_data, f, indent=4)
+        json.dump(mmlu_data, f, indent=4)
 
 @component(base_image=TOOLBOX_IMAGE)
 def load_mmlu_results(mmlu_output: Input[Artifact]) -> dict:
