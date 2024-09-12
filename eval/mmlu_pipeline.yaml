@@ -145,7 +145,7 @@ deploymentSpec:
           model\": model_name,\n        \"average_score\": round(mmlu_score, 2),\n\
           \        \"number_of_tasks\": len(individual_scores),\n        \"individual_scores\"\
           : [{task: round(score['score'], 2)} for task, score in individual_scores.items()]\n\
-          \    }\n\n    with open(mmlu_output_file.path, 'w') as f:\n        json.dump(evaluation_data,\
+          \    }\n\n    with open(mmlu_output_file.path, 'w') as f:\n        json.dump(mmlu_data,\
           \ f, indent=4)\n\n"
         image: quay.io/sallyom/instructlab-ocp:eval
         resources:
