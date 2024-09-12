@@ -1049,6 +1049,8 @@ root:
           enableCache: true
         componentRef:
           name: comp-git-clone-op
+        dependentTasks:
+        - preflight-check-op
         inputs:
           parameters:
             repo_branch:

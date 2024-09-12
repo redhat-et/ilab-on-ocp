@@ -20,9 +20,9 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
     # Imports for SDG stage
     if "sdg" in mock:
-        from sdg.faked import git_clone_op, sdg_op
+        from sdg.faked import preflight_check_op, git_clone_op, sdg_op
     else:
-        from sdg import git_clone_op, sdg_op
+        from sdg import preflight_check_op, git_clone_op, sdg_op
 
     # Imports for Training stage
     if "train" in mock:
@@ -70,11 +70,18 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         device: str = None,
     ):
 
-        # SDG stage
+        preflight_check_task = preflight_check_op(
+            repo_branch=repo_branch, repo_pr=repo_pr
+        )
+        use_config_map_as_env(preflight_check_task, K8S_NAME, dict(endpoint="endpoint", model="model"))
+        use_secret_as_env(preflight_check_task, K8S_NAME, {"api_key": "api_key"})
+
         git_clone_task = git_clone_op(
             repo_branch=repo_branch, repo_pr=repo_pr, repo_url=repo_url
-        )
+        ).after(preflight_check_task)
 
+        # SDG stage
+        
         sdg_task = sdg_op(
             num_instructions_to_generate=num_instructions_to_generate,
             taxonomy=git_clone_task.outputs["taxonomy"],
