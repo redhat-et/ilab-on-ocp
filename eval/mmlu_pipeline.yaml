@@ -20,8 +20,8 @@ components:
           artifactType:
             schemaTitle: system.Model
             schemaVersion: 0.0.1
-  comp-report-mmlu-results:
-    executorLabel: exec-report-mmlu-results
+  comp-load-mmlu-results:
+    executorLabel: exec-load-mmlu-results
     inputDefinitions:
       artifacts:
         mmlu_output:
@@ -29,11 +29,9 @@ components:
             schemaTitle: system.Artifact
             schemaVersion: 0.0.1
     outputDefinitions:
-      artifacts:
-        mmlu_score_file:
-          artifactType:
-            schemaTitle: system.Artifact
-            schemaVersion: 0.0.1
+      parameters:
+        Output:
+          parameterType: STRUCT
   comp-run-mmlu:
     executorLabel: exec-run-mmlu
     inputDefinitions:
@@ -68,13 +66,13 @@ deploymentSpec:
         typeSchema:
           schemaTitle: system.Model
           schemaVersion: 0.0.1
-    exec-report-mmlu-results:
+    exec-load-mmlu-results:
       container:
         args:
         - --executor_input
         - '{{$}}'
         - --function_to_execute
-        - report_mmlu_results
+        - load_mmlu_results
         command:
         - sh
         - -c
@@ -94,9 +92,11 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef report_mmlu_results(\n        mmlu_output: Input[Artifact],\n\
-          \        mmlu_score_file: Output[Artifact],\n    ):\n    with open(mmlu_output.path,\
-          \ 'r') as file:\n        output = file.read()\n    print(output)\n\n"
+          \ *\n\ndef load_mmlu_results(mmlu_output: Input[Artifact]) -> dict:\n  \
+          \  import json\n\n    with open(mmlu_output.path, 'r') as file:\n      \
+          \  evaluation_data = json.load(file)\n\n    print(\"Loaded Evaluation Data:\"\
+          )\n    print(json.dumps(evaluation_data, indent=4))\n\n    return evaluation_data\n\
+          \n"
         image: registry.access.redhat.com/ubi9/toolbox
     exec-run-mmlu:
       container:
@@ -127,8 +127,8 @@ deploymentSpec:
           \ *\n\ndef run_mmlu(\n    candidate_model: Input[Model],\n    mmlu_output_file:\
           \ Output[Artifact],\n    mmlu_tasks_list: str,\n    model_dtype: str,\n\
           \    few_shots: int,\n    batch_size: int,\n    device: str,\n):\n    import\
-          \ os\n    import torch\n    from instructlab.eval.mmlu import MMLUEvaluator,\
-          \ MMLU_TASKS\n\n    model_name = os.path.basename(os.path.normpath(candidate_model.path))\n\
+          \ json\n    import os\n    import torch\n    from instructlab.eval.mmlu\
+          \ import MMLUEvaluator, MMLU_TASKS\n\n    model_name = os.path.basename(os.path.normpath(candidate_model.path))\n\
           \    # Debug\n    print(f\"Model {model_name} is stored at: {candidate_model.path}\"\
           )\n\n    mmlu_tasks = mmlu_tasks_list.split(',') if mmlu_tasks_list else\
           \ MMLU_TASKS\n\n    # Device setup and debug\n    gpu_available = torch.cuda.is_available()\n\
@@ -140,14 +140,13 @@ deploymentSpec:
           \    evaluator = MMLUEvaluator(\n        model_path=candidate_model.path,\n\
           \        tasks=mmlu_tasks,\n        model_dtype=model_dtype,\n        few_shots=few_shots,\n\
           \        batch_size=batch_size,\n        device=effective_device,\n    )\n\
-          \n    mmlu_score, individual_scores = evaluator.run()\n    with open(mmlu_output_file.path,\
-          \ 'w') as f:\n        f.write(f\"# KNOWLEDGE EVALUATION REPORT\\n\")\n \
-          \       f.write(\"\\n## MODEL\\n\")\n        f.write(f\"{model_name}\\n\"\
-          )\n        f.write(f\"\\n### AVERAGE:\\n\")\n        f.write(f\"{round(mmlu_score,\
-          \ 2)} (across {len(individual_scores)})\\n\")\n\n        f.write(f\"###\
-          \ SCORES:\\n\")\n        for task, score in individual_scores.items():\n\
-          \            s = round(score[\"score\"], 2)\n            f.write(f\"{task}\
-          \ - {s}\\n\")\n\n"
+          \n    mmlu_score, individual_scores = evaluator.run()\n    mmlu_data = {\n\
+          \        \"report_title\": \"KNOWLEDGE EVALUATION REPORT\",\n        \"\
+          model\": model_name,\n        \"average_score\": round(mmlu_score, 2),\n\
+          \        \"number_of_tasks\": len(individual_scores),\n        \"individual_scores\"\
+          : [{task: round(score['score'], 2)} for task, score in individual_scores.items()]\n\
+          \    }\n\n    with open(mmlu_output_file.path, 'w') as f:\n        json.dump(evaluation_data,\
+          \ f, indent=4)\n\n"
         image: quay.io/sallyom/instructlab-ocp:eval
         resources:
           accelerator:
@@ -172,11 +171,11 @@ root:
                 constant: s3://sallyom-eval-e58df6b0-606b-4749-96a5-a105657cb068/models/instructlab/granite-7b-lab
         taskInfo:
           name: importer
-      report-mmlu-results:
+      load-mmlu-results:
         cachingOptions:
           enableCache: true
         componentRef:
-          name: comp-report-mmlu-results
+          name: comp-load-mmlu-results
         dependentTasks:
         - run-mmlu
         inputs:
@@ -186,7 +185,7 @@ root:
                 outputArtifactKey: mmlu_output_file
                 producerTask: run-mmlu
         taskInfo:
-          name: report-mmlu-results
+          name: load-mmlu-results
       run-mmlu:
         cachingOptions:
           enableCache: true

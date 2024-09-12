@@ -17,6 +17,7 @@ def run_mmlu(
     batch_size: int,
     device: str,
 ):
+    import json
     import os
     import torch
     from instructlab.eval.mmlu import MMLUEvaluator, MMLU_TASKS
@@ -47,28 +48,28 @@ def run_mmlu(
     )
 
     mmlu_score, individual_scores = evaluator.run()
+    mmlu_data = {
+        "report_title": "KNOWLEDGE EVALUATION REPORT",
+        "model": model_name,
+        "average_score": round(mmlu_score, 2),
+        "number_of_tasks": len(individual_scores),
+        "individual_scores": [{task: round(score['score'], 2)} for task, score in individual_scores.items()]
+    }
+
     with open(mmlu_output_file.path, 'w') as f:
-        f.write(f"# KNOWLEDGE EVALUATION REPORT\n")
-        f.write("\n## MODEL\n")
-        f.write(f"{model_name}\n")
-        f.write(f"\n### AVERAGE:\n")
-        f.write(f"{round(mmlu_score, 2)} (across {len(individual_scores)})\n")
+        json.dump(evaluation_data, f, indent=4)
 
-        f.write(f"### SCORES:\n")
-        for task, score in individual_scores.items():
-            s = round(score["score"], 2)
-            f.write(f"{task} - {s}\n")
-
-# Do something with results
-# TODO: Collect 10 results, choose best score
 @component(base_image=TOOLBOX_IMAGE)
-def report_mmlu_results(
-        mmlu_output: Input[Artifact],
-        mmlu_score_file: Output[Artifact],
-    ):
+def load_mmlu_results(mmlu_output: Input[Artifact]) -> dict:
+    import json
+
     with open(mmlu_output.path, 'r') as file:
-        output = file.read()
-    print(output)
+        evaluation_data = json.load(file)
+
+    print("Loaded Evaluation Data:")
+    print(json.dumps(evaluation_data, indent=4))
+
+    return evaluation_data
 
 @pipeline(
     display_name="MMLU Evaluation Pipeline",
@@ -101,7 +102,7 @@ def mmlu_pipeline(
         device=device,
     )
 
-    report_mmlu_results_task = report_mmlu_results(
+    load_mmlu_results_task = load_mmlu_results(
         mmlu_output=run_mmlu_task.output,
     )
 
@@ -113,4 +114,3 @@ def mmlu_pipeline(
 
 if __name__ == "__main__":
     compiler.Compiler().compile(mmlu_pipeline, "mmlu_pipeline.yaml")
-
