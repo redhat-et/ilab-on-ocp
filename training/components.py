@@ -39,8 +39,8 @@ def pytorchjob_manifest_op(
                   containers:
                     - args:
                         - |
-                          mkdir /output/model;
-                          mkdir /output/data;
+                          mkdir -p /output/model;
+                          mkdir -p /output/data;
                           python3.11 -u run.py --nnodes 2 --nproc_per_node 2 --node_rank "$(RANK)" --rdzv_endpoint $(MASTER_ADDR):$(MASTER_PORT) --model_path /input_model --data_path /input_data/*_train_msgs*.jsonl --ckpt_output_dir /output/model --data_output_dir /output/data
                       command:
                         - /bin/bash
