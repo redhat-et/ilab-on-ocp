@@ -1,6 +1,6 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error
-from kfp import dsl, compiler, kubernetes
+from kfp import dsl, compiler
 from kfp.dsl import component, pipeline, Input, Output, Artifact, Model, importer
 
 EVAL_IMAGE = "quay.io/sallyom/instructlab-ocp:eval"
@@ -10,7 +10,7 @@ CANDIDATE_S3_URI = "s3://sallyom-eval-e58df6b0-606b-4749-96a5-a105657cb068/model
 @component(base_image=EVAL_IMAGE)
 def run_mmlu(
     candidate_model: Input[Model],
-    mmlu_output_file: Output[Artifact],
+    mmlu_output: Output[Artifact],
     mmlu_tasks_list: str,
     model_dtype: str,
     few_shots: int,
@@ -34,7 +34,7 @@ def run_mmlu(
 
     print(f"GPU Available: {gpu_available}, Using: {gpu_name}")
 
-    effective_device = device if device != "None" else ("cuda" if gpu_available else "cpu")
+    effective_device = device if device is not None else ("cuda" if gpu_available else "cpu")
     print(f"Running on device: {effective_device}")
 
     # Evaluation
@@ -56,7 +56,7 @@ def run_mmlu(
         "individual_scores": [{task: round(score['score'], 2)} for task, score in individual_scores.items()]
     }
 
-    with open(mmlu_output_file.path, 'w') as f:
+    with open(mmlu_output.path, 'w') as f:
         json.dump(mmlu_data, f, indent=4)
 
 @component(base_image=TOOLBOX_IMAGE)
@@ -83,8 +83,7 @@ def mmlu_pipeline(
     model_dtype: str = "bfloat16",
     few_shots: int = 5,
     batch_size: int = 8,
-    device: str = "None",
-
+    device: str = None,
 ):
     import_candidate_model_task = importer(
         artifact_uri=CANDIDATE_S3_URI,
@@ -106,8 +105,6 @@ def mmlu_pipeline(
         mmlu_output=run_mmlu_task.output,
     )
 
-    # TODO: remove this once images are set
-    kubernetes.set_image_pull_policy(run_mmlu_task, "Always")
     run_mmlu_task.set_accelerator_type('nvidia.com/gpu')
     run_mmlu_task.set_accelerator_limit(1)
 

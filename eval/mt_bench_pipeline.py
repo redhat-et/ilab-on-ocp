@@ -1,7 +1,7 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error
 from typing import NamedTuple
-from kfp import dsl, compiler, kubernetes
+from kfp import dsl, compiler
 from kfp.dsl import component, pipeline, Input, Output, Artifact, Model, importer
 from kfp.kubernetes import use_config_map_as_env, use_secret_as_env
 
@@ -170,8 +170,6 @@ def mt_bench_pipeline(
         mt_bench_output=run_mt_bench_task.output,
     )
 
-    # TODO: remove this once images are set
-    kubernetes.set_image_pull_policy(run_mt_bench_task, "Always")
     run_mt_bench_task.set_accelerator_type('nvidia.com/gpu')
     run_mt_bench_task.set_accelerator_limit(1)
 

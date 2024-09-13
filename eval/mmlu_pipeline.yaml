@@ -3,7 +3,7 @@
 # Description: Pipeline to run the MMLU evaluation script
 # Inputs:
 #    batch_size: int [Default: 8.0]
-#    device: str [Default: 'None']
+#    device: str
 #    few_shots: int [Default: 5.0]
 #    mmlu_tasks_list: str [Default: 'mmlu_abstract_algebra,mmlu_anatomy,mmlu_astronomy']
 #    model_dtype: str [Default: 'bfloat16']
@@ -53,7 +53,7 @@ components:
           parameterType: STRING
     outputDefinitions:
       artifacts:
-        mmlu_output_file:
+        mmlu_output:
           artifactType:
             schemaTitle: system.Artifact
             schemaVersion: 0.0.1
@@ -124,7 +124,7 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef run_mmlu(\n    candidate_model: Input[Model],\n    mmlu_output_file:\
+          \ *\n\ndef run_mmlu(\n    candidate_model: Input[Model],\n    mmlu_output:\
           \ Output[Artifact],\n    mmlu_tasks_list: str,\n    model_dtype: str,\n\
           \    few_shots: int,\n    batch_size: int,\n    device: str,\n):\n    import\
           \ json\n    import os\n    import torch\n    from instructlab.eval.mmlu\
@@ -135,7 +135,7 @@ deploymentSpec:
           \    gpu_name = torch.cuda.get_device_name(torch.cuda.current_device())\
           \ if gpu_available else \"No GPU available\"\n\n    print(f\"GPU Available:\
           \ {gpu_available}, Using: {gpu_name}\")\n\n    effective_device = device\
-          \ if device != \"None\" else (\"cuda\" if gpu_available else \"cpu\")\n\
+          \ if device is not None else (\"cuda\" if gpu_available else \"cpu\")\n\
           \    print(f\"Running on device: {effective_device}\")\n\n    # Evaluation\n\
           \    evaluator = MMLUEvaluator(\n        model_path=candidate_model.path,\n\
           \        tasks=mmlu_tasks,\n        model_dtype=model_dtype,\n        few_shots=few_shots,\n\
@@ -145,7 +145,7 @@ deploymentSpec:
           model\": model_name,\n        \"average_score\": round(mmlu_score, 2),\n\
           \        \"number_of_tasks\": len(individual_scores),\n        \"individual_scores\"\
           : [{task: round(score['score'], 2)} for task, score in individual_scores.items()]\n\
-          \    }\n\n    with open(mmlu_output_file.path, 'w') as f:\n        json.dump(mmlu_data,\
+          \    }\n\n    with open(mmlu_output.path, 'w') as f:\n        json.dump(mmlu_data,\
           \ f, indent=4)\n\n"
         image: quay.io/sallyom/instructlab-ocp:eval
         resources:
@@ -182,7 +182,7 @@ root:
           artifacts:
             mmlu_output:
               taskOutputArtifact:
-                outputArtifactKey: mmlu_output_file
+                outputArtifactKey: mmlu_output
                 producerTask: run-mmlu
         taskInfo:
           name: load-mmlu-results
@@ -219,7 +219,6 @@ root:
         isOptional: true
         parameterType: NUMBER_INTEGER
       device:
-        defaultValue: None
         isOptional: true
         parameterType: STRING
       few_shots:
@@ -236,10 +235,3 @@ root:
         parameterType: STRING
 schemaVersion: 2.1.0
 sdkVersion: kfp-2.8.0
----
-platforms:
-  kubernetes:
-    deploymentSpec:
-      executors:
-        exec-run-mmlu:
-          imagePullPolicy: Always
