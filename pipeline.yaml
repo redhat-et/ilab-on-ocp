@@ -819,6 +819,7 @@ root:
         componentRef:
           name: comp-pvc-to-artifact-op
         dependentTasks:
+        - createpvc-3
         - kubectl-wait-for-op
         inputs:
           parameters:
@@ -833,6 +834,7 @@ root:
         componentRef:
           name: comp-pvc-to-model-op
         dependentTasks:
+        - createpvc-3
         - kubectl-wait-for-op
         inputs:
           parameters:
@@ -934,6 +936,18 @@ platforms:
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-2
+        exec-pvc-to-artifact-op:
+          pvcMount:
+          - mountPath: /output/data
+            taskOutputParameter:
+              outputParameterKey: name
+              producerTask: createpvc-3
+        exec-pvc-to-model-op:
+          pvcMount:
+          - mountPath: /output/model
+            taskOutputParameter:
+              outputParameterKey: name
+              producerTask: createpvc-3
         exec-sdg-op:
           configMapAsEnv:
           - configMapName: kfp-model-server
