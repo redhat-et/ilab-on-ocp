@@ -2,11 +2,242 @@
 # Name: instructlab
 # Description: InstructLab pipeline
 # Inputs:
+#    base_model: str [Default: 'ibm-granite/granite-7b-base']
 #    num_instructions_to_generate: int [Default: 2.0]
 #    repo_branch: str
 #    repo_pr: int
 #    repo_url: str [Default: 'https://github.com/instructlab/taxonomy.git']
+#    storage_class_name: str [Default: 'ocs-external-storagecluster-ceph-rbd']
 components:
+  comp-artifact-to-pvc-op:
+    executorLabel: exec-artifact-to-pvc-op
+    inputDefinitions:
+      artifacts:
+        data:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+      parameters:
+        pvc_path:
+          parameterType: STRING
+  comp-artifact-to-pvc-op-2:
+    executorLabel: exec-artifact-to-pvc-op-2
+    inputDefinitions:
+      artifacts:
+        data:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+      parameters:
+        pvc_path:
+          parameterType: STRING
+  comp-createpvc:
+    executorLabel: exec-createpvc
+    inputDefinitions:
+      parameters:
+        access_modes:
+          description: 'AccessModes to request for the provisioned PVC. May
+
+            be one or more of ``''ReadWriteOnce''``, ``''ReadOnlyMany''``, ``''ReadWriteMany''``,
+            or
+
+            ``''ReadWriteOncePod''``. Corresponds to `PersistentVolumeClaim.spec.accessModes
+            <https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes>`_.'
+          parameterType: LIST
+        annotations:
+          description: Annotations for the PVC's metadata. Corresponds to `PersistentVolumeClaim.metadata.annotations
+            <https://kubernetes.io/docs/reference/kubernetes-api/config-and-storage-resources/persistent-volume-claim-v1/#PersistentVolumeClaim>`_.
+          isOptional: true
+          parameterType: STRUCT
+        pvc_name:
+          description: 'Name of the PVC. Corresponds to `PersistentVolumeClaim.metadata.name
+            <https://kubernetes.io/docs/reference/kubernetes-api/config-and-storage-resources/persistent-volume-claim-v1/#PersistentVolumeClaim>`_.
+            Only one of ``pvc_name`` and ``pvc_name_suffix`` can
+
+            be provided.'
+          isOptional: true
+          parameterType: STRING
+        pvc_name_suffix:
+          description: 'Prefix to use for a dynamically generated name, which
+
+            will take the form ``<argo-workflow-name>-<pvc_name_suffix>``. Only one
+
+            of ``pvc_name`` and ``pvc_name_suffix`` can be provided.'
+          isOptional: true
+          parameterType: STRING
+        size:
+          description: The size of storage requested by the PVC that will be provisioned.
+            For example, ``'5Gi'``. Corresponds to `PersistentVolumeClaim.spec.resources.requests.storage
+            <https://kubernetes.io/docs/reference/kubernetes-api/config-and-storage-resources/persistent-volume-claim-v1/#PersistentVolumeClaimSpec>`_.
+          parameterType: STRING
+        storage_class_name:
+          defaultValue: ''
+          description: 'Name of StorageClass from which to provision the PV
+
+            to back the PVC. ``None`` indicates to use the cluster''s default
+
+            storage_class_name. Set to ``''''`` for a statically specified PVC.'
+          isOptional: true
+          parameterType: STRING
+        volume_name:
+          description: 'Pre-existing PersistentVolume that should back the
+
+            provisioned PersistentVolumeClaim. Used for statically
+
+            specified PV only. Corresponds to `PersistentVolumeClaim.spec.volumeName
+            <https://kubernetes.io/docs/reference/kubernetes-api/config-and-storage-resources/persistent-volume-claim-v1/#PersistentVolumeClaimSpec>`_.'
+          isOptional: true
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        name:
+          parameterType: STRING
+  comp-createpvc-2:
+    executorLabel: exec-createpvc-2
+    inputDefinitions:
+      parameters:
+        access_modes:
+          description: 'AccessModes to request for the provisioned PVC. May
+
+            be one or more of ``''ReadWriteOnce''``, ``''ReadOnlyMany''``, ``''ReadWriteMany''``,
+            or
+
+            ``''ReadWriteOncePod''``. Corresponds to `PersistentVolumeClaim.spec.accessModes
+            <https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes>`_.'
+          parameterType: LIST
+        annotations:
+          description: Annotations for the PVC's metadata. Corresponds to `PersistentVolumeClaim.metadata.annotations
+            <https://kubernetes.io/docs/reference/kubernetes-api/config-and-storage-resources/persistent-volume-claim-v1/#PersistentVolumeClaim>`_.
+          isOptional: true
+          parameterType: STRUCT
+        pvc_name:
+          description: 'Name of the PVC. Corresponds to `PersistentVolumeClaim.metadata.name
+            <https://kubernetes.io/docs/reference/kubernetes-api/config-and-storage-resources/persistent-volume-claim-v1/#PersistentVolumeClaim>`_.
+            Only one of ``pvc_name`` and ``pvc_name_suffix`` can
+
+            be provided.'
+          isOptional: true
+          parameterType: STRING
+        pvc_name_suffix:
+          description: 'Prefix to use for a dynamically generated name, which
+
+            will take the form ``<argo-workflow-name>-<pvc_name_suffix>``. Only one
+
+            of ``pvc_name`` and ``pvc_name_suffix`` can be provided.'
+          isOptional: true
+          parameterType: STRING
+        size:
+          description: The size of storage requested by the PVC that will be provisioned.
+            For example, ``'5Gi'``. Corresponds to `PersistentVolumeClaim.spec.resources.requests.storage
+            <https://kubernetes.io/docs/reference/kubernetes-api/config-and-storage-resources/persistent-volume-claim-v1/#PersistentVolumeClaimSpec>`_.
+          parameterType: STRING
+        storage_class_name:
+          defaultValue: ''
+          description: 'Name of StorageClass from which to provision the PV
+
+            to back the PVC. ``None`` indicates to use the cluster''s default
+
+            storage_class_name. Set to ``''''`` for a statically specified PVC.'
+          isOptional: true
+          parameterType: STRING
+        volume_name:
+          description: 'Pre-existing PersistentVolume that should back the
+
+            provisioned PersistentVolumeClaim. Used for statically
+
+            specified PV only. Corresponds to `PersistentVolumeClaim.spec.volumeName
+            <https://kubernetes.io/docs/reference/kubernetes-api/config-and-storage-resources/persistent-volume-claim-v1/#PersistentVolumeClaimSpec>`_.'
+          isOptional: true
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        name:
+          parameterType: STRING
+  comp-createpvc-3:
+    executorLabel: exec-createpvc-3
+    inputDefinitions:
+      parameters:
+        access_modes:
+          description: 'AccessModes to request for the provisioned PVC. May
+
+            be one or more of ``''ReadWriteOnce''``, ``''ReadOnlyMany''``, ``''ReadWriteMany''``,
+            or
+
+            ``''ReadWriteOncePod''``. Corresponds to `PersistentVolumeClaim.spec.accessModes
+            <https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes>`_.'
+          parameterType: LIST
+        annotations:
+          description: Annotations for the PVC's metadata. Corresponds to `PersistentVolumeClaim.metadata.annotations
+            <https://kubernetes.io/docs/reference/kubernetes-api/config-and-storage-resources/persistent-volume-claim-v1/#PersistentVolumeClaim>`_.
+          isOptional: true
+          parameterType: STRUCT
+        pvc_name:
+          description: 'Name of the PVC. Corresponds to `PersistentVolumeClaim.metadata.name
+            <https://kubernetes.io/docs/reference/kubernetes-api/config-and-storage-resources/persistent-volume-claim-v1/#PersistentVolumeClaim>`_.
+            Only one of ``pvc_name`` and ``pvc_name_suffix`` can
+
+            be provided.'
+          isOptional: true
+          parameterType: STRING
+        pvc_name_suffix:
+          description: 'Prefix to use for a dynamically generated name, which
+
+            will take the form ``<argo-workflow-name>-<pvc_name_suffix>``. Only one
+
+            of ``pvc_name`` and ``pvc_name_suffix`` can be provided.'
+          isOptional: true
+          parameterType: STRING
+        size:
+          description: The size of storage requested by the PVC that will be provisioned.
+            For example, ``'5Gi'``. Corresponds to `PersistentVolumeClaim.spec.resources.requests.storage
+            <https://kubernetes.io/docs/reference/kubernetes-api/config-and-storage-resources/persistent-volume-claim-v1/#PersistentVolumeClaimSpec>`_.
+          parameterType: STRING
+        storage_class_name:
+          defaultValue: ''
+          description: 'Name of StorageClass from which to provision the PV
+
+            to back the PVC. ``None`` indicates to use the cluster''s default
+
+            storage_class_name. Set to ``''''`` for a statically specified PVC.'
+          isOptional: true
+          parameterType: STRING
+        volume_name:
+          description: 'Pre-existing PersistentVolume that should back the
+
+            provisioned PersistentVolumeClaim. Used for statically
+
+            specified PV only. Corresponds to `PersistentVolumeClaim.spec.volumeName
+            <https://kubernetes.io/docs/reference/kubernetes-api/config-and-storage-resources/persistent-volume-claim-v1/#PersistentVolumeClaimSpec>`_.'
+          isOptional: true
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        name:
+          parameterType: STRING
+  comp-deletepvc:
+    executorLabel: exec-deletepvc
+    inputDefinitions:
+      parameters:
+        pvc_name:
+          description: Name of the PVC to delete. Supports passing a runtime-generated
+            name, such as a name provided by ``kubernetes.CreatePvcOp().outputs['name']``.
+          parameterType: STRING
+  comp-deletepvc-2:
+    executorLabel: exec-deletepvc-2
+    inputDefinitions:
+      parameters:
+        pvc_name:
+          description: Name of the PVC to delete. Supports passing a runtime-generated
+            name, such as a name provided by ``kubernetes.CreatePvcOp().outputs['name']``.
+          parameterType: STRING
+  comp-deletepvc-3:
+    executorLabel: exec-deletepvc-3
+    inputDefinitions:
+      parameters:
+        pvc_name:
+          description: Name of the PVC to delete. Supports passing a runtime-generated
+            name, such as a name provided by ``kubernetes.CreatePvcOp().outputs['name']``.
+          parameterType: STRING
   comp-git-clone-op:
     executorLabel: exec-git-clone-op
     inputDefinitions:
@@ -23,6 +254,76 @@ components:
           artifactType:
             schemaTitle: system.Dataset
             schemaVersion: 0.0.1
+  comp-huggingface-importer-op:
+    executorLabel: exec-huggingface-importer-op
+    inputDefinitions:
+      parameters:
+        repo_name:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+  comp-kubectl-apply-op:
+    executorLabel: exec-kubectl-apply-op
+    inputDefinitions:
+      parameters:
+        manifest:
+          parameterType: STRING
+  comp-kubectl-wait-for-op:
+    executorLabel: exec-kubectl-wait-for-op
+    inputDefinitions:
+      parameters:
+        condition:
+          parameterType: STRING
+        kind:
+          parameterType: STRING
+        name:
+          parameterType: STRING
+  comp-pvc-to-artifact-op:
+    executorLabel: exec-pvc-to-artifact-op
+    inputDefinitions:
+      parameters:
+        pvc_path:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        model:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+  comp-pvc-to-model-op:
+    executorLabel: exec-pvc-to-model-op
+    inputDefinitions:
+      parameters:
+        pvc_path:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+  comp-pytorchjob-manifest-op:
+    executorLabel: exec-pytorchjob-manifest-op
+    inputDefinitions:
+      parameters:
+        input_pvc_name:
+          parameterType: STRING
+        model_pvc_name:
+          parameterType: STRING
+        name_suffix:
+          parameterType: STRING
+        output_pvc_name:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        manifest:
+          parameterType: STRING
+        name:
+          parameterType: STRING
   comp-sdg-op:
     executorLabel: exec-sdg-op
     inputDefinitions:
@@ -46,6 +347,40 @@ components:
             schemaVersion: 0.0.1
 deploymentSpec:
   executors:
+    exec-artifact-to-pvc-op:
+      container:
+        args:
+        - cp -r {{$.inputs.artifacts['data'].path}} {{$.inputs.parameters['pvc_path']}}
+        command:
+        - /bin/sh
+        - -c
+        image: registry.access.redhat.com/ubi9/toolbox
+    exec-artifact-to-pvc-op-2:
+      container:
+        args:
+        - cp -r {{$.inputs.artifacts['data'].path}} {{$.inputs.parameters['pvc_path']}}
+        command:
+        - /bin/sh
+        - -c
+        image: registry.access.redhat.com/ubi9/toolbox
+    exec-createpvc:
+      container:
+        image: argostub/createpvc
+    exec-createpvc-2:
+      container:
+        image: argostub/createpvc
+    exec-createpvc-3:
+      container:
+        image: argostub/createpvc
+    exec-deletepvc:
+      container:
+        image: argostub/deletepvc
+    exec-deletepvc-2:
+      container:
+        image: argostub/deletepvc
+    exec-deletepvc-3:
+      container:
+        image: argostub/deletepvc
     exec-git-clone-op:
       container:
         args:
@@ -59,6 +394,164 @@ deploymentSpec:
         - /bin/sh
         - -c
         image: registry.access.redhat.com/ubi9/toolbox
+    exec-huggingface-importer-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - huggingface_importer_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.8.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'huggingface_hub'\
+          \ && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef huggingface_importer_op(model: dsl.Output[dsl.Model], repo_name:\
+          \ str):\n    from huggingface_hub import snapshot_download\n\n    snapshot_download(repo_id=repo_name,\
+          \ cache_dir=\"/tmp\", local_dir=model.path)\n\n"
+        image: registry.access.redhat.com/ubi9/python-311:latest
+    exec-kubectl-apply-op:
+      container:
+        args:
+        - echo "{{$.inputs.parameters['manifest']}}" | kubectl apply -f -
+        command:
+        - /bin/sh
+        - -c
+        image: registry.redhat.io/openshift4/ose-cli
+    exec-kubectl-wait-for-op:
+      container:
+        args:
+        - kubectl wait --for={{$.inputs.parameters['condition']}} {{$.inputs.parameters['kind']}}/{{$.inputs.parameters['name']}}
+          --timeout=2h
+        command:
+        - /bin/sh
+        - -c
+        image: registry.redhat.io/openshift4/ose-cli
+    exec-pvc-to-artifact-op:
+      container:
+        args:
+        - cp -r {{$.inputs.parameters['pvc_path']}} {{$.outputs.artifacts['model'].path}}
+        command:
+        - /bin/sh
+        - -c
+        image: registry.access.redhat.com/ubi9/toolbox
+    exec-pvc-to-model-op:
+      container:
+        args:
+        - cp -r {{$.inputs.parameters['pvc_path']}} {{$.outputs.artifacts['model'].path}}
+        command:
+        - /bin/sh
+        - -c
+        image: registry.access.redhat.com/ubi9/toolbox
+    exec-pytorchjob-manifest-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - pytorchjob_manifest_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.8.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef pytorchjob_manifest_op(\n    model_pvc_name: str,\n    input_pvc_name:\
+          \ str,\n    output_pvc_name: str,\n    name_suffix: str,\n) -> NamedTuple(\"\
+          outputs\", manifest=str, name=str):\n    import inspect\n\n    Outputs =\
+          \ NamedTuple(\"outputs\", manifest=str, name=str)\n    name = f\"train-{name_suffix.rstrip('-sdg')}\"\
+          \n\n    image = 'quay.io/tcoufal/ilab-train:latest'\n    nprocPerNode =\
+          \ 2\n    nnodes = 1\n\n    manifest = inspect.cleandoc(\n        f\"\"\"\
+          \n        apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n      \
+          \  metadata:\n          name: {name}\n        spec:\n          nprocPerNode:\
+          \ \\\\\"{nprocPerNode}\\\\\"\n          pytorchReplicaSpecs:\n         \
+          \   Master:\n              replicas: 1\n              restartPolicy: OnFailure\n\
+          \              template:\n                metadata:\n                  annotations:\n\
+          \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
+          \                  containers:\n                    - args:\n          \
+          \              - |\n                          mkdir -p /output/model;\n\
+          \                          mkdir -p /output/data;\n                    \
+          \      python3.11 -u run.py --model_path /input_model/model --data_path\
+          \ /input_data/sdg/*_train_msgs*.jsonl --ckpt_output_dir /output/model --data_output_dir\
+          \ /output/data\n                      command:\n                       \
+          \ - /bin/bash\n                        - '-c'\n                        -\
+          \ '--'\n                      image: {image}\n                      name:\
+          \ pytorch\n                      volumeMounts:\n                       \
+          \ - mountPath: /input_data\n                          name: input-data\n\
+          \                          readOnly: true\n                        - mountPath:\
+          \ /input_model\n                          name: model\n                \
+          \          readOnly: true\n                        - mountPath: /output\n\
+          \                          name: output\n                      env:\n  \
+          \                      - name: NNODES\n                          value:\
+          \ \\\\\"{nnodes}\\\\\"\n                        - name: NPROC_PER_NODE\n\
+          \                          value: \\\\\"{nprocPerNode}\\\\\"\n         \
+          \             resources:\n                        requests:\n          \
+          \                cpu: 2\n                          \"nvidia.com/gpu\": {nprocPerNode}\n\
+          \                        limits:\n                          cpu: 2\n   \
+          \                       \"nvidia.com/gpu\": {nprocPerNode}\n           \
+          \       volumes:\n                    - name: input-data\n             \
+          \         persistentVolumeClaim:\n                        claimName: {input_pvc_name}\n\
+          \                    - name: model\n                      persistentVolumeClaim:\n\
+          \                        claimName: {model_pvc_name}\n                 \
+          \   - name: output\n                      persistentVolumeClaim:\n     \
+          \                   claimName: {output_pvc_name}\n            Worker:\n\
+          \              replicas: {nnodes-1}\n              restartPolicy: OnFailure\n\
+          \              template:\n                metadata:\n                  annotations:\n\
+          \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
+          \                  containers:\n                    - args:\n          \
+          \              - |\n                          mkdir -p /output/model;\n\
+          \                          mkdir -p /output/data;\n                    \
+          \      python3.11 -u run.py --model_path /input_model/model --data_path\
+          \ /input_data/sdg/*_train_msgs*.jsonl --ckpt_output_dir /tmp/model --data_output_dir\
+          \ /tmp/data\n                      command:\n                        - /bin/bash\n\
+          \                        - '-c'\n                        - '--'\n      \
+          \                image: {image}\n                      name: pytorch\n \
+          \                     volumeMounts:\n                        - mountPath:\
+          \ /input_data\n                          name: input-data\n            \
+          \              readOnly: true\n                        - mountPath: /input_model\n\
+          \                          name: model\n                          readOnly:\
+          \ true\n                      env:\n                        - name: NNODES\n\
+          \                          value: \\\\\"{nnodes}\\\\\"\n               \
+          \         - name: NPROC_PER_NODE\n                          value: \\\\\"\
+          {nprocPerNode}\\\\\"\n                      resources:\n               \
+          \         requests:\n                          cpu: 2\n                \
+          \          \"nvidia.com/gpu\": {nprocPerNode}\n                        limits:\n\
+          \                          cpu: 2\n                          \"nvidia.com/gpu\"\
+          : {nprocPerNode}\n                  volumes:\n                    - name:\
+          \ input-data\n                      persistentVolumeClaim:\n           \
+          \             claimName: {input_pvc_name}\n                    - name: model\n\
+          \                      persistentVolumeClaim:\n                        claimName:\
+          \ {model_pvc_name}\n        \"\"\"\n    )\n\n    return Outputs(manifest,\
+          \ name)\n\n"
+        image: registry.access.redhat.com/ubi9/python-311:latest
     exec-sdg-op:
       container:
         args:
@@ -108,6 +601,156 @@ pipelineInfo:
 root:
   dag:
     tasks:
+      artifact-to-pvc-op:
+        cachingOptions: {}
+        componentRef:
+          name: comp-artifact-to-pvc-op
+        dependentTasks:
+        - createpvc
+        - huggingface-importer-op
+        inputs:
+          artifacts:
+            data:
+              taskOutputArtifact:
+                outputArtifactKey: model
+                producerTask: huggingface-importer-op
+          parameters:
+            pvc_path:
+              runtimeValue:
+                constant: /model
+        taskInfo:
+          name: artifact-to-pvc-op
+      artifact-to-pvc-op-2:
+        cachingOptions: {}
+        componentRef:
+          name: comp-artifact-to-pvc-op-2
+        dependentTasks:
+        - createpvc-2
+        - sdg-op
+        inputs:
+          artifacts:
+            data:
+              taskOutputArtifact:
+                outputArtifactKey: sdg
+                producerTask: sdg-op
+          parameters:
+            pvc_path:
+              runtimeValue:
+                constant: /data
+        taskInfo:
+          name: artifact-to-pvc-op-2
+      createpvc:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-createpvc
+        inputs:
+          parameters:
+            access_modes:
+              runtimeValue:
+                constant:
+                - ReadWriteOnce
+            pvc_name_suffix:
+              runtimeValue:
+                constant: -model-cache
+            size:
+              runtimeValue:
+                constant: 50Gi
+            storage_class_name:
+              componentInputParameter: storage_class_name
+        taskInfo:
+          name: createpvc
+      createpvc-2:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-createpvc-2
+        inputs:
+          parameters:
+            access_modes:
+              runtimeValue:
+                constant:
+                - ReadWriteOnce
+            pvc_name_suffix:
+              runtimeValue:
+                constant: -sdg
+            size:
+              runtimeValue:
+                constant: 1Gi
+            storage_class_name:
+              componentInputParameter: storage_class_name
+        taskInfo:
+          name: createpvc-2
+      createpvc-3:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-createpvc-3
+        inputs:
+          parameters:
+            access_modes:
+              runtimeValue:
+                constant:
+                - ReadWriteOnce
+            pvc_name_suffix:
+              runtimeValue:
+                constant: -output
+            size:
+              runtimeValue:
+                constant: 50Gi
+            storage_class_name:
+              componentInputParameter: storage_class_name
+        taskInfo:
+          name: createpvc-3
+      deletepvc:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-deletepvc
+        dependentTasks:
+        - createpvc-2
+        - kubectl-wait-for-op
+        inputs:
+          parameters:
+            pvc_name:
+              taskOutputParameter:
+                outputParameterKey: name
+                producerTask: createpvc-2
+        taskInfo:
+          name: deletepvc
+      deletepvc-2:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-deletepvc-2
+        dependentTasks:
+        - createpvc
+        - kubectl-wait-for-op
+        inputs:
+          parameters:
+            pvc_name:
+              taskOutputParameter:
+                outputParameterKey: name
+                producerTask: createpvc
+        taskInfo:
+          name: deletepvc-2
+      deletepvc-3:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-deletepvc-3
+        dependentTasks:
+        - createpvc-3
+        - pvc-to-artifact-op
+        - pvc-to-model-op
+        inputs:
+          parameters:
+            pvc_name:
+              taskOutputParameter:
+                outputParameterKey: name
+                producerTask: createpvc-3
+        taskInfo:
+          name: deletepvc-3
       git-clone-op:
         cachingOptions:
           enableCache: true
@@ -123,6 +766,109 @@ root:
               componentInputParameter: repo_url
         taskInfo:
           name: git-clone-op
+      huggingface-importer-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-huggingface-importer-op
+        inputs:
+          parameters:
+            repo_name:
+              componentInputParameter: base_model
+        taskInfo:
+          name: huggingface-importer-op
+      kubectl-apply-op:
+        cachingOptions: {}
+        componentRef:
+          name: comp-kubectl-apply-op
+        dependentTasks:
+        - artifact-to-pvc-op
+        - artifact-to-pvc-op-2
+        - pytorchjob-manifest-op
+        inputs:
+          parameters:
+            manifest:
+              taskOutputParameter:
+                outputParameterKey: manifest
+                producerTask: pytorchjob-manifest-op
+        taskInfo:
+          name: kubectl-apply-op
+      kubectl-wait-for-op:
+        cachingOptions: {}
+        componentRef:
+          name: comp-kubectl-wait-for-op
+        dependentTasks:
+        - kubectl-apply-op
+        - pytorchjob-manifest-op
+        inputs:
+          parameters:
+            condition:
+              runtimeValue:
+                constant: condition=Succeeded
+            kind:
+              runtimeValue:
+                constant: pytorchjobs
+            name:
+              taskOutputParameter:
+                outputParameterKey: name
+                producerTask: pytorchjob-manifest-op
+        taskInfo:
+          name: kubectl-wait-for-op
+      pvc-to-artifact-op:
+        cachingOptions: {}
+        componentRef:
+          name: comp-pvc-to-artifact-op
+        dependentTasks:
+        - kubectl-wait-for-op
+        inputs:
+          parameters:
+            pvc_path:
+              runtimeValue:
+                constant: /output/data
+        taskInfo:
+          name: pvc-to-artifact-op
+      pvc-to-model-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-pvc-to-model-op
+        dependentTasks:
+        - kubectl-wait-for-op
+        inputs:
+          parameters:
+            pvc_path:
+              runtimeValue:
+                constant: /output/model
+        taskInfo:
+          name: pvc-to-model-op
+      pytorchjob-manifest-op:
+        cachingOptions: {}
+        componentRef:
+          name: comp-pytorchjob-manifest-op
+        dependentTasks:
+        - createpvc
+        - createpvc-2
+        - createpvc-3
+        inputs:
+          parameters:
+            input_pvc_name:
+              taskOutputParameter:
+                outputParameterKey: name
+                producerTask: createpvc-2
+            model_pvc_name:
+              taskOutputParameter:
+                outputParameterKey: name
+                producerTask: createpvc
+            name_suffix:
+              taskOutputParameter:
+                outputParameterKey: name
+                producerTask: createpvc-2
+            output_pvc_name:
+              taskOutputParameter:
+                outputParameterKey: name
+                producerTask: createpvc-3
+        taskInfo:
+          name: pytorchjob-manifest-op
       sdg-op:
         cachingOptions:
           enableCache: true
@@ -147,6 +893,10 @@ root:
           name: sdg-op
   inputDefinitions:
     parameters:
+      base_model:
+        defaultValue: ibm-granite/granite-7b-base
+        isOptional: true
+        parameterType: STRING
       num_instructions_to_generate:
         defaultValue: 2.0
         isOptional: true
@@ -161,6 +911,10 @@ root:
         defaultValue: https://github.com/instructlab/taxonomy.git
         isOptional: true
         parameterType: STRING
+      storage_class_name:
+        defaultValue: ocs-external-storagecluster-ceph-rbd
+        isOptional: true
+        parameterType: STRING
 schemaVersion: 2.1.0
 sdkVersion: kfp-2.8.0
 ---
@@ -168,6 +922,18 @@ platforms:
   kubernetes:
     deploymentSpec:
       executors:
+        exec-artifact-to-pvc-op:
+          pvcMount:
+          - mountPath: /model
+            taskOutputParameter:
+              outputParameterKey: name
+              producerTask: createpvc
+        exec-artifact-to-pvc-op-2:
+          pvcMount:
+          - mountPath: /data
+            taskOutputParameter:
+              outputParameterKey: name
+              producerTask: createpvc-2
         exec-sdg-op:
           configMapAsEnv:
           - configMapName: kfp-model-server

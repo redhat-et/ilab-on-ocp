@@ -2,10 +2,9 @@
 # pylint: disable=unused-argument
 from typing import Optional
 from kfp import dsl
+from utils.consts import PYTHON_IMAGE
 
-IMAGE = "registry.access.redhat.com/ubi9/python-311:latest"
-
-@dsl.component(base_image=IMAGE)
+@dsl.component(base_image=PYTHON_IMAGE)
 def git_clone_op(
     taxonomy: dsl.Output[dsl.Dataset],
     repo_branch: str,
@@ -15,7 +14,7 @@ def git_clone_op(
     return
 
 
-@dsl.component(base_image=IMAGE, packages_to_install=["git+https://github.com/redhat-et/ilab-on-ocp.git#subdirectory=sdg/faked/fixtures"])
+@dsl.component(base_image=PYTHON_IMAGE, packages_to_install=["git+https://github.com/redhat-et/ilab-on-ocp.git#subdirectory=sdg/faked/fixtures"])
 def sdg_op(
     num_instructions_to_generate: int,
     taxonomy: dsl.Input[dsl.Dataset],

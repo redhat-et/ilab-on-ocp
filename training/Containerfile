@@ -1,16 +1,32 @@
 FROM nvcr.io/nvidia/cuda:12.4.1-devel-ubi9
+
 RUN dnf install -y python3.11 python3.11-devel git python3-pip make automake gcc gcc-c++ \
     && dnf clean all \
     && rm -rf /var/cache/*dnf*
-WORKDIR /instructlab
-RUN python3.11 -m ensurepip
-RUN git clone https://github.com/instructlab/training.git
-RUN python3.11 -m pip install -e ./training
-RUN export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib" \
-    && python3.11 -m pip install -e ./training[cuda]
+
 ENV LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib"
-COPY run.py .
-ENV HOME=/instructlab
-RUN chmod -R 777 /instructlab
-USER 1001
+
 ENTRYPOINT ["/bin/bash"]
+
+# FIXME: pip install instructlab-trainin[cuda] is problematic atm:
+# https://github.com/instructlab/training/issues/147
+# https://github.com/instructlab/instructlab/issues/1864
+RUN export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib" \
+    && python3.11 -m ensurepip \
+    && python3.11 -m pip install --no-cache-dir --upgrade pip \
+    && CMAKE_ARGS="-DLLAMA_CUDA=on" python3.11 -m pip install "instructlab-training@git+https://github.com/instructlab/training.git" \
+    && python3.11 -m pip install packaging wheel setuptools-scm \
+    && python3.11 -m pip install --no-cache-dir "instructlab-training[cuda]@git+https://github.com/instructlab/training.git"
+
+# We don't expect to keep Triton cache after pod is finished
+ENV TRITON_CACHE_DIR="/tmp"
+
+# Set HF_HOME to volatile location. We do not preserve cache etc over restarts with this container.
+# https://huggingface.co/docs/huggingface_hub/en/guides/manage-cache
+ENV HF_HOME="/tmp"
+ENV TRANSFORMERS_CACHE="/tmp"
+
+COPY run.py .
+
+USER 1001
+

@@ -27,11 +27,11 @@ parser.add_argument("--random_seed", default=42)
 parser.add_argument("--checkpoint_at_epoch", default=True)
 
 # Torchrun Args
-parser.add_argument("--nnodes", default=1)
-parser.add_argument("--nproc_per_node", default=1)
-parser.add_argument("--node_rank", default=0)
+parser.add_argument("--nnodes", default=os.getenv("NNODES", "1"))
+parser.add_argument("--nproc_per_node", default=os.getenv("NPROC_PER_NODE", "1"))
+parser.add_argument("--node_rank", default=os.getenv("RANK"))
 parser.add_argument("--rdzv_id", default=123)
-parser.add_argument("--rdzv_endpoint", default= "127.0.0.1:12345")
+parser.add_argument("--rdzv_endpoint", default=f"{os.getenv('MASTER_ADDR', '127.0.0.1')}:{os.getenv('MASTER_PORT','12345')}")
 
 args = parser.parse_args()
 
