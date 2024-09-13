@@ -25,6 +25,7 @@ ENV TRITON_CACHE_DIR="/tmp"
 # https://huggingface.co/docs/huggingface_hub/en/guides/manage-cache
 ENV HF_HOME="/tmp"
 ENV TRANSFORMERS_CACHE="/tmp"
+ENV XDG_CACHE_HOME="/tmp"
 
 COPY run.py .
 
