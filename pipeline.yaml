@@ -514,16 +514,15 @@ deploymentSpec:
           \ \\\\\"{nnodes}\\\\\"\n                        - name: NPROC_PER_NODE\n\
           \                          value: \\\\\"{nprocPerNode}\\\\\"\n         \
           \             resources:\n                        requests:\n          \
-          \                memory: 8Gi\n                          cpu: 2\n       \
-          \                   \"nvidia.com/gpu\": {nprocPerNode}\n               \
-          \         limits:\n                          memory: 8Gi\n             \
-          \             cpu: 2\n                          \"nvidia.com/gpu\": {nprocPerNode}\n\
-          \                  volumes:\n                    - name: input-data\n  \
-          \                    persistentVolumeClaim:\n                        claimName:\
-          \ {input_pvc_name}\n                    - name: model\n                \
-          \      persistentVolumeClaim:\n                        claimName: {model_pvc_name}\n\
-          \                    - name: output\n                      persistentVolumeClaim:\n\
-          \                        claimName: {output_pvc_name}\n            Worker:\n\
+          \                cpu: 2\n                          \"nvidia.com/gpu\": {nprocPerNode}\n\
+          \                        limits:\n                          cpu: 2\n   \
+          \                       \"nvidia.com/gpu\": {nprocPerNode}\n           \
+          \       volumes:\n                    - name: input-data\n             \
+          \         persistentVolumeClaim:\n                        claimName: {input_pvc_name}\n\
+          \                    - name: model\n                      persistentVolumeClaim:\n\
+          \                        claimName: {model_pvc_name}\n                 \
+          \   - name: output\n                      persistentVolumeClaim:\n     \
+          \                   claimName: {output_pvc_name}\n            Worker:\n\
           \              replicas: {nnodes-1}\n              restartPolicy: OnFailure\n\
           \              template:\n                metadata:\n                  annotations:\n\
           \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
@@ -543,9 +542,8 @@ deploymentSpec:
           \                          value: \\\\\"{nnodes}\\\\\"\n               \
           \         - name: NPROC_PER_NODE\n                          value: \\\\\"\
           {nprocPerNode}\\\\\"\n                      resources:\n               \
-          \         requests:\n                          memory: 8Gi\n           \
-          \               cpu: 2\n                          \"nvidia.com/gpu\": {nprocPerNode}\n\
-          \                        limits:\n                          memory: 8Gi\n\
+          \         requests:\n                          cpu: 2\n                \
+          \          \"nvidia.com/gpu\": {nprocPerNode}\n                        limits:\n\
           \                          cpu: 2\n                          \"nvidia.com/gpu\"\
           : {nprocPerNode}\n                  volumes:\n                    - name:\
           \ input-data\n                      persistentVolumeClaim:\n           \

@@ -67,11 +67,9 @@ def pytorchjob_manifest_op(
                           value: \\"{nprocPerNode}\\"
                       resources:
                         requests:
-                          memory: 8Gi
                           cpu: 2
                           "nvidia.com/gpu": {nprocPerNode}
                         limits:
-                          memory: 8Gi
                           cpu: 2
                           "nvidia.com/gpu": {nprocPerNode}
                   volumes:
@@ -118,11 +116,9 @@ def pytorchjob_manifest_op(
                           value: \\"{nprocPerNode}\\"
                       resources:
                         requests:
-                          memory: 8Gi
                           cpu: 2
                           "nvidia.com/gpu": {nprocPerNode}
                         limits:
-                          memory: 8Gi
                           cpu: 2
                           "nvidia.com/gpu": {nprocPerNode}
                   volumes:
