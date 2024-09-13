@@ -3,6 +3,11 @@
 # Description: InstructLab pipeline
 # Inputs:
 #    base_model: str [Default: 'ibm-granite/granite-7b-base']
+#    batch_size: int [Default: 8.0]
+#    device: str
+#    few_shots: int [Default: 5.0]
+#    mmlu_tasks_list: str [Default: 'mmlu_anatomy,mmlu_astronomy']
+#    model_dtype: str [Default: 'bfloat16']
 #    num_instructions_to_generate: int [Default: 2.0]
 #    repo_branch: str
 #    repo_pr: int
@@ -309,6 +314,28 @@ components:
           parameterType: STRING
         name:
           parameterType: STRING
+  comp-list-models-in-directory-op:
+    executorLabel: exec-list-models-in-directory-op
+    inputDefinitions:
+      parameters:
+        models_folder:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: LIST
+  comp-load-mmlu-results-op:
+    executorLabel: exec-load-mmlu-results-op
+    inputDefinitions:
+      artifacts:
+        mmlu_output:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: LIST
   comp-pvc-to-artifact-op:
     executorLabel: exec-pvc-to-artifact-op
     inputDefinitions:
@@ -351,6 +378,35 @@ components:
           parameterType: STRING
         name:
           parameterType: STRING
+  comp-run-mmlu-op:
+    executorLabel: exec-run-mmlu-op
+    inputDefinitions:
+      parameters:
+        batch_size:
+          parameterType: NUMBER_INTEGER
+        device:
+          parameterType: STRING
+        few_shots:
+          parameterType: NUMBER_INTEGER
+        mmlu_tasks_list:
+          parameterType: STRING
+        model_dtype:
+          parameterType: STRING
+        models_list:
+          parameterType: LIST
+        models_path_prefix:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        mmlu_output:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+      parameters:
+        best_model:
+          parameterType: STRING
+        best_score:
+          parameterType: NUMBER_DOUBLE
   comp-sdg-op:
     executorLabel: exec-sdg-op
     inputDefinitions:
@@ -471,33 +527,16 @@ deploymentSpec:
     exec-git-clone-op:
       container:
         args:
-        - --executor_input
-        - '{{$}}'
-        - --function_to_execute
-        - git_clone_op
+        - 'git clone {{$.inputs.parameters[''repo_url'']}} {{$.outputs.artifacts[''taxonomy''].path}}
+          && cd {{$.outputs.artifacts[''taxonomy''].path}} && if [ ! -z "{{$.inputs.parameters[''repo_branch'']}}"
+          ]; then git fetch origin {{$.inputs.parameters[''repo_branch'']}} && git
+          checkout {{$.inputs.parameters[''repo_branch'']}}; elif [ ! -z "{{$.inputs.parameters[''repo_pr'']}}"
+          ]; then git fetch origin pull/{{$.inputs.parameters[''repo_pr'']}}/head:{{$.inputs.parameters[''repo_pr'']}}
+          && git checkout {{$.inputs.parameters[''repo_pr'']}}; fi '
         command:
-        - sh
+        - /bin/sh
         - -c
-        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
-          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
-          $0\" \"$@\"\n"
-        - sh
-        - -ec
-        - 'program_path=$(mktemp -d)
-
-
-          printf "%s" "$0" > "$program_path/ephemeral_component.py"
-
-          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
-
-          '
-        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef git_clone_op(\n    taxonomy: dsl.Output[dsl.Dataset],\n    repo_branch:\
-          \ str,\n    repo_pr: Optional[int],\n    repo_url: Optional[str],\n):\n\
-          \    return\n\n"
-        image: registry.access.redhat.com/ubi9/python-311:latest
+        image: registry.access.redhat.com/ubi9/toolbox
     exec-huggingface-importer-op:
       container:
         args:
@@ -546,6 +585,68 @@ deploymentSpec:
         - /bin/sh
         - -c
         image: registry.redhat.io/openshift4/ose-cli
+    exec-list-models-in-directory-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - list_models_in_directory_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef list_models_in_directory_op(models_folder: str) -> List:\n  \
+          \  import os\n    models = os.listdir(models_folder)\n    return models\n\
+          \n"
+        image: python:3.8
+    exec-load-mmlu-results-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - load_mmlu_results_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef load_mmlu_results_op(mmlu_output: Input[Artifact]) -> list:\n\
+          \    import json\n\n    mmlu_score_list = []\n    with open(mmlu_output.path,\
+          \ 'r') as f:\n         mmlu_score_list = json.load(f)\n\n    print(\"MMLU\
+          \ Evaluation Data:\")\n    for mmlu_score in mmlu_score_list:\n        print(json.dumps(mmlu_score,\
+          \ indent=4))\n\n    return mmlu_score_list\n\n"
+        image: registry.access.redhat.com/ubi9/toolbox
     exec-pvc-to-artifact-op:
       container:
         args:
@@ -593,16 +694,19 @@ deploymentSpec:
           outputs\", manifest=str, name=str):\n    import inspect\n\n    Outputs =\
           \ NamedTuple(\"outputs\", manifest=str, name=str)\n    name = f\"train-{name_suffix.rstrip('-sdg')}\"\
           \n\n    image = 'quay.io/shanand/test-train:0.0.4'\n    nprocPerNode = 1\n\
-          \    nnodes = 2\n\n    manifest = inspect.cleandoc(\n        f\"\"\"\n \
-          \       apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n\
-          \          name: {name}\n        spec:\n          nprocPerNode: \\\\\"{nprocPerNode}\\\
-          \\\"\n          pytorchReplicaSpecs:\n            Master:\n            \
-          \  replicas: 1\n              restartPolicy: OnFailure\n              template:\n\
-          \                metadata:\n                  annotations:\n           \
-          \         sidecar.istio.io/inject: 'false'\n                spec:\n    \
-          \              nodeSelector:\n                    kubernetes.io/hostname:\
-          \ wrk-6\n                  containers:\n                    - args:\n  \
-          \                      - |\n                          mkdir -p /output/model;\n\
+          \    nnodes = 2\n# (shanand): The master and the worker nodes have to be\
+          \ scheduled on a single OpenShift node for now. Once\n# the PVC issues are\
+          \ fixed this can be removed. Please \n# update the nodeSelector <NODE-NAME>\
+          \ before compiling the pipeline or else it'll break.\n    manifest = inspect.cleandoc(\n\
+          \        f\"\"\"\n        apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n\
+          \        metadata:\n          name: {name}\n        spec:\n          nprocPerNode:\
+          \ \\\\\"{nprocPerNode}\\\\\"\n          pytorchReplicaSpecs:\n         \
+          \   Master:\n              replicas: 1\n              restartPolicy: OnFailure\n\
+          \              template:\n                metadata:\n                  annotations:\n\
+          \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
+          \                  nodeSelector:\n                    kubernetes.io/hostname:\
+          \ <NODE-NAME>\n                  containers:\n                    - args:\n\
+          \                        - |\n                          mkdir -p /output/model;\n\
           \                          mkdir -p /output/data;\n                    \
           \      python3.11 -u run_main_ds.py --model_path /input_model/model --ckpt_output_dir\
           \ /output/model --data_output_dir /input_data/processed_data\n         \
@@ -632,8 +736,8 @@ deploymentSpec:
           \          template:\n                metadata:\n                  annotations:\n\
           \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
           \                  nodeSelector:\n                    kubernetes.io/hostname:\
-          \ wrk-6\n                  containers:\n                    - args:\n  \
-          \                      - |\n                          mkdir -p /tmp/model;\n\
+          \ <NODE-NAME>\n                  containers:\n                    - args:\n\
+          \                        - |\n                          mkdir -p /tmp/model;\n\
           \                          python3.11 -u run_main_ds.py --model_path /input_model/model\
           \ --ckpt_output_dir /tmp/model --data_output_dir /input_data/processed_data\n\
           \                      command:\n                        - /bin/bash\n \
@@ -657,6 +761,68 @@ deploymentSpec:
           \ {model_pvc_name}\n        \"\"\"\n    )\n\n    return Outputs(manifest,\
           \ name)\n\n"
         image: registry.access.redhat.com/ubi9/python-311:latest
+    exec-run-mmlu-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - run_mmlu_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef run_mmlu_op(\n    mmlu_output: Output[Artifact],\n    models_path_prefix:\
+          \ str,\n    mmlu_tasks_list: str,\n    model_dtype: str,\n    few_shots:\
+          \ int,\n    batch_size: int,\n    device: str,\n    models_list: List[int],\n\
+          ) -> NamedTuple('outputs', best_model=str, best_score=float):\n    import\
+          \ json\n    import os\n    import torch\n    from instructlab.eval.mmlu\
+          \ import MMLUEvaluator, MMLU_TASKS\n\n    mmlu_tasks = mmlu_tasks_list.split(',')\
+          \ if mmlu_tasks_list else MMLU_TASKS\n\n    # Device setup and debug\n \
+          \   gpu_available = torch.cuda.is_available()\n    gpu_name = torch.cuda.get_device_name(torch.cuda.current_device())\
+          \ if gpu_available else \"No GPU available\"\n\n    print(f\"GPU Available:\
+          \ {gpu_available}, Using: {gpu_name}\")\n\n    effective_device = device\
+          \ if device is not None else (\"cuda\" if gpu_available else \"cpu\")\n\
+          \    print(f\"Running on device: {effective_device}\")\n\n    scores = {}\n\
+          \    all_mmlu_data = []\n\n    for model_name in models_list:\n        model_path\
+          \ = f\"{models_path_prefix}/{model_name}\"\n        # Debug\n        print(f\"\
+          Model {model_name} is stored at: {model_path}\")\n\n        # Evaluation\n\
+          \        evaluator = MMLUEvaluator(\n            model_path=model_path,\n\
+          \            tasks=mmlu_tasks,\n            model_dtype=model_dtype,\n \
+          \           few_shots=few_shots,\n            batch_size=batch_size,\n \
+          \           device=effective_device,\n        )\n\n        mmlu_score, individual_scores\
+          \ = evaluator.run()\n        average_score = round(mmlu_score, 2)\n    \
+          \    print(f\"Model {model_name} is stored at: {model_path} with AVERAGE_SCORE:\
+          \ {average_score}\")\n\n        mmlu_data = {\n            \"report_title\"\
+          : \"KNOWLEDGE EVALUATION REPORT\",\n            \"model\": model_name,\n\
+          \            \"average_score\": average_score,\n            \"number_of_tasks\"\
+          : len(individual_scores),\n            \"individual_scores\": [{task: round(score['score'],\
+          \ 2)} for task, score in individual_scores.items()]\n        }\n\n     \
+          \   all_mmlu_data.append(mmlu_data)\n        scores[model_path] = average_score\n\
+          \n    with open(mmlu_output.path, 'w') as f:\n        json.dump(all_mmlu_data,\
+          \ f, indent=4)\n    outputs = NamedTuple('outputs', best_model=str, best_score=float)\n\
+          \    best_model = max(scores, key=scores.get)\n    best_score = scores[best_model]\n\
+          \    return outputs(best_model=best_model, best_score=best_score)\n\n"
+        image: quay.io/sallyom/instructlab-ocp:eval
+        resources:
+          accelerator:
+            count: '1'
+            type: nvidia.com/gpu
     exec-sdg-op:
       container:
         args:
@@ -670,9 +836,8 @@ deploymentSpec:
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
           \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'git+https://github.com/redhat-et/ilab-on-ocp.git#subdirectory=sdg/faked/fixtures'\
-          \ && \"$0\" \"$@\"\n"
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -686,10 +851,20 @@ deploymentSpec:
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef sdg_op(\n    num_instructions_to_generate: int,\n    taxonomy:\
           \ dsl.Input[dsl.Dataset],\n    sdg: dsl.Output[dsl.Dataset],\n    repo_branch:\
-          \ Optional[str],\n    repo_pr: Optional[int],\n):\n    import sys\n    from\
-          \ pathlib import Path\n    import shutil\n\n    shutil.copytree(Path(sys.prefix)\
-          \ / \"sdg_fixtures\", sdg.path, dirs_exist_ok=True)\n    return\n\n"
-        image: registry.access.redhat.com/ubi9/python-311:latest
+          \ Optional[str],\n    repo_pr: Optional[int],\n):\n    import openai\n \
+          \   from instructlab.sdg import generate_data\n    from instructlab.sdg.utils.taxonomy\
+          \ import read_taxonomy\n    from os import getenv\n\n    api_key = getenv(\"\
+          api_key\")\n    model = getenv(\"model\")\n    endpoint = getenv(\"endpoint\"\
+          )\n    client = openai.OpenAI(base_url=endpoint, api_key=api_key)\n\n  \
+          \  taxonomy_base = \"main\" if repo_branch or repo_pr else \"empty\"\n\n\
+          \    print(\"Generating syntetic dataset for:\")\n    print()\n    print(read_taxonomy(taxonomy.path,\
+          \ taxonomy_base))\n\n    # generate_data has a magic word for its taxonomy_base\
+          \ argument - `empty`\n    # it allows generating from the whole repo, see:\n\
+          \    # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230\n\
+          \    generate_data(\n        client=client,\n        num_instructions_to_generate=num_instructions_to_generate,\n\
+          \        output_dir=sdg.path,\n        taxonomy=taxonomy.path,\n       \
+          \ taxonomy_base=taxonomy_base,\n        model_name=model,\n    )\n\n"
+        image: quay.io/tcoufal/ilab-sdg:latest
 pipelineInfo:
   description: InstructLab pipeline
   displayName: InstructLab
@@ -857,8 +1032,10 @@ root:
           name: comp-deletepvc-3
         dependentTasks:
         - createpvc-3
+        - load-mmlu-results-op
         - pvc-to-artifact-op
         - pvc-to-model-op
+        - run-mmlu-op
         inputs:
           parameters:
             pvc_name:
@@ -930,6 +1107,36 @@ root:
                 producerTask: pytorchjob-manifest-op
         taskInfo:
           name: kubectl-wait-for-op
+      list-models-in-directory-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-list-models-in-directory-op
+        dependentTasks:
+        - createpvc-3
+        - kubectl-wait-for-op
+        inputs:
+          parameters:
+            models_folder:
+              runtimeValue:
+                constant: /output/model/model/hf_format
+        taskInfo:
+          name: list-models-in-directory-op
+      load-mmlu-results-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-load-mmlu-results-op
+        dependentTasks:
+        - run-mmlu-op
+        inputs:
+          artifacts:
+            mmlu_output:
+              taskOutputArtifact:
+                outputArtifactKey: mmlu_output
+                producerTask: run-mmlu-op
+        taskInfo:
+          name: load-mmlu-results-op
       pvc-to-artifact-op:
         cachingOptions: {}
         componentRef:
@@ -987,6 +1194,35 @@ root:
                 producerTask: createpvc-3
         taskInfo:
           name: pytorchjob-manifest-op
+      run-mmlu-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-run-mmlu-op
+        dependentTasks:
+        - createpvc-3
+        - list-models-in-directory-op
+        inputs:
+          parameters:
+            batch_size:
+              componentInputParameter: batch_size
+            device:
+              componentInputParameter: device
+            few_shots:
+              componentInputParameter: few_shots
+            mmlu_tasks_list:
+              componentInputParameter: mmlu_tasks_list
+            model_dtype:
+              componentInputParameter: model_dtype
+            models_list:
+              taskOutputParameter:
+                outputParameterKey: Output
+                producerTask: list-models-in-directory-op
+            models_path_prefix:
+              runtimeValue:
+                constant: /output/model/model/hf_format
+        taskInfo:
+          name: run-mmlu-op
       sdg-op:
         cachingOptions:
           enableCache: true
@@ -1013,6 +1249,25 @@ root:
     parameters:
       base_model:
         defaultValue: ibm-granite/granite-7b-base
+        isOptional: true
+        parameterType: STRING
+      batch_size:
+        defaultValue: 8.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      device:
+        isOptional: true
+        parameterType: STRING
+      few_shots:
+        defaultValue: 5.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      mmlu_tasks_list:
+        defaultValue: mmlu_anatomy,mmlu_astronomy
+        isOptional: true
+        parameterType: STRING
+      model_dtype:
+        defaultValue: bfloat16
         isOptional: true
         parameterType: STRING
       num_instructions_to_generate:
@@ -1052,6 +1307,12 @@ platforms:
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-2
+        exec-list-models-in-directory-op:
+          pvcMount:
+          - mountPath: /output/model
+            taskOutputParameter:
+              outputParameterKey: name
+              producerTask: createpvc-3
         exec-pvc-to-artifact-op:
           pvcMount:
           - mountPath: /output/data
@@ -1059,6 +1320,12 @@ platforms:
               outputParameterKey: name
               producerTask: createpvc-3
         exec-pvc-to-model-op:
+          pvcMount:
+          - mountPath: /output/model
+            taskOutputParameter:
+              outputParameterKey: name
+              producerTask: createpvc-3
+        exec-run-mmlu-op:
           pvcMount:
           - mountPath: /output/model
             taskOutputParameter:
