@@ -4,7 +4,44 @@
 from kfp import dsl
 from typing import NamedTuple
 from utils.consts import PYTHON_IMAGE
+from typing import Optional
 
+IMAGE = 'quay.io/shanand/test-train:v0.1'
+
+@dsl.component(base_image=IMAGE)
+def data_processing_op(
+    sdg: dsl.Input[dsl.Dataset],
+    processed_data: dsl.Output[dsl.Dataset],
+    model: dsl.Input[dsl.Artifact],
+    max_seq_len: Optional[int] = 4096,
+    max_batch_len: Optional[int] = 20000
+):
+    from run_data_processing import data_processing
+    from instructlab.training import TrainingArgs
+        # define training-specific arguments
+    training_args = TrainingArgs(
+        # define data-specific arguments
+        model_path = model.path,
+        data_path = f"{sdg.path}/*_train_msgs*.jsonl",
+        data_output_dir = processed_data.path,
+
+        # define model-trianing parameters
+        max_seq_len = max_seq_len,
+        max_batch_len = max_batch_len,
+
+       # XXX(shanand): We don't need the following arguments 
+       # for data processing. Added them for now to avoid
+       # Pydantic validation errors for TrainingArgs
+        ckpt_output_dir = "data/saved_checkpoints",
+        num_epochs = 2,
+        effective_batch_size = 3840,
+        save_samples = 0,
+        learning_rate = 2e-6,
+        warmup_steps = 800,
+        is_padding_free = True, # set this to true when using Granite-based models
+    )
+
+    data_processing(train_args=training_args)
 
 @dsl.component(base_image=PYTHON_IMAGE)
 def pytorchjob_manifest_op(
@@ -18,7 +55,7 @@ def pytorchjob_manifest_op(
     Outputs = NamedTuple("outputs", manifest=str, name=str)
     name = f"train-{name_suffix.rstrip('-sdg')}"
 
-    image = 'quay.io/tcoufal/ilab-train:latest'
+    image = 'quay.io/shanand/test-train:v0.1'
     nprocPerNode = 2
     nnodes = 1
 
@@ -44,7 +81,7 @@ def pytorchjob_manifest_op(
                         - |
                           mkdir -p /output/model;
                           mkdir -p /output/data;
-                          python3.11 -u run.py --model_path /input_model/model --data_path /input_data/sdg/*_train_msgs*.jsonl --ckpt_output_dir /output/model --data_output_dir /output/data
+                          python3.11 -u run_main_ds.py --model_path /input_model/model --ckpt_output_dir /output/model --data_output_dir /input_data/sdg
                       command:
                         - /bin/bash
                         - '-c'
@@ -93,9 +130,8 @@ def pytorchjob_manifest_op(
                   containers:
                     - args:
                         - |
-                          mkdir -p /output/model;
-                          mkdir -p /output/data;
-                          python3.11 -u run.py --model_path /input_model/model --data_path /input_data/sdg/*_train_msgs*.jsonl --ckpt_output_dir /tmp/model --data_output_dir /tmp/data
+                          mkdir -p /tmp/model;
+                          python3.11 -u run_main_ds.py --model_path /input_model/model --ckpt_output_dir /tmp/model --data_output_dir /input_data/sdg
                       command:
                         - /bin/bash
                         - '-c'

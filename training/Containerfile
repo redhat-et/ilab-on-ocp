@@ -27,7 +27,8 @@ ENV HF_HOME="/tmp"
 ENV TRANSFORMERS_CACHE="/tmp"
 ENV XDG_CACHE_HOME="/tmp"
 
-COPY run.py .
+COPY run_data_processing.py .
+COPY run_main_ds.py .
 
 USER 1001
 
