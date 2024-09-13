@@ -148,12 +148,22 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         model_pvc_delete_task = DeletePVC(pvc_name=model_pvc_task.output)
         model_pvc_delete_task.after(kubectl_wait_task)
 
-        output_model_task = pvc_to_artifact_op(pvc_path="/output/data")
+        output_model_task = pvc_to_artifact_op(
+            pvc_path="/output/data",
+            )
         output_model_task.after(kubectl_wait_task)
         output_model_task.set_caching_options(False)
-        output_data_task = pvc_to_model_op(pvc_path="/output/model")
+        mount_pvc(
+            task=output_model_task, pvc_name=output_pvc_task.output, mount_path="/output/data"
+        )
+        output_data_task = pvc_to_model_op(
+            pvc_path="/output/model",
+            )
         output_data_task.after(kubectl_wait_task)
         output_model_task.set_caching_options(False)
+        mount_pvc(
+            task=output_data_task, pvc_name=output_pvc_task.output, mount_path="/output/model"
+        )
 
         output_pvc_delete_task = DeletePVC(pvc_name=output_pvc_task.output)
         output_pvc_delete_task.after(output_model_task, output_data_task)
