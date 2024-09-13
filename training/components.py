@@ -20,7 +20,7 @@ def pytorchjob_manifest_op(
 
     image = 'quay.io/tcoufal/ilab-train:latest'
     nprocPerNode = 2
-    nnodes = 2
+    nnodes = 1
 
     manifest = inspect.cleandoc(
         f"""
