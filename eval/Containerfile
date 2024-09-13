@@ -6,7 +6,7 @@ RUN dnf install -y python3.11 python3.11-devel git python3-pip make automake gcc
 
 # TODO update to instructlab/eval after https://github.com/instructlab/eval/pull/128 or equivalent merges
 RUN python3.11 -m ensurepip \
-    && python3.11 -m pip install --no-cache-dir git+https://github.com/sallyom/eval@add-api-key \
+    && python3.11 -m pip install --no-cache-dir git+https://github.com/instructlab/eval@main \
     && rm -rf /usr/bin/python3 && ln -s /usr/bin/python3.11 /usr/bin/python3
 
 ENV HF_HOME=/tmp
