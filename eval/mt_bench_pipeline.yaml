@@ -323,7 +323,6 @@ platforms:
               envVar: JUDGE_MODEL_ENDPOINT
             - configMapKey: judge_model_name
               envVar: JUDGE_MODEL_NAME
-          imagePullPolicy: Always
           secretAsEnv:
           - keyToEnv:
             - envVar: JUDGE_API_KEY
