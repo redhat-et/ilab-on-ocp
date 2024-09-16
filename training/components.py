@@ -18,7 +18,7 @@ def pytorchjob_manifest_op(
     Outputs = NamedTuple("outputs", manifest=str, name=str)
     name = f"train-{name_suffix.rstrip('-sdg')}"
 
-    image = 'quay.io/tcoufal/ilab-train:latest'
+    image = 'quay.io/michaelclifford/test-train:latest'
     nprocPerNode = 2
     nnodes = 1
 

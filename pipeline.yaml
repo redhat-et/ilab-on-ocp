@@ -488,10 +488,10 @@ deploymentSpec:
           \ str,\n    output_pvc_name: str,\n    name_suffix: str,\n) -> NamedTuple(\"\
           outputs\", manifest=str, name=str):\n    import inspect\n\n    Outputs =\
           \ NamedTuple(\"outputs\", manifest=str, name=str)\n    name = f\"train-{name_suffix.rstrip('-sdg')}\"\
-          \n\n    image = 'quay.io/tcoufal/ilab-train:latest'\n    nprocPerNode =\
-          \ 2\n    nnodes = 1\n\n    manifest = inspect.cleandoc(\n        f\"\"\"\
-          \n        apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n      \
-          \  metadata:\n          name: {name}\n        spec:\n          nprocPerNode:\
+          \n\n    image = 'quay.io/michaelclifford/test-train:latest'\n    nprocPerNode\
+          \ = 2\n    nnodes = 1\n\n    manifest = inspect.cleandoc(\n        f\"\"\
+          \"\n        apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n    \
+          \    metadata:\n          name: {name}\n        spec:\n          nprocPerNode:\
           \ \\\\\"{nprocPerNode}\\\\\"\n          pytorchReplicaSpecs:\n         \
           \   Master:\n              replicas: 1\n              restartPolicy: OnFailure\n\
           \              template:\n                metadata:\n                  annotations:\n\
