@@ -22,7 +22,7 @@ spec:
                 - /bin/bash
                 - '-c'
                 - '--'
-              image: 'quay.io/michaelclifford/test-train:0.0.15'
+              image: 'quay.io/michaelclifford/test-train:latest'
               name: pytorch
               resources:
                 limits:
@@ -45,7 +45,7 @@ spec:
                 - /bin/bash
                 - '-c'
                 - '--'
-              image: 'quay.io/michaelclifford/test-train:0.0.15'
+              image: 'quay.io/michaelclifford/test-train:latest'
               name: pytorch
               resources:
                 limits:
