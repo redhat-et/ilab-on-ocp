@@ -7,8 +7,9 @@ from utils.consts import PYTHON_IMAGE
 from typing import Optional
 
 IMAGE = 'quay.io/shanand/test-train:v0.1'
+DATA_IMAGE = 'quay.io/shanand/data_processing:0.0.2'
 
-@dsl.component(base_image=IMAGE)
+@dsl.component(base_image=DATA_IMAGE)
 def data_processing_op(
     sdg: dsl.Input[dsl.Dataset],
     processed_data: dsl.Output[dsl.Dataset],
@@ -56,8 +57,8 @@ def pytorchjob_manifest_op(
     name = f"train-{name_suffix.rstrip('-sdg')}"
 
     image = 'quay.io/shanand/test-train:v0.1'
-    nprocPerNode = 2
-    nnodes = 1
+    nprocPerNode = 1
+    nnodes = 2
 
     manifest = inspect.cleandoc(
         f"""
