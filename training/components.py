@@ -6,8 +6,6 @@ from typing import NamedTuple
 from utils.consts import PYTHON_IMAGE
 from typing import Optional
 
-#DATA_IMAGE = 'quay.io/shanand/data_processing:0.0.2'
-
 @dsl.component(base_image=PYTHON_IMAGE,
                packages_to_install=["instructlab-training@git+https://github.com/instructlab/training.git"])
 def data_processing_op(
