@@ -6,7 +6,6 @@ from typing import NamedTuple
 from utils.consts import PYTHON_IMAGE
 from typing import Optional
 
-IMAGE = 'quay.io/shanand/test-train:v0.1'
 DATA_IMAGE = 'quay.io/shanand/data_processing:0.0.2'
 
 @dsl.component(base_image=DATA_IMAGE)
@@ -39,7 +38,7 @@ def data_processing_op(
         save_samples = 0,
         learning_rate = 2e-6,
         warmup_steps = 800,
-        is_padding_free = True, # set this to true when using Granite-based models
+        is_padding_free = True,
     )
 
     data_processing(train_args=training_args)
@@ -56,7 +55,7 @@ def pytorchjob_manifest_op(
     Outputs = NamedTuple("outputs", manifest=str, name=str)
     name = f"train-{name_suffix.rstrip('-sdg')}"
 
-    image = 'quay.io/shanand/test-train:v0.1'
+    image = 'quay.io/shanand/test-train:0.0.4'
     nprocPerNode = 1
     nnodes = 2
 
@@ -77,12 +76,14 @@ def pytorchjob_manifest_op(
                   annotations:
                     sidecar.istio.io/inject: 'false'
                 spec:
+                  nodeSelector:
+                    kubernetes.io/hostname: wrk-6
                   containers:
                     - args:
                         - |
                           mkdir -p /output/model;
                           mkdir -p /output/data;
-                          python3.11 -u run_main_ds.py --model_path /input_model/model --ckpt_output_dir /output/model --data_output_dir /input_data/sdg
+                          python3.11 -u run_main_ds.py --model_path /input_model/model --ckpt_output_dir /output/model --data_output_dir /input_data/processed_data
                       command:
                         - /bin/bash
                         - '-c'
@@ -128,11 +129,13 @@ def pytorchjob_manifest_op(
                   annotations:
                     sidecar.istio.io/inject: 'false'
                 spec:
+                  nodeSelector:
+                    kubernetes.io/hostname: wrk-6
                   containers:
                     - args:
                         - |
                           mkdir -p /tmp/model;
-                          python3.11 -u run_main_ds.py --model_path /input_model/model --ckpt_output_dir /tmp/model --data_output_dir /input_data/sdg
+                          python3.11 -u run_main_ds.py --model_path /input_model/model --ckpt_output_dir /tmp/model --data_output_dir /input_data/processed_data
                       command:
                         - /bin/bash
                         - '-c'

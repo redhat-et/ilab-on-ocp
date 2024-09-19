@@ -411,7 +411,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.8.0'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
           $0\" \"$@\"\n"
         - sh
@@ -442,7 +442,7 @@ deploymentSpec:
           \      warmup_steps = 800,\n        is_padding_free = True, # set this to\
           \ true when using Granite-based models\n    )\n\n    data_processing(train_args=training_args)\n\
           \n"
-        image: quay.io/shanand/test-train:v0.1
+        image: quay.io/shanand/data_processing:0.0.2
     exec-deletepvc:
       container:
         image: argostub/deletepvc
@@ -464,7 +464,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.8.0'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
           $0\" \"$@\"\n"
         - sh
@@ -494,7 +494,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.8.0'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
           \  python3 -m pip install --quiet --no-warn-script-location 'huggingface_hub'\
           \ && \"$0\" \"$@\"\n"
@@ -558,7 +558,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.8.0'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
           $0\" \"$@\"\n"
         - sh
@@ -576,30 +576,60 @@ deploymentSpec:
           \ str,\n    output_pvc_name: str,\n    name_suffix: str,\n) -> NamedTuple(\"\
           outputs\", manifest=str, name=str):\n    import inspect\n\n    Outputs =\
           \ NamedTuple(\"outputs\", manifest=str, name=str)\n    name = f\"train-{name_suffix.rstrip('-sdg')}\"\
-          \n\n    image = 'quay.io/shanand/test-train:v0.1'\n    nprocPerNode = 2\n\
-          \    nnodes = 1\n\n    manifest = inspect.cleandoc(\n        f\"\"\"\n \
+          \n\n    image = 'quay.io/shanand/test-train:0.0.4'\n    nprocPerNode = 1\n\
+          \    nnodes = 2\n\n    manifest = inspect.cleandoc(\n        f\"\"\"\n \
           \       apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n\
           \          name: {name}\n        spec:\n          nprocPerNode: \\\\\"{nprocPerNode}\\\
           \\\"\n          pytorchReplicaSpecs:\n            Master:\n            \
           \  replicas: 1\n              restartPolicy: OnFailure\n              template:\n\
           \                metadata:\n                  annotations:\n           \
           \         sidecar.istio.io/inject: 'false'\n                spec:\n    \
-          \              containers:\n                    - args:\n              \
-          \          - |\n                          mkdir -p /output/model;\n    \
-          \                      mkdir -p /output/data;\n                        \
-          \  python3.11 -u run_main_ds.py --model_path /input_model/model --ckpt_output_dir\
-          \ /output/model --data_output_dir /input_data/sdg\n                    \
-          \  command:\n                        - /bin/bash\n                     \
-          \   - '-c'\n                        - '--'\n                      image:\
-          \ {image}\n                      name: pytorch\n                      volumeMounts:\n\
-          \                        - mountPath: /input_data\n                    \
-          \      name: input-data\n                          readOnly: true\n    \
-          \                    - mountPath: /input_model\n                       \
-          \   name: model\n                          readOnly: true\n            \
-          \            - mountPath: /output\n                          name: output\n\
-          \                      env:\n                        - name: NNODES\n  \
-          \                        value: \\\\\"{nnodes}\\\\\"\n                 \
-          \       - name: NPROC_PER_NODE\n                          value: \\\\\"\
+          \              nodeSelector:\n                    kubernetes.io/hostname:\
+          \ wrk-6\n                  containers:\n                    - args:\n  \
+          \                      - |\n                          mkdir -p /output/model;\n\
+          \                          mkdir -p /output/data;\n                    \
+          \      python3.11 -u run_main_ds.py --model_path /input_model/model --ckpt_output_dir\
+          \ /output/model --data_output_dir /input_data/processed_data\n         \
+          \             command:\n                        - /bin/bash\n          \
+          \              - '-c'\n                        - '--'\n                \
+          \      image: {image}\n                      name: pytorch\n           \
+          \           volumeMounts:\n                        - mountPath: /input_data\n\
+          \                          name: input-data\n                          readOnly:\
+          \ true\n                        - mountPath: /input_model\n            \
+          \              name: model\n                          readOnly: true\n \
+          \                       - mountPath: /output\n                         \
+          \ name: output\n                      env:\n                        - name:\
+          \ NNODES\n                          value: \\\\\"{nnodes}\\\\\"\n      \
+          \                  - name: NPROC_PER_NODE\n                          value:\
+          \ \\\\\"{nprocPerNode}\\\\\"\n                      resources:\n       \
+          \                 requests:\n                          cpu: 2\n        \
+          \                  \"nvidia.com/gpu\": {nprocPerNode}\n                \
+          \        limits:\n                          cpu: 2\n                   \
+          \       \"nvidia.com/gpu\": {nprocPerNode}\n                  volumes:\n\
+          \                    - name: input-data\n                      persistentVolumeClaim:\n\
+          \                        claimName: {input_pvc_name}\n                 \
+          \   - name: model\n                      persistentVolumeClaim:\n      \
+          \                  claimName: {model_pvc_name}\n                    - name:\
+          \ output\n                      persistentVolumeClaim:\n               \
+          \         claimName: {output_pvc_name}\n            Worker:\n          \
+          \    replicas: {nnodes-1}\n              restartPolicy: OnFailure\n    \
+          \          template:\n                metadata:\n                  annotations:\n\
+          \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
+          \                  nodeSelector:\n                    kubernetes.io/hostname:\
+          \ wrk-6\n                  containers:\n                    - args:\n  \
+          \                      - |\n                          mkdir -p /tmp/model;\n\
+          \                          python3.11 -u run_main_ds.py --model_path /input_model/model\
+          \ --ckpt_output_dir /tmp/model --data_output_dir /input_data/processed_data\n\
+          \                      command:\n                        - /bin/bash\n \
+          \                       - '-c'\n                        - '--'\n       \
+          \               image: {image}\n                      name: pytorch\n  \
+          \                    volumeMounts:\n                        - mountPath:\
+          \ /input_data\n                          name: input-data\n            \
+          \              readOnly: true\n                        - mountPath: /input_model\n\
+          \                          name: model\n                          readOnly:\
+          \ true\n                      env:\n                        - name: NNODES\n\
+          \                          value: \\\\\"{nnodes}\\\\\"\n               \
+          \         - name: NPROC_PER_NODE\n                          value: \\\\\"\
           {nprocPerNode}\\\\\"\n                      resources:\n               \
           \         requests:\n                          cpu: 2\n                \
           \          \"nvidia.com/gpu\": {nprocPerNode}\n                        limits:\n\
@@ -608,35 +638,8 @@ deploymentSpec:
           \ input-data\n                      persistentVolumeClaim:\n           \
           \             claimName: {input_pvc_name}\n                    - name: model\n\
           \                      persistentVolumeClaim:\n                        claimName:\
-          \ {model_pvc_name}\n                    - name: output\n               \
-          \       persistentVolumeClaim:\n                        claimName: {output_pvc_name}\n\
-          \            Worker:\n              replicas: {nnodes-1}\n             \
-          \ restartPolicy: OnFailure\n              template:\n                metadata:\n\
-          \                  annotations:\n                    sidecar.istio.io/inject:\
-          \ 'false'\n                spec:\n                  containers:\n      \
-          \              - args:\n                        - |\n                  \
-          \        mkdir -p /tmp/model;\n                          python3.11 -u run_main_ds.py\
-          \ --model_path /input_model/model --ckpt_output_dir /tmp/model --data_output_dir\
-          \ /input_data/sdg\n                      command:\n                    \
-          \    - /bin/bash\n                        - '-c'\n                     \
-          \   - '--'\n                      image: {image}\n                     \
-          \ name: pytorch\n                      volumeMounts:\n                 \
-          \       - mountPath: /input_data\n                          name: input-data\n\
-          \                          readOnly: true\n                        - mountPath:\
-          \ /input_model\n                          name: model\n                \
-          \          readOnly: true\n                      env:\n                \
-          \        - name: NNODES\n                          value: \\\\\"{nnodes}\\\
-          \\\"\n                        - name: NPROC_PER_NODE\n                 \
-          \         value: \\\\\"{nprocPerNode}\\\\\"\n                      resources:\n\
-          \                        requests:\n                          cpu: 2\n \
-          \                         \"nvidia.com/gpu\": {nprocPerNode}\n         \
-          \               limits:\n                          cpu: 2\n            \
-          \              \"nvidia.com/gpu\": {nprocPerNode}\n                  volumes:\n\
-          \                    - name: input-data\n                      persistentVolumeClaim:\n\
-          \                        claimName: {input_pvc_name}\n                 \
-          \   - name: model\n                      persistentVolumeClaim:\n      \
-          \                  claimName: {model_pvc_name}\n        \"\"\"\n    )\n\n\
-          \    return Outputs(manifest, name)\n\n"
+          \ {model_pvc_name}\n        \"\"\"\n    )\n\n    return Outputs(manifest,\
+          \ name)\n\n"
         image: registry.access.redhat.com/ubi9/python-311:latest
     exec-sdg-op:
       container:
@@ -650,7 +653,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.8.0'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
           \  python3 -m pip install --quiet --no-warn-script-location 'git+https://github.com/redhat-et/ilab-on-ocp.git#subdirectory=sdg/faked/fixtures'\
           \ && \"$0\" \"$@\"\n"
@@ -1015,7 +1018,7 @@ root:
         isOptional: true
         parameterType: STRING
 schemaVersion: 2.1.0
-sdkVersion: kfp-2.8.0
+sdkVersion: kfp-2.9.0
 ---
 platforms:
   kubernetes:

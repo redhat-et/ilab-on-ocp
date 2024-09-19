@@ -26,7 +26,8 @@ def run_main_ds(torch_args: TorchrunArgs, train_args: TrainingArgs) -> None:
         f"--nproc_per_node={torch_args.nproc_per_node}",
         f"--rdzv_id={torch_args.rdzv_id}",
         f"--rdzv_endpoint={torch_args.rdzv_endpoint}",
-        f"training/src/instructlab/training/main_ds.py",
+        f"-m",
+        f"instructlab.training.main_ds",
         f"--model_name_or_path={train_args.model_path}",
         f"--data_path={train_args.data_output_dir}/data.jsonl",
         f"--output_dir={train_args.ckpt_output_dir}",
@@ -142,7 +143,7 @@ if __name__ == "__main__":
     # Torchrun Args
     parser.add_argument("--nnodes", default=os.getenv("NNODES", "1"))
     parser.add_argument("--nproc_per_node", default=os.getenv("NPROC_PER_NODE", "1"))
-    parser.add_argument("--node_rank", default=os.getenv("RANK"))
+    parser.add_argument("--node_rank", default=os.getenv("RANK", "0"))
     parser.add_argument("--rdzv_id", default=123)
     parser.add_argument("--rdzv_endpoint", default=f"{os.getenv('MASTER_ADDR', '127.0.0.1')}:{os.getenv('MASTER_PORT','12345')}")
 
