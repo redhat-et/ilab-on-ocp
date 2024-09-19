@@ -6,9 +6,10 @@ from typing import NamedTuple
 from utils.consts import PYTHON_IMAGE
 from typing import Optional
 
-DATA_IMAGE = 'quay.io/shanand/data_processing:0.0.2'
+#DATA_IMAGE = 'quay.io/shanand/data_processing:0.0.2'
 
-@dsl.component(base_image=DATA_IMAGE)
+@dsl.component(base_image=PYTHON_IMAGE,
+               packages_to_install=["instructlab-training@git+https://github.com/instructlab/training.git"])
 def data_processing_op(
     sdg: dsl.Input[dsl.Dataset],
     processed_data: dsl.Output[dsl.Dataset],
@@ -16,8 +17,12 @@ def data_processing_op(
     max_seq_len: Optional[int] = 4096,
     max_batch_len: Optional[int] = 20000
 ):
-    from run_data_processing import data_processing
-    from instructlab.training import TrainingArgs
+    import instructlab.training.data_process as dp
+    import os
+    from instructlab.training import (
+        TrainingArgs,
+        DataProcessArgs,
+        )
         # define training-specific arguments
     training_args = TrainingArgs(
         # define data-specific arguments
@@ -40,7 +45,31 @@ def data_processing_op(
         warmup_steps = 800,
         is_padding_free = True,
     )
-
+    def data_processing(train_args: TrainingArgs) -> None:
+      # early validation logic here
+      if train_args.max_batch_len < train_args.max_seq_len:
+          raise ValueError(
+              f"the `max_batch_len` cannot be less than `max_seq_len`: {train_args.max_batch_len=} < {train_args.max_seq_len=}"
+          )
+      
+          # process the training data
+      if not os.path.exists(train_args.data_output_dir):
+          os.makedirs(train_args.data_output_dir, exist_ok=True)
+      dp.main(
+          DataProcessArgs(
+              # XXX(osilkin): make a decision here, either:
+              #   1. the CLI is fully responsible for managing where the data is written
+              #   2. we never cache it and simply write it to a tmp file every time.
+              #
+              # An important reason for why #1 would be preferable is in the case of OpenShift/SELinux
+              # where the user has a defined place for new temporary data to be written.
+              data_output_path=train_args.data_output_dir,
+              model_path=train_args.model_path,
+              data_path=train_args.data_path,
+              max_seq_len=train_args.max_seq_len,
+              chat_tmpl_path=train_args.chat_tmpl_path,
+          )
+      )
     data_processing(train_args=training_args)
 
 @dsl.component(base_image=PYTHON_IMAGE)

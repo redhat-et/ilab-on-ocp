@@ -412,8 +412,9 @@ deploymentSpec:
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
           \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
-          $0\" \"$@\"\n"
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'instructlab-training@git+https://github.com/instructlab/training.git'\
+          \ && \"$0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -428,10 +429,11 @@ deploymentSpec:
           \ *\n\ndef data_processing_op(\n    sdg: dsl.Input[dsl.Dataset],\n    processed_data:\
           \ dsl.Output[dsl.Dataset],\n    model: dsl.Input[dsl.Artifact],\n    max_seq_len:\
           \ Optional[int] = 4096,\n    max_batch_len: Optional[int] = 20000\n):\n\
-          \    from run_data_processing import data_processing\n    from instructlab.training\
-          \ import TrainingArgs\n        # define training-specific arguments\n  \
-          \  training_args = TrainingArgs(\n        # define data-specific arguments\n\
-          \        model_path = model.path,\n        data_path = f\"{sdg.path}/*_train_msgs*.jsonl\"\
+          \    import instructlab.training.data_process as dp\n    import os\n   \
+          \ from instructlab.training import (\n        TrainingArgs,\n        DataProcessArgs,\n\
+          \        )\n        # define training-specific arguments\n    training_args\
+          \ = TrainingArgs(\n        # define data-specific arguments\n        model_path\
+          \ = model.path,\n        data_path = f\"{sdg.path}/*_train_msgs*.jsonl\"\
           ,\n        data_output_dir = processed_data.path,\n\n        # define model-trianing\
           \ parameters\n        max_seq_len = max_seq_len,\n        max_batch_len\
           \ = max_batch_len,\n\n       # XXX(shanand): We don't need the following\
@@ -439,10 +441,24 @@ deploymentSpec:
           \       # Pydantic validation errors for TrainingArgs\n        ckpt_output_dir\
           \ = \"data/saved_checkpoints\",\n        num_epochs = 2,\n        effective_batch_size\
           \ = 3840,\n        save_samples = 0,\n        learning_rate = 2e-6,\n  \
-          \      warmup_steps = 800,\n        is_padding_free = True, # set this to\
-          \ true when using Granite-based models\n    )\n\n    data_processing(train_args=training_args)\n\
-          \n"
-        image: quay.io/shanand/data_processing:0.0.2
+          \      warmup_steps = 800,\n        is_padding_free = True,\n    )\n   \
+          \ def data_processing(train_args: TrainingArgs) -> None:\n      # early\
+          \ validation logic here\n      if train_args.max_batch_len < train_args.max_seq_len:\n\
+          \          raise ValueError(\n              f\"the `max_batch_len` cannot\
+          \ be less than `max_seq_len`: {train_args.max_batch_len=} < {train_args.max_seq_len=}\"\
+          \n          )\n\n          # process the training data\n      if not os.path.exists(train_args.data_output_dir):\n\
+          \          os.makedirs(train_args.data_output_dir, exist_ok=True)\n    \
+          \  dp.main(\n          DataProcessArgs(\n              # XXX(osilkin): make\
+          \ a decision here, either:\n              #   1. the CLI is fully responsible\
+          \ for managing where the data is written\n              #   2. we never\
+          \ cache it and simply write it to a tmp file every time.\n             \
+          \ #\n              # An important reason for why #1 would be preferable\
+          \ is in the case of OpenShift/SELinux\n              # where the user has\
+          \ a defined place for new temporary data to be written.\n              data_output_path=train_args.data_output_dir,\n\
+          \              model_path=train_args.model_path,\n              data_path=train_args.data_path,\n\
+          \              max_seq_len=train_args.max_seq_len,\n              chat_tmpl_path=train_args.chat_tmpl_path,\n\
+          \          )\n      )\n    data_processing(train_args=training_args)\n\n"
+        image: registry.access.redhat.com/ubi9/python-311:latest
     exec-deletepvc:
       container:
         image: argostub/deletepvc
