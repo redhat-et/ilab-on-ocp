@@ -29,8 +29,9 @@ def upload_and_save_model_to_s3(model_name: str, local_model_path: Union[str, Pa
         str: S3 path where the model is stored.
     """
     # Convert s3_model_path to lowercase
+    s3_model_path = os.getenv('MODEL_PATH')
     s3_model_path = s3_model_path.lower()
-    
+
     # S3 Configuration
     s3_endpoint = os.getenv('S3_ENDPOINT')
     aws_access_key = os.getenv('AWS_ACCESS_KEY')
@@ -103,8 +104,7 @@ def upload_and_save_model_to_s3(model_name: str, local_model_path: Union[str, Pa
 upload_and_save_model_to_s3(
     model_name = os.getenv('MODEL'),
     local_model_path="./models",
-    s3_model_path="MODEL_PATH",
+    s3_model_path=os.getenv('MODEL_PATH'),
     verbose=True,
     replace_if_exists=False
 )
-
