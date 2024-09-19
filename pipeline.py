@@ -36,7 +36,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
         from utils import artifact_to_pvc_op
     else:
-        from training import pytorchjob_manifest_op
+        from training import data_processing_op, pytorchjob_manifest_op
         from utils import (
             kubectl_apply_op,
             kubectl_wait_for_op,
@@ -76,6 +76,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
         use_secret_as_env(sdg_task, K8S_NAME, {"api_key": "api_key"})
 
+
         # Training stage
 
         # We need to pass storage_class_name as "" to use the default StorageClass, if left empty, KFP uses "standard" StorageClass.
@@ -97,6 +98,12 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             task=model_to_pvc_task, pvc_name=model_pvc_task.output, mount_path="/model"
         )
 
+        #Data processing 
+        data_processing_task = data_processing_op(
+            sdg = sdg_task.outputs["sdg"],
+            model = model_to_artifact.outputs["model"]
+        )
+
         sdg_input_pvc_task = CreatePVC(
             pvc_name_suffix="-sdg",
             access_modes=["ReadWriteOnce"],
@@ -104,7 +111,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             storage_class_name=storage_class_name,
         )
         sdg_to_pvc_task = artifact_to_pvc_op(
-            data=sdg_task.outputs["sdg"], pvc_path="/data"
+            data=data_processing_task.outputs["processed_data"], pvc_path="/data"
         )
         sdg_to_pvc_task.set_caching_options(False)
         mount_pvc(
