@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: container
-          image: quay.io/michaelclifford/test-train:latest
+          image: quay.io/shanand/test-train:0.0.4
           resources:
             limits:
               nvidia.com/gpu: '2'
