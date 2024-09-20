@@ -20,7 +20,7 @@ spec:
                 - /bin/bash
                 - '-c'
                 - '--'
-              image: 'quay.io/michaelclifford/test-train:latest'
+              image: 'quay.io/shanand/test-train:0.0.4'
               name: pytorch
               resources: {}
   runPolicy:

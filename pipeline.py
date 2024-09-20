@@ -46,6 +46,10 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             pvc_to_model_op
         )
 
+    # Imports for MMLU stage
+    from utils import list_models_in_directory_op
+    from eval.mmlu import run_mmlu_op, load_mmlu_results_op
+
     @dsl.pipeline(
         display_name="InstructLab",
         name="instructlab",
@@ -58,6 +62,12 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         repo_pr: Optional[int] = None,
         storage_class_name: str = "ocs-external-storagecluster-ceph-rbd",
         base_model: str = "ibm-granite/granite-7b-base",
+        # minimal subset of MMLU_TASKS
+        mmlu_tasks_list: str = "mmlu_anatomy,mmlu_astronomy",
+        model_dtype: str = "bfloat16",
+        few_shots: int = 5,
+        batch_size: int = 8,
+        device: str = None,
     ):
 
         # SDG stage
@@ -166,14 +176,52 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         output_data_task = pvc_to_model_op(
             pvc_path="/output/model",
             )
+
         output_data_task.after(kubectl_wait_task)
         output_model_task.set_caching_options(False)
+
         mount_pvc(
             task=output_data_task, pvc_name=output_pvc_task.output, mount_path="/output/model"
         )
 
+        # MMLU Evaluation of models
+
+        models_list_task = list_models_in_directory_op(
+            models_folder="/output/model/model/hf_format",
+        )
+
+        models_list_task.after(kubectl_wait_task)
+
+        mount_pvc(
+            task=models_list_task, pvc_name=output_pvc_task.output, mount_path="/output/model"
+        )
+
+        run_mmlu_task = run_mmlu_op(
+            models_list=models_list_task.output,
+            models_path_prefix = "/output/model/model/hf_format",
+            mmlu_tasks_list=mmlu_tasks_list,
+            model_dtype=model_dtype,
+            few_shots=few_shots,
+            batch_size=batch_size,
+            device=device,
+        )
+
+        mount_pvc(
+            task=run_mmlu_task, pvc_name=output_pvc_task.output, mount_path="/output/model"
+        )
+
+        load_mmlu_results_task = load_mmlu_results_op(
+            mmlu_output=run_mmlu_task.outputs['mmlu_output'],
+        )
+
+        best_model = run_mmlu_task.outputs['best_model']
+        best_score = run_mmlu_task.outputs['best_score']
+
+        run_mmlu_task.set_accelerator_type('nvidia.com/gpu')
+        run_mmlu_task.set_accelerator_limit(1)
+
         output_pvc_delete_task = DeletePVC(pvc_name=output_pvc_task.output)
-        output_pvc_delete_task.after(output_model_task, output_data_task)
+        output_pvc_delete_task.after(output_model_task, output_data_task, run_mmlu_task, load_mmlu_results_task)
 
         return
 

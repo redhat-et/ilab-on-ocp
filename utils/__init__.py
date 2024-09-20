@@ -5,6 +5,7 @@ from .components import (
     huggingface_importer_op,
     pvc_to_artifact_op,
     pvc_to_model_op,
+    list_models_in_directory_op,
 )
 from . import faked
 
@@ -15,5 +16,6 @@ __all__ = [
     "huggingface_importer_op",
     "pvc_to_artifact_op",
     "pvc_to_model_op",
+    "list_models_in_directory_op",
     "faked",
 ]
