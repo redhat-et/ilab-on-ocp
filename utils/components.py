@@ -1,5 +1,6 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error,no-member,missing-function-docstring
+from typing import List
 from kfp import dsl
 from .consts import OC_IMAGE, PYTHON_IMAGE, TOOLBOX_IMAGE
 
@@ -56,6 +57,11 @@ def pvc_to_model_op(model: dsl.Output[dsl.Model], pvc_path: str):
         [f"cp -r {pvc_path} {model.path}"],
     )
 
+@dsl.component
+def list_models_in_directory_op(models_folder: str) -> List:
+    import os
+    models = os.listdir(models_folder)
+    return models
 
 @dsl.component(base_image=PYTHON_IMAGE, packages_to_install=["huggingface_hub"])
 def huggingface_importer_op(model: dsl.Output[dsl.Model], repo_name: str):
