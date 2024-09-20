@@ -6,12 +6,11 @@ from kfp.dsl import component, pipeline, Input, Output, Artifact, Model, importe
 from kfp.kubernetes import use_config_map_as_env, use_secret_as_env
 
 EVAL_IMAGE = "quay.io/sallyom/instructlab-ocp:eval"
-TOOLBOX_IMAGE = "registry.access.redhat.com/ubi9/toolbox"
 CANDIDATE_S3_URI = "s3://sallyom-eval-e58df6b0-606b-4749-96a5-a105657cb068/models/instructlab/granite-7b-lab"
 K8S_NAME = "kfp-model-server"
 
 # TODO: This is a placeholder for launching vLLM with candidate model
-@component(base_image=EVAL_IMAGE)
+@component(base_image=VLLM_IMAGE)
 def serve_candidate_model(
     candidate_model: Input[Model]
 ) -> NamedTuple('outputs', candidate_model_name=str, candidate_server_url=str):
@@ -121,7 +120,7 @@ def run_mt_bench(
     with open(mt_bench_output.path, 'w') as f:
         json.dump(mt_bench_data, f, indent=4)
 
-@component(base_image=TOOLBOX_IMAGE)
+@component(base_image=PYTHON_IMAGE)
 def load_mt_bench_results(mt_bench_output: Input[Artifact]) -> dict:
     import json
 
