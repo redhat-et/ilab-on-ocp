@@ -19,7 +19,7 @@ def git_clone_op(
             f"git clone {repo_url} {taxonomy.path} && cd {taxonomy.path} && "
             + f'if [ ! -z "{repo_branch}" ]; then '
             + f"git fetch origin {repo_branch} && git checkout {repo_branch}; "
-            + f'elif [ ! -z "{repo_pr}" ]; then '
+            + f'elif [ ! -z "{repo_pr}" and {repo_pr} -gt 0 ]; then '
             + f"git fetch origin pull/{repo_pr}/head:{repo_pr} && git checkout {repo_pr}; fi "
         ],
     )
@@ -43,8 +43,8 @@ def sdg_op(
     endpoint = getenv("endpoint")
     client = openai.OpenAI(base_url=endpoint, api_key=api_key)
 
-    taxonomy_base = "main" if repo_branch or repo_pr else "empty"
-
+    taxonomy_base = "main" if repo_branch or repo_pr > 0 else "empty"
+    
     print("Generating syntetic dataset for:")
     print()
     print(read_taxonomy(taxonomy.path, taxonomy_base))
