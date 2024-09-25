@@ -6,7 +6,7 @@ from utils.consts import PYTHON_IMAGE
 
 EVAL_IMAGE = "quay.io/sallyom/instructlab-ocp:eval"
 
-@component(base_image=EVAL_IMAGE, packages_to_install=["vllm"]))
+@component(base_image=EVAL_IMAGE, packages_to_install=["vllm"])
 def run_mt_bench_op(
     models_path_prefix: str,
     models_list: List[str],
@@ -16,13 +16,21 @@ def run_mt_bench_op(
     device: str = None,
 ) -> NamedTuple('outputs', best_model=str, best_score=float):
 
-    # TODO: Ensure vLLM server is utilizing GPU
-    def launch_vllm_server_background(model_path: str, retries: int = 60, delay: int = 5):
+
+    def launch_vllm_server_background(model_path: str, gpu_count: int, retries: int = 60, delay: int = 5):
         import subprocess
         import time
         import requests
 
-        command = f"nohup python3.11 -m vllm.entrypoints.openai.api_server --model {model_path} &"
+        if gpu_count > 0:
+            command = (
+                f"nohup python3.11 -m vllm.entrypoints.openai.api_server "
+                f"--model {model_path} "
+                f"--tensor-parallel-size {gpu_count} &"
+            )
+        else:
+            command = f"nohup python3.11 -m vllm.entrypoints.openai.api_server --model {model_path} &"
+
         subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         server_url = "http://localhost:8000/v1"
@@ -39,7 +47,7 @@ def run_mt_bench_op(
 
             print(f"Server not available yet, retrying in {delay} seconds (Attempt {attempt + 1}/{retries})...")
             time.sleep(delay)
-        
+
         raise RuntimeError(f"Failed to start vLLM server at {server_url} after {retries} retries.")
 
     # This seems like excessive effort to stop the vllm process, but merely saving & killing the pid doesn't work
@@ -77,6 +85,7 @@ def run_mt_bench_op(
 
     gpu_available = torch.cuda.is_available()
     gpu_name = torch.cuda.get_device_name(torch.cuda.current_device()) if gpu_available else "No GPU available"
+    gpu_count = torch.cuda.device_count() if gpu_available else 0
 
     print(f"GPU Available: {gpu_available}, {gpu_name}")
 
@@ -108,7 +117,7 @@ def run_mt_bench_op(
         model_path = f"{models_path_prefix}/{model_name}"
         
         # Launch the vLLM server and wait until it is ready
-        launch_vllm_server_background(model_path)
+        launch_vllm_server_background(model_path, gpu_count)
 
         # model ID is the model_path value in vLLM
         print("Generating answers...")
