@@ -922,60 +922,63 @@ deploymentSpec:
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef run_mt_bench_op(\n    models_path_prefix: str,\n    models_list:\
           \ List[str],\n    mt_bench_output: Output[Artifact],\n    merge_system_user_message:\
-          \ bool,\n    max_workers: str = \"auto\",\n    device: str = None,\n) ->\
-          \ NamedTuple('outputs', best_model=str, best_score=float):\n\n\n    def\
-          \ launch_vllm_server_background(model_path: str, gpu_count: int, retries:\
-          \ int = 60, delay: int = 5):\n        import subprocess\n        import\
-          \ time\n        import requests\n\n        if gpu_count > 0:\n         \
-          \   command = (\n                f\"nohup python3.11 -m vllm.entrypoints.openai.api_server\
-          \ \"\n                f\"--model {model_path} \"\n                f\"--tensor-parallel-size\
-          \ {gpu_count} &\"\n            )\n        else:\n            command = f\"\
-          nohup python3.11 -m vllm.entrypoints.openai.api_server --model {model_path}\
-          \ &\"\n\n        subprocess.Popen(command, shell=True, stdout=subprocess.PIPE,\
-          \ stderr=subprocess.PIPE)\n\n        server_url = \"http://localhost:8000/v1\"\
-          \n        print(f\"Waiting for vLLM server to start at {server_url}...\"\
-          )\n\n        for attempt in range(retries):\n            try:\n        \
-          \        response = requests.get(f\"{server_url}/models\")\n           \
-          \     if response.status_code == 200:\n                    print(f\"vLLM\
-          \ server is up and running at {server_url}.\")\n                    return\n\
-          \            except requests.ConnectionError:\n                pass\n\n\
-          \            print(f\"Server not available yet, retrying in {delay} seconds\
-          \ (Attempt {attempt + 1}/{retries})...\")\n            time.sleep(delay)\n\
-          \n        raise RuntimeError(f\"Failed to start vLLM server at {server_url}\
-          \ after {retries} retries.\")\n\n    # This seems like excessive effort\
-          \ to stop the vllm process, but merely saving & killing the pid doesn't\
-          \ work\n    # Also, the base image does not include `pkill` cmd, so can't\
-          \ pkill -f vllm.entrypoints.openai.api_server either\n    def stop_vllm_server_by_name():\n\
-          \        import psutil\n\n        for process in psutil.process_iter(attrs=[\"\
-          pid\", \"name\", \"cmdline\"]):\n            cmdline = process.info.get(\"\
-          cmdline\")\n            if cmdline and \"vllm.entrypoints.openai.api_server\"\
-          \ in cmdline:\n                print(f\"Found vLLM server process with PID:\
-          \ {process.info['pid']}, terminating...\")\n                try:\n     \
-          \               process.terminate()  # Try graceful termination\n      \
-          \              process.wait(timeout=5)  # Wait a bit for it to terminate\n\
-          \                    if process.is_running():\n                        print(f\"\
-          Forcefully killing vLLM server process with PID: {process.info['pid']}\"\
-          )\n                        process.kill()  # Force kill if it's still running\n\
-          \                    print(f\"Successfully stopped vLLM server with PID:\
-          \ {process.info['pid']}\")\n                except psutil.NoSuchProcess:\n\
-          \                    print(f\"Process with PID {process.info['pid']} no\
-          \ longer exists.\")\n                except psutil.AccessDenied:\n     \
-          \               print(f\"Access denied when trying to terminate process\
-          \ with PID {process.info['pid']}.\")\n                except Exception as\
-          \ e:\n                    print(f\"Failed to terminate process with PID\
-          \ {process.info['pid']}. Error: {e}\")\n\n\n    import json\n    import\
-          \ torch\n    import os\n\n    from instructlab.eval import mt_bench_answers,\
-          \ mt_bench_judgment\n\n    os.environ[\"PYTORCH_CUDA_ALLOC_CONF\"] = \"\
-          expandable_segments:True\"\n    candidate_server_url = \"http://localhost:8000/v1\"\
+          \ bool,\n    # generate_answers,judgment uses a magic word for its mt_bench\
+          \ evaluator  - `auto`\n    # with `auto`, number of gpus allocated for serving\
+          \ is calculated based on environment\n    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36\n\
+          \    max_workers: str = \"auto\",\n    device: str = None,\n) -> NamedTuple('outputs',\
+          \ best_model=str, best_score=float):\n\n\n    def launch_vllm_server_background(model_path:\
+          \ str, gpu_count: int, retries: int = 60, delay: int = 5):\n        import\
+          \ subprocess\n        import sys\n        import time\n        import requests\n\
+          \n        if gpu_count > 0:\n            command = [\n                sys.executable,\n\
+          \                \"-m\", \"vllm.entrypoints.openai.api_server\",\n     \
+          \           \"--model\", model_path,\n                \"--tensor-parallel-size\"\
+          , str(gpu_count),\n            ]\n        else:\n            command = [\n\
+          \                sys.executable,\n                \"-m\", \"vllm.entrypoints.openai.api_server\"\
+          ,\n                \"--model\", model_path,\n            ]\n\n        subprocess.Popen(args=command)\n\
+          \n        server_url = \"http://localhost:8000/v1\"\n        print(f\"Waiting\
+          \ for vLLM server to start at {server_url}...\")\n\n        for attempt\
+          \ in range(retries):\n            try:\n                response = requests.get(f\"\
+          {server_url}/models\")\n                if response.status_code == 200:\n\
+          \                    print(f\"vLLM server is up and running at {server_url}.\"\
+          )\n                    return\n            except requests.ConnectionError:\n\
+          \                pass\n\n            print(f\"Server not available yet,\
+          \ retrying in {delay} seconds (Attempt {attempt + 1}/{retries})...\")\n\
+          \            time.sleep(delay)\n\n        raise RuntimeError(f\"Failed to\
+          \ start vLLM server at {server_url} after {retries} retries.\")\n\n    #\
+          \ This seems like excessive effort to stop the vllm process, but merely\
+          \ saving & killing the pid doesn't work\n    # Also, the base image does\
+          \ not include `pkill` cmd, so can't pkill -f vllm.entrypoints.openai.api_server\
+          \ either\n    def stop_vllm_server_by_name():\n        import psutil\n\n\
+          \        for process in psutil.process_iter(attrs=[\"pid\", \"name\", \"\
+          cmdline\"]):\n            cmdline = process.info.get(\"cmdline\")\n    \
+          \        if cmdline and \"vllm.entrypoints.openai.api_server\" in cmdline:\n\
+          \                print(f\"Found vLLM server process with PID: {process.info['pid']},\
+          \ terminating...\")\n                try:\n                    process.terminate()\
+          \  # Try graceful termination\n                    process.wait(timeout=5)\
+          \  # Wait a bit for it to terminate\n                    if process.is_running():\n\
+          \                        print(f\"Forcefully killing vLLM server process\
+          \ with PID: {process.info['pid']}\")\n                        process.kill()\
+          \  # Force kill if it's still running\n                    print(f\"Successfully\
+          \ stopped vLLM server with PID: {process.info['pid']}\")\n             \
+          \   except psutil.NoSuchProcess:\n                    print(f\"Process with\
+          \ PID {process.info['pid']} no longer exists.\")\n                except\
+          \ psutil.AccessDenied:\n                    print(f\"Access denied when\
+          \ trying to terminate process with PID {process.info['pid']}.\")\n     \
+          \           except Exception as e:\n                    print(f\"Failed\
+          \ to terminate process with PID {process.info['pid']}. Error: {e}\")\n\n\
+          \n    import json\n    import torch\n    import os\n\n    from instructlab.eval\
+          \ import mt_bench_answers, mt_bench_judgment\n\n    os.environ[\"PYTORCH_CUDA_ALLOC_CONF\"\
+          ] = \"expandable_segments:True\"\n    candidate_server_url = \"http://localhost:8000/v1\"\
           \n\n    gpu_available = torch.cuda.is_available()\n    gpu_name = torch.cuda.get_device_name(torch.cuda.current_device())\
           \ if gpu_available else \"No GPU available\"\n    gpu_count = torch.cuda.device_count()\
           \ if gpu_available else 0\n\n    print(f\"GPU Available: {gpu_available},\
-          \ {gpu_name}\")\n\n    if max_workers == \"auto\":\n        try:\n     \
-          \       usable_cpu_count = len(os.sched_getaffinity(0)) // 2\n        except\
-          \ AttributeError:\n            usable_cpu_count = multiprocessing.cpu_count()\
-          \ // 2\n        max_workers = usable_cpu_count\n\n    # TODO: Using evaluator\
-          \ results in connection errors, need to determine why.\n    #       For\
-          \ now, using mt_bench_answers.generate_answers & mt_bench_judgment.generate_judgment\n\
+          \ {gpu_name}\")\n\n    # See note above about magic word \"auto\"\n    if\
+          \ max_workers == \"auto\":\n        try:\n            usable_cpu_count =\
+          \ len(os.sched_getaffinity(0)) // 2\n        except AttributeError:\n  \
+          \          usable_cpu_count = multiprocessing.cpu_count() // 2\n       \
+          \ max_workers = usable_cpu_count\n\n    # TODO: Using evaluator results\
+          \ in connection errors, need to determine why.\n    #       For now, using\
+          \ mt_bench_answers.generate_answers & mt_bench_judgment.generate_judgment\n\
           \    #evaluator = MTBenchEvaluator(\n    #    model_name=candidate_model_name,\n\
           \    #    judge_model_name=judge_model_name,\n    #    max_workers=max_workers,\n\
           \    #    merge_system_user_message=merge_system_user_message\n    #)\n\n\

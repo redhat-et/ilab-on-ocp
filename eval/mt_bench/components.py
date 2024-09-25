@@ -12,6 +12,9 @@ def run_mt_bench_op(
     models_list: List[str],
     mt_bench_output: Output[Artifact],
     merge_system_user_message: bool,
+    # generate_answers,judgment uses a magic word for its mt_bench evaluator  - `auto`
+    # with `auto`, number of gpus allocated for serving is calculated based on environment
+    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
     max_workers: str = "auto",
     device: str = None,
 ) -> NamedTuple('outputs', best_model=str, best_score=float):
@@ -19,19 +22,25 @@ def run_mt_bench_op(
 
     def launch_vllm_server_background(model_path: str, gpu_count: int, retries: int = 60, delay: int = 5):
         import subprocess
+        import sys
         import time
         import requests
 
         if gpu_count > 0:
-            command = (
-                f"nohup python3.11 -m vllm.entrypoints.openai.api_server "
-                f"--model {model_path} "
-                f"--tensor-parallel-size {gpu_count} &"
-            )
+            command = [
+                sys.executable,
+                "-m", "vllm.entrypoints.openai.api_server",
+                "--model", model_path,
+                "--tensor-parallel-size", str(gpu_count),
+            ]
         else:
-            command = f"nohup python3.11 -m vllm.entrypoints.openai.api_server --model {model_path} &"
+            command = [
+                sys.executable,
+                "-m", "vllm.entrypoints.openai.api_server",
+                "--model", model_path,
+            ]
 
-        subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.Popen(args=command)
 
         server_url = "http://localhost:8000/v1"
         print(f"Waiting for vLLM server to start at {server_url}...")
@@ -89,6 +98,7 @@ def run_mt_bench_op(
 
     print(f"GPU Available: {gpu_available}, {gpu_name}")
 
+    # See note above about magic word "auto"
     if max_workers == "auto":
         try:
             usable_cpu_count = len(os.sched_getaffinity(0)) // 2
