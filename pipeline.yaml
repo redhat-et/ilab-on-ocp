@@ -12,7 +12,7 @@
 #    repo_branch: str
 #    repo_pr: int
 #    repo_url: str [Default: 'https://github.com/instructlab/taxonomy.git']
-#    storage_class_name: str [Default: 'ocs-external-storagecluster-ceph-rbd']
+#    storage_class_name: str [Default: 'nfs-csi']
 components:
   comp-artifact-to-pvc-op:
     executorLabel: exec-artifact-to-pvc-op
@@ -920,7 +920,7 @@ root:
             access_modes:
               runtimeValue:
                 constant:
-                - ReadWriteOnce
+                - ReadWriteMany
             pvc_name_suffix:
               runtimeValue:
                 constant: -model-cache
@@ -941,7 +941,7 @@ root:
             access_modes:
               runtimeValue:
                 constant:
-                - ReadWriteOnce
+                - ReadWriteMany
             pvc_name_suffix:
               runtimeValue:
                 constant: -sdg
@@ -962,7 +962,7 @@ root:
             access_modes:
               runtimeValue:
                 constant:
-                - ReadWriteOnce
+                - ReadWriteMany
             pvc_name_suffix:
               runtimeValue:
                 constant: -output
@@ -1285,7 +1285,7 @@ root:
         isOptional: true
         parameterType: STRING
       storage_class_name:
-        defaultValue: ocs-external-storagecluster-ceph-rbd
+        defaultValue: nfs-csi
         isOptional: true
         parameterType: STRING
 schemaVersion: 2.1.0
