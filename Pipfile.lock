@@ -1,11 +1,11 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "d1a133ddffc6ca2361281b4ed39f633f3d0d9c644d1b7d0784b90b4f0d22d2d2"
+            "sha256": "1d489c372ec319532604a8c93457c69adf5c692ba1e630b7449185c597881c5c"
         },
         "pipfile-spec": 6,
         "requires": {
-            "python_version": "3.12"
+            "python_version": "3.11"
         },
         "sources": [
             {
@@ -228,21 +228,21 @@
         },
         "idna": {
             "hashes": [
-                "sha256:050b4e5baadcd44d760cedbd2b8e639f2ff89bbc7a5730fcc662954303377aac",
-                "sha256:d838c2c0ed6fced7693d5e8ab8e734d5f8fda53a039c0164afb0b82e771e3603"
+                "sha256:12f65c9b470abda6dc35cf8e63cc574b1c52b11df2c86030af0ac09b01b13ea9",
+                "sha256:946d195a0d259cbba61165e88e65941f16e9b36ea6ddb97f00452bae8b1287d3"
             ],
             "markers": "python_version >= '3.6'",
-            "version": "==3.8"
+            "version": "==3.10"
         },
         "kfp": {
             "extras": [
                 "kubernetes"
             ],
             "hashes": [
-                "sha256:06ad584eecbe80318c6cd0231c95a432e91fec56f201def9d511b6e6664235ce"
+                "sha256:936b34261d7356f5f1960d07d12632a84f36f928e14a72cea7c092f2a224de7d"
             ],
             "markers": "python_full_version < '3.13.0' and python_full_version >= '3.8.0'",
-            "version": "==2.8.0"
+            "version": "==2.9.0"
         },
         "kfp-kubernetes": {
             "hashes": [
@@ -252,24 +252,24 @@
         },
         "kfp-pipeline-spec": {
             "hashes": [
-                "sha256:1db84524a0a2d6c9d36e7e87e6fa0e181bf1ba1513d29dcd54f7b8822e7a52a2"
+                "sha256:5384e710aef8268eb20ee147b2a0a6cfc3b0cbeef037cad89f46ab877375e1aa"
             ],
             "markers": "python_full_version < '3.13.0' and python_full_version >= '3.7.0'",
-            "version": "==0.3.0"
+            "version": "==0.4.0"
         },
         "kfp-server-api": {
             "hashes": [
-                "sha256:c9cfbf0e87271d3bfe96e5ecc9ffbdd6ab566bc1c9a9ddc2a39d7698a16e26ff"
+                "sha256:504aa9f0ca047790aca67b306350aac717ae956c59450a04cf1901c9ed4dca9f"
             ],
-            "version": "==2.0.5"
+            "version": "==2.3.0"
         },
         "kubernetes": {
             "hashes": [
-                "sha256:5854b0c508e8d217ca205591384ab58389abdae608576f9c9afc35a3c76a366c",
-                "sha256:e3db6800abf7e36c38d2629b5cb6b74d10988ee0cba6fba45595a7cbe60c0042"
+                "sha256:41e4c77af9f28e7a6c314e3bd06a8c6229ddd787cad684e0ab9f69b498e98ebc",
+                "sha256:e212e8b7579031dd2e512168b617373bc1e03888d41ac4e04039240a292d478d"
             ],
             "markers": "python_version >= '3.6'",
-            "version": "==26.1.0"
+            "version": "==30.1.0"
         },
         "oauthlib": {
             "hashes": [
@@ -306,19 +306,19 @@
         },
         "pyasn1": {
             "hashes": [
-                "sha256:3a35ab2c4b5ef98e17dfdec8ab074046fbda76e281c5a706ccd82328cfc8f64c",
-                "sha256:cca4bb0f2df5504f02f6f8a775b6e416ff9b0b3b16f7ee80b5a3153d9b804473"
+                "sha256:0d632f46f2ba09143da3a8afe9e33fb6f92fa2320ab7e886e2d0f7672af84629",
+                "sha256:6f580d2bdd84365380830acf45550f2511469f673cb4a5ae3857a3170128b034"
             ],
             "markers": "python_version >= '3.8'",
-            "version": "==0.6.0"
+            "version": "==0.6.1"
         },
         "pyasn1-modules": {
             "hashes": [
-                "sha256:831dbcea1b177b28c9baddf4c6d1013c24c3accd14a1873fffaa6a2e905f17b6",
-                "sha256:be04f15b66c206eed667e0bb5ab27e2b1855ea54a842e5037738099e8ca4ae0b"
+                "sha256:49bfa96b45a292b711e986f222502c1c9a5e1f4e568fc30e2574a6c7d07838fd",
+                "sha256:c28e2dbf9c06ad61c71a075c7e0f9fd0f1b0bb2d2ad4377f240d33ac2ab60a7c"
             ],
             "markers": "python_version >= '3.8'",
-            "version": "==0.4.0"
+            "version": "==0.4.1"
         },
         "python-dateutil": {
             "hashes": [
@@ -418,14 +418,6 @@
             ],
             "markers": "python_version >= '3.6' and python_version < '4'",
             "version": "==4.9"
-        },
-        "setuptools": {
-            "hashes": [
-                "sha256:5f4c08aa4d3ebcb57a50c33b1b07e94315d7fc7230f7115e47fc99776c8ce308",
-                "sha256:95b40ed940a1c67eb70fc099094bd6e99c6ee7c23aa2306f4d2697ba7916f9c6"
-            ],
-            "markers": "python_version >= '3.8'",
-            "version": "==74.1.2"
         },
         "six": {
             "hashes": [

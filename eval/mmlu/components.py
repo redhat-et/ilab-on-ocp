@@ -2,7 +2,7 @@
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error
 from typing import List, NamedTuple
 from kfp.dsl import component, Input, Output, Artifact, Model, importer
-from utils.consts import TOOLBOX_IMAGE
+from utils.consts import PYTHON_IMAGE
 
 EVAL_IMAGE = "quay.io/sallyom/instructlab-ocp:eval"
 
@@ -15,7 +15,7 @@ def run_mmlu_op(
     few_shots: int,
     batch_size: int,
     device: str,
-    models_list: List[int],
+    models_list: List[str],
 ) -> NamedTuple('outputs', best_model=str, best_score=float):
     import json
     import os
@@ -73,7 +73,7 @@ def run_mmlu_op(
     best_score = scores[best_model]
     return outputs(best_model=best_model, best_score=best_score)
 
-@component(base_image=TOOLBOX_IMAGE)
+@component(base_image=PYTHON_IMAGE)
 def load_mmlu_results_op(mmlu_output: Input[Artifact]) -> list:
     import json
 

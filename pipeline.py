@@ -11,7 +11,10 @@ from kfp.kubernetes import (
     mount_pvc,
 )
 
+# For now, all external models are the same mistral, but won't be always
 K8S_NAME = "kfp-model-server"
+JUDGE_CONFIG_MAP = "kfp-model-server"
+JUDGE_SECRET = "judge-server"
 MOCKED_STAGES = ["sdg", "train", "eval"]
 
 
@@ -46,9 +49,11 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             pvc_to_model_op
         )
 
-    # Imports for MMLU stage
+    # Imports for MMLU, MT_BENCH stage
+    # TODO: Add mock/fake components
     from utils import list_models_in_directory_op
     from eval.mmlu import run_mmlu_op, load_mmlu_results_op
+    from eval.mt_bench import run_mt_bench_op, load_mt_bench_results_op
 
     @dsl.pipeline(
         display_name="InstructLab",
@@ -67,6 +72,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         model_dtype: str = "bfloat16",
         few_shots: int = 5,
         batch_size: int = 8,
+        max_workers: str = "auto",
+        merge_system_user_message: bool = False,
         device: str = None,
     ):
 
@@ -165,25 +172,6 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         model_pvc_delete_task = DeletePVC(pvc_name=model_pvc_task.output)
         model_pvc_delete_task.after(kubectl_wait_task)
 
-        output_model_task = pvc_to_artifact_op(
-            pvc_path="/output/data",
-            )
-        output_model_task.after(kubectl_wait_task)
-        output_model_task.set_caching_options(False)
-        mount_pvc(
-            task=output_model_task, pvc_name=output_pvc_task.output, mount_path="/output/data"
-        )
-        output_data_task = pvc_to_model_op(
-            pvc_path="/output/model",
-            )
-
-        output_data_task.after(kubectl_wait_task)
-        output_model_task.set_caching_options(False)
-
-        mount_pvc(
-            task=output_data_task, pvc_name=output_pvc_task.output, mount_path="/output/model"
-        )
-
         # MMLU Evaluation of models
 
         models_list_task = list_models_in_directory_op(
@@ -214,14 +202,77 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             mmlu_output=run_mmlu_task.outputs['mmlu_output'],
         )
 
-        best_model = run_mmlu_task.outputs['best_model']
-        best_score = run_mmlu_task.outputs['best_score']
-
         run_mmlu_task.set_accelerator_type('nvidia.com/gpu')
         run_mmlu_task.set_accelerator_limit(1)
 
+        #    Run training on MMLU best-model
+        #    Run final eval on best scored mt_bench candidate
+        #    For now, running mt_bench on same output models as training phase 1
+        #    TODO: Another training phase, using the best-model from MMLU as base
+
+        #    This is currently a duplicate of the above models_list_task,
+        #    it's a placeholder for the listing of models from training phase 2
+        phase_two_models_list_task = list_models_in_directory_op(
+            models_folder="/output/model/model/hf_format",
+        )
+
+        phase_two_models_list_task.after(load_mmlu_results_task)
+
+        mount_pvc(
+            task=phase_two_models_list_task, pvc_name=output_pvc_task.output, mount_path="/output/model"
+        )
+
+        run_mt_bench_task = run_mt_bench_op(
+            # TODO: make a second models_list_task from the 2nd phase of training
+            models_list=phase_two_models_list_task.output,
+            models_path_prefix = "/output/model/model/hf_format",
+            max_workers = max_workers,
+            merge_system_user_message = merge_system_user_message,
+            device = device,
+        )
+
+        mount_pvc(
+            task=run_mt_bench_task, pvc_name=output_pvc_task.output, mount_path="/output/model"
+        )
+
+        # For now run on same models from same training run as MMLU
+        run_mt_bench_task.after(phase_two_models_list_task)
+
+        run_mt_bench_task.set_accelerator_type('nvidia.com/gpu')
+        run_mt_bench_task.set_accelerator_limit(1)
+
+
+        use_config_map_as_env(
+            run_mt_bench_task, JUDGE_CONFIG_MAP, dict(endpoint="JUDGE_ENDPOINT", model="JUDGE_NAME")
+        )
+
+        use_secret_as_env(run_mt_bench_task, JUDGE_SECRET, {"api_key": "JUDGE_API_KEY"})
+
+
+        # Technically `output_model_task` and `output_data_task` can happen before evaluation,
+        # however the PVC can only be mounted once, so, setting these to _after_ so the eval proceeds.
+        output_model_task = pvc_to_artifact_op(
+            pvc_path="/output/data",
+            )
+        #output_model_task.after(kubectl_wait_task)
+        output_model_task.after(run_mt_bench_task)
+        output_model_task.set_caching_options(False)
+
+        mount_pvc(
+            task=output_model_task, pvc_name=output_pvc_task.output, mount_path="/output/data"
+        )
+
+        output_data_task = pvc_to_model_op(
+            pvc_path="/output/model",
+            )
+        #output_data_task.after(kubectl_wait_task)
+        output_data_task.after(run_mt_bench_task)
+
+        mount_pvc(
+            task=output_data_task, pvc_name=output_pvc_task.output, mount_path="/output/model"
+        )
         output_pvc_delete_task = DeletePVC(pvc_name=output_pvc_task.output)
-        output_pvc_delete_task.after(output_model_task, output_data_task, run_mmlu_task, load_mmlu_results_task)
+        output_pvc_delete_task.after(output_model_task, output_data_task, run_mmlu_task, run_mt_bench_task)
 
         return
 
