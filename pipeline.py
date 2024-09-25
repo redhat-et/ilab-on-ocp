@@ -60,7 +60,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         repo_url: str = "https://github.com/instructlab/taxonomy.git",
         repo_branch: Optional[str] = None,
         repo_pr: Optional[int] = None,
-        storage_class_name: str = "ocs-external-storagecluster-ceph-rbd",
+        storage_class_name: str = "nfs-csi",
         base_model: str = "ibm-granite/granite-7b-base",
         # minimal subset of MMLU_TASKS
         mmlu_tasks_list: str = "mmlu_anatomy,mmlu_astronomy",
@@ -95,7 +95,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         # At least we made it a pipeline parameter
         model_pvc_task = CreatePVC(
             pvc_name_suffix="-model-cache",
-            access_modes=["ReadWriteOnce"],
+            access_modes=["ReadWriteMany"],
             size="50Gi",
             storage_class_name=storage_class_name,
         )
@@ -108,7 +108,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             task=model_to_pvc_task, pvc_name=model_pvc_task.output, mount_path="/model"
         )
 
-        #Data processing 
+        #Data processing
         data_processing_task = data_processing_op(
             sdg = sdg_task.outputs["sdg"],
             model = model_to_artifact.outputs["model"]
@@ -116,7 +116,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
         sdg_input_pvc_task = CreatePVC(
             pvc_name_suffix="-sdg",
-            access_modes=["ReadWriteOnce"],
+            access_modes=["ReadWriteMany"],
             size="1Gi",
             storage_class_name=storage_class_name,
         )
@@ -130,7 +130,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
         output_pvc_task = CreatePVC(
             pvc_name_suffix="-output",
-            access_modes=["ReadWriteOnce"],
+            access_modes=["ReadWriteMany"],
             size="50Gi",
             storage_class_name=storage_class_name,
         )
