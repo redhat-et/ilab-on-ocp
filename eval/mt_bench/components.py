@@ -4,7 +4,8 @@ from typing import List, NamedTuple, Optional
 from kfp.dsl import component, Input, Output, Artifact, Model, importer
 from utils.consts import PYTHON_IMAGE
 
-EVAL_IMAGE = "quay.io/sallyom/instructlab-ocp:eval"
+# TODO: replace with ilab image
+EVAL_IMAGE = "quay.io/sallyom/instructlab-ocp:eval-7ee213"
 
 
 @component(base_image=EVAL_IMAGE, packages_to_install=["vllm"])
@@ -15,12 +16,12 @@ def run_mt_bench_op(
     # generate_answers,judgment uses a magic word for its mt_bench evaluator  - `auto`
     # with `auto`, number of gpus allocated for serving is calculated based on environment
     # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
-    max_workers: str = "auto",
+    max_workers: str,
     models_list: List[str] = None,
     models_folder: Optional[str] = None,
     device: str = None,
 ) -> NamedTuple("outputs", best_model=str, best_score=float):
-    def launch_vllm_server_background(
+    def launch_vllm(
         model_path: str, gpu_count: int, retries: int = 60, delay: int = 5
     ):
         import subprocess
@@ -107,10 +108,10 @@ def run_mt_bench_op(
     import torch
     import os
 
-    from instructlab.eval import mt_bench_answers, mt_bench_judgment
+    from instructlab.eval.mt_bench import MTBenchEvaluator
 
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-    candidate_server_url = "http://localhost:8000/v1"
+    vllm_server = "http://localhost:8000/v1"
 
     gpu_available = torch.cuda.is_available()
     gpu_name = (
@@ -122,23 +123,6 @@ def run_mt_bench_op(
 
     print(f"GPU Available: {gpu_available}, {gpu_name}")
 
-    # See note above about magic word "auto"
-    if max_workers == "auto":
-        try:
-            usable_cpu_count = len(os.sched_getaffinity(0)) // 2
-        except AttributeError:
-            usable_cpu_count = multiprocessing.cpu_count() // 2
-        max_workers = usable_cpu_count
-
-    # TODO: Using evaluator results in connection errors, need to determine why.
-    #       For now, using mt_bench_answers.generate_answers & mt_bench_judgment.generate_judgment
-    # evaluator = MTBenchEvaluator(
-    #    model_name=candidate_model_name,
-    #    judge_model_name=judge_model_name,
-    #    max_workers=max_workers,
-    #    merge_system_user_message=merge_system_user_message
-    # )
-
     if models_list is None and models_folder:
         models_list = os.listdir(models_folder)
 
@@ -149,36 +133,44 @@ def run_mt_bench_op(
     scores = {}
     all_mt_bench_data = []
 
+    # generate_answers,judgment uses a magic word for its mt_bench evaluator  - `auto`
+    # with `auto`, number of gpus allocated for serving is calculated based on environment
+    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
+    if max_workers == "auto":
+        try:
+            usable_cpu_count = len(os.sched_getaffinity(0)) // 2
+        except AttributeError:
+            usable_cpu_count = multiprocessing.cpu_count() // 2
+        max_workers = usable_cpu_count
+
     for model_name in models_list:
         print(f"Serving candidate model: {model_name}")
         model_path = f"{models_path_prefix}/{model_name}"
 
-        # Launch the vLLM server and wait until it is ready
-        launch_vllm_server_background(model_path, gpu_count)
+        launch_vllm(model_path, gpu_count)
 
         # model ID is the model_path value in vLLM
-        print("Generating answers...")
-        mt_bench_answers.generate_answers(
+        evaluator = MTBenchEvaluator(
             model_name=model_path,
-            model_api_base=candidate_server_url,
+            judge_model_name=judge_model_name,
             output_dir="/tmp/eval_output",
+            merge_system_user_message=merge_system_user_message,
+        )
+
+        evaluator.gen_answers(
+            server_url=vllm_server,
+            serving_gpus=gpu_count,
             max_workers=max_workers,
         )
 
-        print("Judging answers...")
-        overall_score, qa_pairs, turn_scores, error_rate = (
-            mt_bench_judgment.generate_judgment(
-                model_name=model_path,
-                judge_model_name=judge_model_name,
-                model_api_base=judge_endpoint,
-                api_key=judge_api_key,
-                output_dir="/tmp/eval_output",
-                max_workers=max_workers,
-                merge_system_user_message=merge_system_user_message,
-            )
-        )
-
         stop_vllm_server_by_name()
+
+        overall_score, qa_pairs, turn_scores, error_rate = evaluator.judge_answers(
+            server_url=judge_endpoint,
+            api_key=judge_api_key,
+            serving_gpus=gpu_count,
+            max_workers=max_workers,
+        )
 
         mt_bench_data = {
             "report_title": "SKILLS EVALUATION REPORT",
