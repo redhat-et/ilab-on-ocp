@@ -83,11 +83,9 @@ def pytorchjob_manifest_op(
     name = f"train-{name_suffix.rstrip('-sdg')}"
 
     image = 'quay.io/shanand/test-train:0.0.4'
-    nprocPerNode = 1
+    nprocPerNode = 3
     nnodes = 2
-# (shanand): The master and the worker nodes have to be scheduled on a single OpenShift node for now. Once
-# the PVC issues are fixed this can be removed. Please 
-# update the nodeSelector <NODE-NAME> before compiling the pipeline or else it'll break.
+    
     manifest = inspect.cleandoc(
         f"""
         apiVersion: kubeflow.org/v1
@@ -105,8 +103,6 @@ def pytorchjob_manifest_op(
                   annotations:
                     sidecar.istio.io/inject: 'false'
                 spec:
-                  nodeSelector:
-                    kubernetes.io/hostname: <NODE-NAME>
                   containers:
                     - args:
                         - |
@@ -158,8 +154,6 @@ def pytorchjob_manifest_op(
                   annotations:
                     sidecar.istio.io/inject: 'false'
                 spec:
-                  nodeSelector:
-                    kubernetes.io/hostname: <NODE-NAME>
                   containers:
                     - args:
                         - |
