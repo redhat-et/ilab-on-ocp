@@ -17,9 +17,9 @@ def git_clone_op(
         ["/bin/sh", "-c"],
         [
             f"git clone {repo_url} {taxonomy.path} && cd {taxonomy.path} && "
-            + f'if [ ! -z "{repo_branch}" ]; then '
+            + f'if [ -n "{repo_branch}" ]; then '
             + f"git fetch origin {repo_branch} && git checkout {repo_branch}; "
-            + f'elif [ ! -z "{repo_pr}" and {repo_pr} -gt 0 ]; then '
+            + f'elif [ -n "{repo_pr}" && {repo_pr} -gt 0 ]; then '
             + f"git fetch origin pull/{repo_pr}/head:{repo_pr} && git checkout {repo_pr}; fi "
         ],
     )
