@@ -47,23 +47,6 @@ def run_mt_bench_op(
 
     print(f"GPU Available: {gpu_available}, {gpu_name}")
 
-    # See note above about magic word "auto"
-    if max_workers == "auto":
-        try:
-            usable_cpu_count = len(os.sched_getaffinity(0)) // 2
-        except AttributeError:
-            usable_cpu_count = multiprocessing.cpu_count() // 2
-        max_workers = usable_cpu_count
-
-    # TODO: Using evaluator results in connection errors, need to determine why.
-    #       For now, using mt_bench_answers.generate_answers & mt_bench_judgment.generate_judgment
-    # evaluator = MTBenchEvaluator(
-    #    model_name=candidate_model_name,
-    #    judge_model_name=judge_model_name,
-    #    max_workers=max_workers,
-    #    merge_system_user_message=merge_system_user_message
-    # )
-
     if models_list is None and models_folder:
         models_list = os.listdir(models_folder)
 
@@ -81,28 +64,20 @@ def run_mt_bench_op(
         launch_local_vllm(model_path, gpu_count)
 
         # model ID is the model_path value in vLLM
-        print("Generating answers...")
-        mt_bench_answers.generate_answers(
+        evaluator = MTBenchEvaluator(
             model_name=model_path,
-            model_api_base=candidate_server_url,
+            judge_model_name=judge_model_name,
             output_dir="/tmp/eval_output",
-            max_workers=max_workers,
+            merge_system_user_message=merge_system_user_message,
         )
 
-        print("Judging answers...")
-        overall_score, qa_pairs, turn_scores, error_rate = (
-            mt_bench_judgment.generate_judgment(
-                model_name=model_path,
-                judge_model_name=judge_model_name,
-                model_api_base=judge_endpoint,
-                api_key=judge_api_key,
-                output_dir="/tmp/eval_output",
-                max_workers=max_workers,
-                merge_system_user_message=merge_system_user_message,
-            )
-        )
+        evaluator.gen_answers(candidate_server_url)
 
         stop_local_vllm()
+
+        overall_score, qa_pairs, turn_scores, error_rate = evaluator.judge_answers(
+            judge_endpoint, api_key=judge_api_key
+        )
 
         mt_bench_data = {
             "report_title": "SKILLS EVALUATION REPORT",

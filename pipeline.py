@@ -226,11 +226,6 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         run_mmlu_task.set_accelerator_type("nvidia.com/gpu")
         run_mmlu_task.set_accelerator_limit(1)
 
-        #    Run training on MMLU best-model
-        #    Run final eval on best scored mt_bench candidate
-        #    For now, running mt_bench on same output models as training phase 1
-        #    TODO: Another training phase, using the best-model from MMLU as base
-
         #### Train 2
 
         pytorchjob_manifest_2_task = pytorchjob_manifest_op(
@@ -276,11 +271,12 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
 
         ###
+
+        # MT_Bench Evaluation of models
+
         run_mt_bench_task = run_mt_bench_op(
-            # TODO: make a second models_list_task from the 2nd phase of training
             models_list=models_list_2_task.output,
             models_path_prefix="/output/model/hf_format",
-            max_workers=max_workers,
             merge_system_user_message=merge_system_user_message,
             device=device,
         )
@@ -291,7 +287,6 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             mount_path="/output",
         )
 
-        # For now run on same models from same training run as MMLU
         run_mt_bench_task.after(models_list_2_task)
 
         run_mt_bench_task.set_accelerator_type("nvidia.com/gpu")
@@ -345,7 +340,6 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         output_model_task = pvc_to_artifact_op(
             pvc_path="/output/data",
         )
-        # output_model_task.after(kubectl_wait_task)
         output_model_task.after(run_mt_bench_task)
         output_model_task.set_caching_options(False)
 
@@ -358,7 +352,6 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         output_data_task = pvc_to_model_op(
             pvc_path="/output/model",
         )
-        # output_data_task.after(kubectl_wait_task)
         output_data_task.after(run_mt_bench_task)
 
         mount_pvc(
