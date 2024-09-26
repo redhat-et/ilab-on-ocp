@@ -5,6 +5,26 @@ from kfp import dsl
 
 IMAGE = "quay.io/tcoufal/ilab-sdg:latest"
 
+@dsl.component(base_image=IMAGE)
+def preflight_check_op(
+    repo_branch: str,
+    repo_pr: Optional[int],
+):
+    from os import getenv
+
+    if (not repo_branch) and (repo_pr is None or repo_pr <= 0 ):
+        raise Exception("Both taxonomy repo branch and taxonomy pull request number cannot be empty")
+    api_key = getenv("api_key")
+    model = getenv("model")
+    endpoint = getenv("endpoint")
+
+    if not api_key:
+        raise Exception("Model Server Auth Key is missing in kfp-model-server secret")
+    if not model:
+        raise Exception("Model name is missing in kfp-model-server configMap")
+    if not endpoint:
+        raise Exception("Model Server endpoint URL is missing in kfp-model-server configMap")
+
 @dsl.container_component
 def git_clone_op(
     taxonomy: dsl.Output[dsl.Dataset],

@@ -4,7 +4,16 @@ from typing import Optional
 from kfp import dsl
 from utils.consts import PYTHON_IMAGE
 
-@dsl.component(base_image=PYTHON_IMAGE)
+IMAGE = "registry.access.redhat.com/ubi9/python-311:latest"
+
+@dsl.component(base_image=IMAGE)
+def preflight_check_op(
+    repo_branch: str,
+    repo_pr: Optional[int],
+):
+    pass
+
+@dsl.component(base_image=IMAGE)
 def git_clone_op(
     taxonomy: dsl.Output[dsl.Dataset],
     repo_branch: str,

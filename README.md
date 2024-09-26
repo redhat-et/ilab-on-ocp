@@ -42,3 +42,11 @@ To deploy a signed certificate in cluster follow [trusted cluster cert](signed-c
 This solution requires object storage to be in place either through S3 or using Noobaa.
 
 If you are using Noobaa apply the following [tuning paramters](noobaa/README.md)
+
+## How to run 🏃🏼
+
+1. Create K8s config map and K8s secret based on the target Model Server Info. Use [kfp-model-server.yaml](./sdg/kfp-model-server.yaml).
+
+2. Use pipeline.py file to generate the pipeline.yaml which will create RHOAI pipeline.
+
+3. Create a run in RHOAI by providing required input parameter values.
