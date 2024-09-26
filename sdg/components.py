@@ -44,7 +44,7 @@ def sdg_op(
     client = openai.OpenAI(base_url=endpoint, api_key=api_key)
 
     taxonomy_base = "main" if repo_branch or repo_pr > 0 else "empty"
-    
+
     print("Generating syntetic dataset for:")
     print()
     print(read_taxonomy(taxonomy.path, taxonomy_base))
