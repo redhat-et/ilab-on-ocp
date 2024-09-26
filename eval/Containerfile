@@ -1,18 +1,26 @@
 FROM nvcr.io/nvidia/cuda:12.4.1-devel-ubi9
 
-RUN dnf install -y python3.11 python3.11-devel git python3-pip make automake gcc gcc-c++ \
+ARG EVAL_VERSION=v0.2.1
+ARG VLLM_VERSION=2024.08.01
+
+RUN dnf install -y python3.11 python3.11-devel python3-pip \
+    git make automake gcc gcc-c++ \
+    libcudnn8 libcudnn8-devel \
     && dnf clean all \
     && rm -rf /var/cache/*dnf*
 
-# TODO update to instructlab/eval after https://github.com/instructlab/eval/pull/128 or equivalent merges
+# Required for mt_bench
+ENV LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib:/usr/local/cuda-12.4/compat"
+
+# Fix for 9.0a in 2.4 but vLLM pulls 2.3.1 - https://github.com/pytorch/pytorch/pull/123243
+ENV TORCH_CUDA_ARCH_LIST="5.0;8.0;8.6;8.7;8.9;9.0+PTX"
+
 RUN python3.11 -m ensurepip \
-    && python3.11 -m pip install --no-cache-dir git+https://github.com/instructlab/eval@main \
+    && python3.11 -m pip install vllm@git+https://github.com/opendatahub-io/vllm@${VLLM_VERSION} \
+    && python3.11 -m pip install --no-cache-dir git+https://github.com/instructlab/eval@${EVAL_VERSION} \
     && rm -rf /usr/bin/python3 && ln -s /usr/bin/python3.11 /usr/bin/python3
 
 ENV HF_HOME=/tmp
 ENV HOME=/tmp
-
-# required for mt_bench
-ENV LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib"
 
 ENTRYPOINT ["python3.11"]

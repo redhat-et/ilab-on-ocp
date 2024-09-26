@@ -2,11 +2,9 @@
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error
 from typing import List, NamedTuple
 from kfp.dsl import component, Input, Output, Artifact, Model, importer
-from utils.consts import PYTHON_IMAGE
+from utils.consts import PYTHON_IMAGE, EVAL_IMAGE
 
-EVAL_IMAGE = "quay.io/sallyom/instructlab-ocp:eval"
-
-@component(base_image=EVAL_IMAGE, packages_to_install=["vllm"])
+@component(base_image=EVAL_IMAGE)
 def run_mt_bench_op(
     models_path_prefix: str,
     models_list: List[str],

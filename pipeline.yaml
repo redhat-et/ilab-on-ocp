@@ -883,7 +883,7 @@ deploymentSpec:
           \ f, indent=4)\n    outputs = NamedTuple('outputs', best_model=str, best_score=float)\n\
           \    best_model = max(scores, key=scores.get)\n    best_score = scores[best_model]\n\
           \    return outputs(best_model=best_model, best_score=best_score)\n\n"
-        image: quay.io/sallyom/instructlab-ocp:eval
+        image: quay.io/sallyom/instructlab-ocp:eval-v0.1.2
         resources:
           accelerator:
             count: '1'
@@ -901,8 +901,7 @@ deploymentSpec:
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
           \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'vllm' && \"\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
           $0\" \"$@\"\n"
         - sh
         - -ec
@@ -1004,7 +1003,7 @@ deploymentSpec:
           \ = NamedTuple('outputs', best_model=str, best_score=float)\n    best_model\
           \ = max(scores, key=scores.get)\n    best_score = scores[best_model]\n \
           \   return outputs(best_model=best_model, best_score=best_score)\n\n"
-        image: quay.io/sallyom/instructlab-ocp:eval
+        image: quay.io/sallyom/instructlab-ocp:eval-v0.1.2
         resources:
           accelerator:
             count: '1'

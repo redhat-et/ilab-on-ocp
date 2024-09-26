@@ -2,9 +2,7 @@
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error
 from typing import List, NamedTuple
 from kfp.dsl import component, Input, Output, Artifact, Model, importer
-from utils.consts import PYTHON_IMAGE
-
-EVAL_IMAGE = "quay.io/sallyom/instructlab-ocp:eval"
+from utils.consts import PYTHON_IMAGE, EVAL_IMAGE
 
 @component(base_image=EVAL_IMAGE)
 def run_mmlu_op(
