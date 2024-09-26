@@ -189,6 +189,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         models_list_task = list_models_in_directory_op(
             models_folder="/output/model/model/hf_format",
         )
+        models_list_task.set_caching_options(False)
 
         models_list_task.after(kubectl_wait_task)
 
