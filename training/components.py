@@ -76,11 +76,13 @@ def pytorchjob_manifest_op(
     input_pvc_name: str,
     output_pvc_name: str,
     name_suffix: str,
+    path_to_model: str,
+    phase_name: str
 ) -> NamedTuple("outputs", manifest=str, name=str):
     import inspect
 
     Outputs = NamedTuple("outputs", manifest=str, name=str)
-    name = f"train-{name_suffix.rstrip('-sdg')}"
+    name = f"train-{phase_name}-{name_suffix.rstrip('-sdg')}"
 
     image = 'quay.io/shanand/test-train:0.0.4'
     nprocPerNode = 3
@@ -108,7 +110,7 @@ def pytorchjob_manifest_op(
                         - |
                           mkdir -p /output/model;
                           mkdir -p /output/data;
-                          python3.11 -u run_main_ds.py --model_path /input_model/model --ckpt_output_dir /output/model --data_output_dir /input_data/processed_data
+                          python3.11 -u run_main_ds.py --model_path {path_to_model} --ckpt_output_dir /output/model --data_output_dir /input_data/processed_data
                       command:
                         - /bin/bash
                         - '-c'
@@ -158,7 +160,7 @@ def pytorchjob_manifest_op(
                     - args:
                         - |
                           mkdir -p /tmp/model;
-                          python3.11 -u run_main_ds.py --model_path /input_model/model --ckpt_output_dir /tmp/model --data_output_dir /input_data/processed_data
+                          python3.11 -u run_main_ds.py --model_path {path_to_model} --ckpt_output_dir /tmp/model --data_output_dir /input_data/processed_data
                       command:
                         - /bin/bash
                         - '-c'
@@ -171,6 +173,9 @@ def pytorchjob_manifest_op(
                           readOnly: true
                         - mountPath: /input_model
                           name: model
+                          readOnly: true
+                        - mountPath: /output
+                          name: output
                           readOnly: true
                       env:
                         - name: NNODES
@@ -191,6 +196,9 @@ def pytorchjob_manifest_op(
                     - name: model
                       persistentVolumeClaim:
                         claimName: {model_pvc_name}
+                    - name: output
+                      persistentVolumeClaim:
+                        claimName: {output_pvc_name}
         """
     )
 

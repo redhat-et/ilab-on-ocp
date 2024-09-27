@@ -306,8 +306,24 @@ components:
       parameters:
         manifest:
           parameterType: STRING
+  comp-kubectl-apply-op-2:
+    executorLabel: exec-kubectl-apply-op-2
+    inputDefinitions:
+      parameters:
+        manifest:
+          parameterType: STRING
   comp-kubectl-wait-for-op:
     executorLabel: exec-kubectl-wait-for-op
+    inputDefinitions:
+      parameters:
+        condition:
+          parameterType: STRING
+        kind:
+          parameterType: STRING
+        name:
+          parameterType: STRING
+  comp-kubectl-wait-for-op-2:
+    executorLabel: exec-kubectl-wait-for-op-2
     inputDefinitions:
       parameters:
         condition:
@@ -383,6 +399,32 @@ components:
         name_suffix:
           parameterType: STRING
         output_pvc_name:
+          parameterType: STRING
+        path_to_model:
+          parameterType: STRING
+        phase_name:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        manifest:
+          parameterType: STRING
+        name:
+          parameterType: STRING
+  comp-pytorchjob-manifest-op-2:
+    executorLabel: exec-pytorchjob-manifest-op-2
+    inputDefinitions:
+      parameters:
+        input_pvc_name:
+          parameterType: STRING
+        model_pvc_name:
+          parameterType: STRING
+        name_suffix:
+          parameterType: STRING
+        output_pvc_name:
+          parameterType: STRING
+        path_to_model:
+          parameterType: STRING
+        phase_name:
           parameterType: STRING
     outputDefinitions:
       parameters:
@@ -616,7 +658,24 @@ deploymentSpec:
         - /bin/sh
         - -c
         image: registry.redhat.io/openshift4/ose-cli
+    exec-kubectl-apply-op-2:
+      container:
+        args:
+        - echo "{{$.inputs.parameters['manifest']}}" | kubectl apply -f -
+        command:
+        - /bin/sh
+        - -c
+        image: registry.redhat.io/openshift4/ose-cli
     exec-kubectl-wait-for-op:
+      container:
+        args:
+        - kubectl wait --for={{$.inputs.parameters['condition']}} {{$.inputs.parameters['kind']}}/{{$.inputs.parameters['name']}}
+          --timeout=2h
+        command:
+        - /bin/sh
+        - -c
+        image: registry.redhat.io/openshift4/ose-cli
+    exec-kubectl-wait-for-op-2:
       container:
         args:
         - kubectl wait --for={{$.inputs.parameters['condition']}} {{$.inputs.parameters['kind']}}/{{$.inputs.parameters['name']}}
@@ -760,9 +819,10 @@ deploymentSpec:
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef pytorchjob_manifest_op(\n    model_pvc_name: str,\n    input_pvc_name:\
-          \ str,\n    output_pvc_name: str,\n    name_suffix: str,\n) -> NamedTuple(\"\
-          outputs\", manifest=str, name=str):\n    import inspect\n\n    Outputs =\
-          \ NamedTuple(\"outputs\", manifest=str, name=str)\n    name = f\"train-{name_suffix.rstrip('-sdg')}\"\
+          \ str,\n    output_pvc_name: str,\n    name_suffix: str,\n    path_to_model:\
+          \ str,\n    phase_name: str\n) -> NamedTuple(\"outputs\", manifest=str,\
+          \ name=str):\n    import inspect\n\n    Outputs = NamedTuple(\"outputs\"\
+          , manifest=str, name=str)\n    name = f\"train-{phase_name}-{name_suffix.rstrip('-sdg')}\"\
           \n\n    image = 'quay.io/shanand/test-train:0.0.4'\n    nprocPerNode = 3\n\
           \    nnodes = 2\n\n    manifest = inspect.cleandoc(\n        f\"\"\"\n \
           \       apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n\
@@ -774,7 +834,7 @@ deploymentSpec:
           \              containers:\n                    - args:\n              \
           \          - |\n                          mkdir -p /output/model;\n    \
           \                      mkdir -p /output/data;\n                        \
-          \  python3.11 -u run_main_ds.py --model_path /input_model/model --ckpt_output_dir\
+          \  python3.11 -u run_main_ds.py --model_path {path_to_model} --ckpt_output_dir\
           \ /output/model --data_output_dir /input_data/processed_data\n         \
           \             command:\n                        - /bin/bash\n          \
           \              - '-c'\n                        - '--'\n                \
@@ -803,7 +863,7 @@ deploymentSpec:
           \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
           \                  containers:\n                    - args:\n          \
           \              - |\n                          mkdir -p /tmp/model;\n   \
-          \                       python3.11 -u run_main_ds.py --model_path /input_model/model\
+          \                       python3.11 -u run_main_ds.py --model_path {path_to_model}\
           \ --ckpt_output_dir /tmp/model --data_output_dir /input_data/processed_data\n\
           \                      command:\n                        - /bin/bash\n \
           \                       - '-c'\n                        - '--'\n       \
@@ -812,19 +872,119 @@ deploymentSpec:
           \ /input_data\n                          name: input-data\n            \
           \              readOnly: true\n                        - mountPath: /input_model\n\
           \                          name: model\n                          readOnly:\
-          \ true\n                      env:\n                        - name: NNODES\n\
-          \                          value: \\\\\"{nnodes}\\\\\"\n               \
-          \         - name: NPROC_PER_NODE\n                          value: \\\\\"\
-          {nprocPerNode}\\\\\"\n                      resources:\n               \
-          \         requests:\n                          cpu: 2\n                \
-          \          \"nvidia.com/gpu\": {nprocPerNode}\n                        limits:\n\
+          \ true\n                        - mountPath: /output\n                 \
+          \         name: output\n                          readOnly: true\n     \
+          \                 env:\n                        - name: NNODES\n       \
+          \                   value: \\\\\"{nnodes}\\\\\"\n                      \
+          \  - name: NPROC_PER_NODE\n                          value: \\\\\"{nprocPerNode}\\\
+          \\\"\n                      resources:\n                        requests:\n\
           \                          cpu: 2\n                          \"nvidia.com/gpu\"\
-          : {nprocPerNode}\n                  volumes:\n                    - name:\
-          \ input-data\n                      persistentVolumeClaim:\n           \
-          \             claimName: {input_pvc_name}\n                    - name: model\n\
-          \                      persistentVolumeClaim:\n                        claimName:\
-          \ {model_pvc_name}\n        \"\"\"\n    )\n\n    return Outputs(manifest,\
-          \ name)\n\n"
+          : {nprocPerNode}\n                        limits:\n                    \
+          \      cpu: 2\n                          \"nvidia.com/gpu\": {nprocPerNode}\n\
+          \                  volumes:\n                    - name: input-data\n  \
+          \                    persistentVolumeClaim:\n                        claimName:\
+          \ {input_pvc_name}\n                    - name: model\n                \
+          \      persistentVolumeClaim:\n                        claimName: {model_pvc_name}\n\
+          \                    - name: output\n                      persistentVolumeClaim:\n\
+          \                        claimName: {output_pvc_name}\n        \"\"\"\n\
+          \    )\n\n    return Outputs(manifest, name)\n\n"
+        image: registry.access.redhat.com/ubi9/python-311:latest
+    exec-pytorchjob-manifest-op-2:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - pytorchjob_manifest_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef pytorchjob_manifest_op(\n    model_pvc_name: str,\n    input_pvc_name:\
+          \ str,\n    output_pvc_name: str,\n    name_suffix: str,\n    path_to_model:\
+          \ str,\n    phase_name: str\n) -> NamedTuple(\"outputs\", manifest=str,\
+          \ name=str):\n    import inspect\n\n    Outputs = NamedTuple(\"outputs\"\
+          , manifest=str, name=str)\n    name = f\"train-{phase_name}-{name_suffix.rstrip('-sdg')}\"\
+          \n\n    image = 'quay.io/shanand/test-train:0.0.4'\n    nprocPerNode = 3\n\
+          \    nnodes = 2\n\n    manifest = inspect.cleandoc(\n        f\"\"\"\n \
+          \       apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n\
+          \          name: {name}\n        spec:\n          nprocPerNode: \\\\\"{nprocPerNode}\\\
+          \\\"\n          pytorchReplicaSpecs:\n            Master:\n            \
+          \  replicas: 1\n              restartPolicy: OnFailure\n              template:\n\
+          \                metadata:\n                  annotations:\n           \
+          \         sidecar.istio.io/inject: 'false'\n                spec:\n    \
+          \              containers:\n                    - args:\n              \
+          \          - |\n                          mkdir -p /output/model;\n    \
+          \                      mkdir -p /output/data;\n                        \
+          \  python3.11 -u run_main_ds.py --model_path {path_to_model} --ckpt_output_dir\
+          \ /output/model --data_output_dir /input_data/processed_data\n         \
+          \             command:\n                        - /bin/bash\n          \
+          \              - '-c'\n                        - '--'\n                \
+          \      image: {image}\n                      name: pytorch\n           \
+          \           volumeMounts:\n                        - mountPath: /input_data\n\
+          \                          name: input-data\n                          readOnly:\
+          \ true\n                        - mountPath: /input_model\n            \
+          \              name: model\n                          readOnly: true\n \
+          \                       - mountPath: /output\n                         \
+          \ name: output\n                      env:\n                        - name:\
+          \ NNODES\n                          value: \\\\\"{nnodes}\\\\\"\n      \
+          \                  - name: NPROC_PER_NODE\n                          value:\
+          \ \\\\\"{nprocPerNode}\\\\\"\n                      resources:\n       \
+          \                 requests:\n                          cpu: 2\n        \
+          \                  \"nvidia.com/gpu\": {nprocPerNode}\n                \
+          \        limits:\n                          cpu: 2\n                   \
+          \       \"nvidia.com/gpu\": {nprocPerNode}\n                  volumes:\n\
+          \                    - name: input-data\n                      persistentVolumeClaim:\n\
+          \                        claimName: {input_pvc_name}\n                 \
+          \   - name: model\n                      persistentVolumeClaim:\n      \
+          \                  claimName: {model_pvc_name}\n                    - name:\
+          \ output\n                      persistentVolumeClaim:\n               \
+          \         claimName: {output_pvc_name}\n            Worker:\n          \
+          \    replicas: {nnodes-1}\n              restartPolicy: OnFailure\n    \
+          \          template:\n                metadata:\n                  annotations:\n\
+          \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
+          \                  containers:\n                    - args:\n          \
+          \              - |\n                          mkdir -p /tmp/model;\n   \
+          \                       python3.11 -u run_main_ds.py --model_path {path_to_model}\
+          \ --ckpt_output_dir /tmp/model --data_output_dir /input_data/processed_data\n\
+          \                      command:\n                        - /bin/bash\n \
+          \                       - '-c'\n                        - '--'\n       \
+          \               image: {image}\n                      name: pytorch\n  \
+          \                    volumeMounts:\n                        - mountPath:\
+          \ /input_data\n                          name: input-data\n            \
+          \              readOnly: true\n                        - mountPath: /input_model\n\
+          \                          name: model\n                          readOnly:\
+          \ true\n                        - mountPath: /output\n                 \
+          \         name: output\n                          readOnly: true\n     \
+          \                 env:\n                        - name: NNODES\n       \
+          \                   value: \\\\\"{nnodes}\\\\\"\n                      \
+          \  - name: NPROC_PER_NODE\n                          value: \\\\\"{nprocPerNode}\\\
+          \\\"\n                      resources:\n                        requests:\n\
+          \                          cpu: 2\n                          \"nvidia.com/gpu\"\
+          : {nprocPerNode}\n                        limits:\n                    \
+          \      cpu: 2\n                          \"nvidia.com/gpu\": {nprocPerNode}\n\
+          \                  volumes:\n                    - name: input-data\n  \
+          \                    persistentVolumeClaim:\n                        claimName:\
+          \ {input_pvc_name}\n                    - name: model\n                \
+          \      persistentVolumeClaim:\n                        claimName: {model_pvc_name}\n\
+          \                    - name: output\n                      persistentVolumeClaim:\n\
+          \                        claimName: {output_pvc_name}\n        \"\"\"\n\
+          \    )\n\n    return Outputs(manifest, name)\n\n"
         image: registry.access.redhat.com/ubi9/python-311:latest
     exec-run-mmlu-op:
       container:
@@ -1112,7 +1272,7 @@ root:
                 constant: -model-cache
             size:
               runtimeValue:
-                constant: 50Gi
+                constant: 100Gi
             storage_class_name:
               componentInputParameter: storage_class_name
         taskInfo:
@@ -1154,7 +1314,7 @@ root:
                 constant: -output
             size:
               runtimeValue:
-                constant: 50Gi
+                constant: 100Gi
             storage_class_name:
               componentInputParameter: storage_class_name
         taskInfo:
@@ -1185,14 +1345,14 @@ root:
         componentRef:
           name: comp-deletepvc
         dependentTasks:
-        - createpvc-2
-        - kubectl-wait-for-op
+        - createpvc-3
+        - pvc-to-model-op
         inputs:
           parameters:
             pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
-                producerTask: createpvc-2
+                producerTask: createpvc-3
         taskInfo:
           name: deletepvc
       deletepvc-2:
@@ -1201,14 +1361,14 @@ root:
         componentRef:
           name: comp-deletepvc-2
         dependentTasks:
-        - createpvc
-        - kubectl-wait-for-op
+        - createpvc-2
+        - pvc-to-model-op
         inputs:
           parameters:
             pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
-                producerTask: createpvc
+                producerTask: createpvc-2
         taskInfo:
           name: deletepvc-2
       deletepvc-3:
@@ -1217,17 +1377,14 @@ root:
         componentRef:
           name: comp-deletepvc-3
         dependentTasks:
-        - createpvc-3
-        - pvc-to-artifact-op
+        - createpvc
         - pvc-to-model-op
-        - run-mmlu-op
-        - run-mt-bench-op
         inputs:
           parameters:
             pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
-                producerTask: createpvc-3
+                producerTask: createpvc
         taskInfo:
           name: deletepvc-3
       git-clone-op:
@@ -1272,6 +1429,22 @@ root:
                 producerTask: pytorchjob-manifest-op
         taskInfo:
           name: kubectl-apply-op
+      kubectl-apply-op-2:
+        cachingOptions: {}
+        componentRef:
+          name: comp-kubectl-apply-op-2
+        dependentTasks:
+        - artifact-to-pvc-op
+        - artifact-to-pvc-op-2
+        - pytorchjob-manifest-op-2
+        inputs:
+          parameters:
+            manifest:
+              taskOutputParameter:
+                outputParameterKey: manifest
+                producerTask: pytorchjob-manifest-op-2
+        taskInfo:
+          name: kubectl-apply-op-2
       kubectl-wait-for-op:
         cachingOptions: {}
         componentRef:
@@ -1293,6 +1466,27 @@ root:
                 producerTask: pytorchjob-manifest-op
         taskInfo:
           name: kubectl-wait-for-op
+      kubectl-wait-for-op-2:
+        cachingOptions: {}
+        componentRef:
+          name: comp-kubectl-wait-for-op-2
+        dependentTasks:
+        - kubectl-apply-op-2
+        - pytorchjob-manifest-op-2
+        inputs:
+          parameters:
+            condition:
+              runtimeValue:
+                constant: condition=Succeeded
+            kind:
+              runtimeValue:
+                constant: pytorchjobs
+            name:
+              taskOutputParameter:
+                outputParameterKey: name
+                producerTask: pytorchjob-manifest-op-2
+        taskInfo:
+          name: kubectl-wait-for-op-2
       list-models-in-directory-op:
         cachingOptions: {}
         componentRef:
@@ -1308,13 +1502,12 @@ root:
         taskInfo:
           name: list-models-in-directory-op
       list-models-in-directory-op-2:
-        cachingOptions:
-          enableCache: true
+        cachingOptions: {}
         componentRef:
           name: comp-list-models-in-directory-op-2
         dependentTasks:
         - createpvc-3
-        - load-mmlu-results-op
+        - kubectl-wait-for-op-2
         inputs:
           parameters:
             models_folder:
@@ -1392,11 +1585,52 @@ root:
               taskOutputParameter:
                 outputParameterKey: name
                 producerTask: createpvc-3
+            path_to_model:
+              runtimeValue:
+                constant: /input_model/model
+            phase_name:
+              runtimeValue:
+                constant: first
         taskInfo:
           name: pytorchjob-manifest-op
+      pytorchjob-manifest-op-2:
+        cachingOptions: {}
+        componentRef:
+          name: comp-pytorchjob-manifest-op-2
+        dependentTasks:
+        - createpvc
+        - createpvc-2
+        - createpvc-3
+        - run-mmlu-op
+        inputs:
+          parameters:
+            input_pvc_name:
+              taskOutputParameter:
+                outputParameterKey: name
+                producerTask: createpvc-2
+            model_pvc_name:
+              taskOutputParameter:
+                outputParameterKey: name
+                producerTask: createpvc
+            name_suffix:
+              taskOutputParameter:
+                outputParameterKey: name
+                producerTask: createpvc-2
+            output_pvc_name:
+              taskOutputParameter:
+                outputParameterKey: name
+                producerTask: createpvc-3
+            path_to_model:
+              taskOutputParameter:
+                outputParameterKey: best_model
+                producerTask: run-mmlu-op
+            phase_name:
+              runtimeValue:
+                constant: second
+        taskInfo:
+          name: pytorchjob-manifest-op-2
       run-mmlu-op:
-        cachingOptions:
-          enableCache: true
+        cachingOptions: {}
         componentRef:
           name: comp-run-mmlu-op
         dependentTasks:
@@ -1420,12 +1654,11 @@ root:
                 producerTask: list-models-in-directory-op
             models_path_prefix:
               runtimeValue:
-                constant: /output/model/model/hf_format
+                constant: /output/model/hf_format
         taskInfo:
           name: run-mmlu-op
       run-mt-bench-op:
-        cachingOptions:
-          enableCache: true
+        cachingOptions: {}
         componentRef:
           name: comp-run-mt-bench-op
         dependentTasks:
@@ -1445,7 +1678,7 @@ root:
                 producerTask: list-models-in-directory-op-2
             models_path_prefix:
               runtimeValue:
-                constant: /output/model/model/hf_format
+                constant: /output/model/hf_format
         taskInfo:
           name: run-mt-bench-op
       sdg-op:
@@ -1566,7 +1799,7 @@ platforms:
               producerTask: createpvc-3
         exec-run-mmlu-op:
           pvcMount:
-          - mountPath: /output/model
+          - mountPath: /output
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-3
@@ -1579,7 +1812,7 @@ platforms:
             - configMapKey: model
               envVar: JUDGE_NAME
           pvcMount:
-          - mountPath: /output/model
+          - mountPath: /output
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-3
