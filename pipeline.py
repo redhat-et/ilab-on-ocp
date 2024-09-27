@@ -103,7 +103,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         model_pvc_task = CreatePVC(
             pvc_name_suffix="-model-cache",
             access_modes=["ReadWriteMany"],
-            size="50Gi",
+            size="100Gi",
             storage_class_name=storage_class_name,
         )
         model_to_artifact = huggingface_importer_op(repo_name=base_model)
@@ -138,7 +138,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         output_pvc_task = CreatePVC(
             pvc_name_suffix="-output",
             access_modes=["ReadWriteMany"],
-            size="50Gi",
+            size="100Gi",
             storage_class_name=storage_class_name,
         )
 
@@ -149,6 +149,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             input_pvc_name=sdg_input_pvc_task.output,
             name_suffix=sdg_input_pvc_task.output,
             output_pvc_name=output_pvc_task.output,
+            path_to_model="/input_model/model",
+            phase_name="first"
         )
         pytorchjob_manifest_task.set_caching_options(False)
 
@@ -166,12 +168,6 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         kubectl_wait_task.after(kubectl_apply_task)
         kubectl_wait_task.set_caching_options(False)
 
-        sdg_pvc_delete_task = DeletePVC(pvc_name=sdg_input_pvc_task.output)
-        sdg_pvc_delete_task.after(kubectl_wait_task)
-
-        model_pvc_delete_task = DeletePVC(pvc_name=model_pvc_task.output)
-        model_pvc_delete_task.after(kubectl_wait_task)
-
         # MMLU Evaluation of models
 
         models_list_task = list_models_in_directory_op(
@@ -187,7 +183,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
         run_mmlu_task = run_mmlu_op(
             models_list=models_list_task.output,
-            models_path_prefix = "/output/model/model/hf_format",
+            models_path_prefix = "/output/model/hf_format",
             mmlu_tasks_list=mmlu_tasks_list,
             model_dtype=model_dtype,
             few_shots=few_shots,
@@ -195,8 +191,10 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             device=device,
         )
 
+        run_mmlu_task.set_caching_options(False)
+
         mount_pvc(
-            task=run_mmlu_task, pvc_name=output_pvc_task.output, mount_path="/output/model"
+            task=run_mmlu_task, pvc_name=output_pvc_task.output, mount_path="/output"
         )
 
         load_mmlu_results_task = load_mmlu_results_op(
@@ -211,36 +209,69 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         #    For now, running mt_bench on same output models as training phase 1
         #    TODO: Another training phase, using the best-model from MMLU as base
 
-        #    This is currently a duplicate of the above models_list_task,
-        #    it's a placeholder for the listing of models from training phase 2
-        phase_two_models_list_task = list_models_in_directory_op(
+    #### Train 2
+
+    
+
+        pytorchjob_manifest_2_task = pytorchjob_manifest_op(
+            model_pvc_name=model_pvc_task.output,
+            input_pvc_name=sdg_input_pvc_task.output,
+            name_suffix=sdg_input_pvc_task.output,
+            output_pvc_name=output_pvc_task.output,
+            path_to_model= run_mmlu_task.outputs["best_model"],
+            phase_name="second"
+        )
+
+        pytorchjob_manifest_2_task.set_caching_options(False)
+
+        kubectl_apply_2_task = kubectl_apply_op(
+            manifest=pytorchjob_manifest_2_task.outputs["manifest"]
+        )
+        kubectl_apply_2_task.after(sdg_to_pvc_task, model_to_pvc_task)
+        kubectl_apply_2_task.set_caching_options(False)
+
+        kubectl_wait_2_task = kubectl_wait_for_op(
+            condition="condition=Succeeded",
+            kind="pytorchjobs",
+            name=pytorchjob_manifest_2_task.outputs["name"],
+        )
+        kubectl_wait_2_task.after(kubectl_apply_2_task)
+        kubectl_wait_2_task.set_caching_options(False)
+
+
+    ###
+
+        models_list_2_task = list_models_in_directory_op(
             models_folder="/output/model/model/hf_format",
         )
+        models_list_2_task.set_caching_options(False)
 
-        phase_two_models_list_task.after(load_mmlu_results_task)
+        models_list_2_task.after(kubectl_wait_2_task)
 
         mount_pvc(
-            task=phase_two_models_list_task, pvc_name=output_pvc_task.output, mount_path="/output/model"
+            task=models_list_2_task, pvc_name=output_pvc_task.output, mount_path="/output/model"
         )
 
+    ###
         run_mt_bench_task = run_mt_bench_op(
             # TODO: make a second models_list_task from the 2nd phase of training
-            models_list=phase_two_models_list_task.output,
-            models_path_prefix = "/output/model/model/hf_format",
+            models_list=models_list_2_task.output,
+            models_path_prefix = "/output/model/hf_format",
             max_workers = max_workers,
             merge_system_user_message = merge_system_user_message,
             device = device,
         )
 
         mount_pvc(
-            task=run_mt_bench_task, pvc_name=output_pvc_task.output, mount_path="/output/model"
+            task=run_mt_bench_task, pvc_name=output_pvc_task.output, mount_path="/output"
         )
 
         # For now run on same models from same training run as MMLU
-        run_mt_bench_task.after(phase_two_models_list_task)
+        run_mt_bench_task.after(models_list_2_task)
 
         run_mt_bench_task.set_accelerator_type('nvidia.com/gpu')
         run_mt_bench_task.set_accelerator_limit(1)
+        run_mt_bench_task.set_caching_options(False)
 
 
         use_config_map_as_env(
@@ -272,9 +303,18 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         mount_pvc(
             task=output_data_task, pvc_name=output_pvc_task.output, mount_path="/output/model"
         )
+        
         output_pvc_delete_task = DeletePVC(pvc_name=output_pvc_task.output)
-        output_pvc_delete_task.after(output_model_task, output_data_task, run_mmlu_task, run_mt_bench_task)
+        output_pvc_delete_task.after(output_data_task)
 
+
+        sdg_pvc_delete_task = DeletePVC(pvc_name=sdg_input_pvc_task.output)
+        sdg_pvc_delete_task.after(output_data_task)
+
+        model_pvc_delete_task = DeletePVC(pvc_name=model_pvc_task.output)
+        model_pvc_delete_task.after(output_data_task)
+
+        
         return
 
     return pipeline
