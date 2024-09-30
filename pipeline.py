@@ -67,6 +67,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
     from utils import list_models_in_directory_op
     from eval.mmlu import run_mmlu_op, load_mmlu_results_op
     from eval.mt_bench import run_mt_bench_op, load_mt_bench_results_op
+    from eval.final import run_mmlu_branch_mt_bench_branch_op
 
     @dsl.pipeline(
         display_name="InstructLab",
@@ -145,6 +146,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         sdg_to_pvc_task = artifact_to_pvc_op(
             data=data_processing_task.outputs["processed_data"], pvc_path="/data"
         )
+        # Why do we need this??
+        sdg_to_pvc_task.after(sdg_task)
         sdg_to_pvc_task.set_caching_options(False)
         mount_pvc(
             task=sdg_to_pvc_task, pvc_name=sdg_input_pvc_task.output, mount_path="/data"
@@ -302,6 +305,40 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
 
         use_secret_as_env(run_mt_bench_task, JUDGE_SECRET, {"api_key": "JUDGE_API_KEY"})
+
+        final_eval_task = run_mmlu_branch_mt_bench_branch_op(
+            base_model="/model",
+            candidate_model=run_mt_bench_task.outputs["best_model"],
+            taxonomy=git_clone_task.outputs["taxonomy"],
+            tasks=sdg_task.outputs["sdg"],
+            # TODO: we need both candidate_branch and base_branch
+            base_branch=repo_branch,
+            candidate_branch=repo_branch,
+            merge_system_user_message=merge_system_user_message,
+            model_dtype=model_dtype,
+            few_shots=few_shots,
+            batch_size=batch_size,
+            device=device,
+        )
+
+        mount_pvc(
+            task=final_eval_task, pvc_name=output_pvc_task.output, mount_path="/output"
+        )
+
+        mount_pvc(
+            task=final_eval_task, pvc_name=model_pvc_task.output, mount_path="/model"
+        )
+
+        use_config_map_as_env(
+            final_eval_task,
+            JUDGE_CONFIG_MAP,
+            dict(endpoint="JUDGE_ENDPOINT", model="JUDGE_NAME"),
+        )
+
+        use_secret_as_env(final_eval_task, JUDGE_SECRET, {"api_key": "JUDGE_API_KEY"})
+
+        final_eval_task.set_accelerator_type("nvidia.com/gpu")
+        final_eval_task.set_accelerator_limit(1)
 
         # Technically `output_model_task` and `output_data_task` can happen before evaluation,
         # however the PVC can only be mounted once, so, setting these to _after_ so the eval proceeds.

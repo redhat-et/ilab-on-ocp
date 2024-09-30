@@ -6,7 +6,7 @@ RUN dnf install -y python3.11 python3.11-devel git python3-pip make automake gcc
 
 # TODO update to instructlab/eval after https://github.com/instructlab/eval/pull/128 or equivalent merges
 RUN python3.11 -m ensurepip \
-    && python3.11 -m pip install --no-cache-dir git+https://github.com/instructlab/eval@main \
+    && python3.11 -m pip install --no-cache-dir git+https://github.com/instructlab/eval@v0.3.1 \
     && rm -rf /usr/bin/python3 && ln -s /usr/bin/python3.11 /usr/bin/python3
 
 ENV HF_HOME=/tmp
@@ -14,5 +14,6 @@ ENV HOME=/tmp
 
 # required for mt_bench
 ENV LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib"
+RUN python3.11 -m pip install --no-cache-dir tenacity lm-eval[api]
 
 ENTRYPOINT ["python3.11"]
