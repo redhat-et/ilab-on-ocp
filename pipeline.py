@@ -79,7 +79,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
         # SDG stage
         git_clone_task = git_clone_op(
-            repo_branch=repo_branch, repo_pr=repo_pr, repo_url=repo_url
+            repo_branch=repo_branch, repo_pr=repo_pr if repo_pr and repo_pr > 0 else None, repo_url=repo_url
         )
 
         sdg_task = sdg_op(
