@@ -1,6 +1,6 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error
-from typing import List, NamedTuple
+from typing import List, NamedTuple, Optional
 from kfp.dsl import component, Input, Output, Artifact, Model, importer
 from utils.consts import PYTHON_IMAGE
 
@@ -10,13 +10,14 @@ EVAL_IMAGE = "quay.io/sallyom/instructlab-ocp:eval"
 @component(base_image=EVAL_IMAGE, packages_to_install=["vllm"])
 def run_mt_bench_op(
     models_path_prefix: str,
-    models_list: List[str],
     mt_bench_output: Output[Artifact],
     merge_system_user_message: bool,
     # generate_answers,judgment uses a magic word for its mt_bench evaluator  - `auto`
     # with `auto`, number of gpus allocated for serving is calculated based on environment
     # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
     max_workers: str = "auto",
+    models_list: List[str] = None,
+    models_folder: Optional[str] = None,
     device: str = None,
 ) -> NamedTuple("outputs", best_model=str, best_score=float):
     def launch_vllm_server_background(
@@ -137,6 +138,9 @@ def run_mt_bench_op(
     #    max_workers=max_workers,
     #    merge_system_user_message=merge_system_user_message
     # )
+
+    if models_list is None and models_folder:
+        models_list = os.listdir(models_folder)
 
     judge_api_key = os.getenv("JUDGE_API_KEY", "")
     judge_model_name = os.getenv("JUDGE_NAME")

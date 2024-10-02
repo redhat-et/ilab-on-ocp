@@ -1,6 +1,6 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error
-from typing import List, NamedTuple
+from typing import List, NamedTuple, Optional
 from kfp.dsl import component, Input, Output, Artifact, Model, importer
 from utils.consts import PYTHON_IMAGE
 
@@ -15,8 +15,9 @@ def run_mmlu_op(
     model_dtype: str,
     few_shots: int,
     batch_size: int,
-    device: str,
-    models_list: List[str],
+    device: str = None,
+    models_list: List[str] = None,
+    models_folder: Optional[str] = None,
 ) -> NamedTuple("outputs", best_model=str, best_score=float):
     import json
     import os
@@ -24,6 +25,9 @@ def run_mmlu_op(
     from instructlab.eval.mmlu import MMLUEvaluator, MMLU_TASKS
 
     mmlu_tasks = mmlu_tasks_list.split(",") if mmlu_tasks_list else MMLU_TASKS
+
+    if models_list is None and models_folder:
+        models_list = os.listdir(models_folder)
 
     # Device setup and debug
     gpu_available = torch.cuda.is_available()

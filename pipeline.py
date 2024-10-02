@@ -2,6 +2,7 @@
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error,no-member
 from typing import List, Literal, Optional
 import click
+import typing
 from kfp import dsl, compiler
 from kfp.kubernetes import (
     use_config_map_as_env,
@@ -16,19 +17,31 @@ K8S_NAME = "kfp-model-server"
 JUDGE_CONFIG_MAP = "kfp-model-server"
 JUDGE_SECRET = "judge-server"
 MOCKED_STAGES = ["sdg", "train", "eval"]
+PIPELINE_FILE_NAME = "pipeline.yaml"
+STANDALONE_TEMPLATE_FILE_NAME = "standalone.tpl"
+GENERATED_STANDALONE_FILE_NAME = "standalone.py"
+DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
+KFP_MODEL_SERVER_CM = "sdg/kfp-model-server.yaml"
+BASE_MODE = "ibm-granite/granite-7b-base"
+MMLU_TASKS_LIST = "mmlu_anatomy,mmlu_astronomy"
+MODEL_DTYPE = "bfloat16"
+FEW_SHOTS = 5
+BATCH_SIZE = 8
+MAX_WORKERS = "auto"
+MERGE_SYSTEM_USER_MESSAGE = False
 
 
 def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
     """Wrapper for KFP pipeline, which allows for mocking individual stages."""
 
     # Imports for SDG stage
-    if "sdg" in mock:
+    if mock is not None and "sdg" in mock:
         from sdg.faked import git_clone_op, sdg_op
     else:
         from sdg import git_clone_op, sdg_op
 
     # Imports for Training stage
-    if "train" in mock:
+    if mock is not None and "train" in mock:
         from training.faked import pytorchjob_manifest_op
         from utils.faked import (
             kubectl_apply_op,
@@ -66,14 +79,14 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         repo_branch: Optional[str] = None,
         repo_pr: Optional[int] = None,
         storage_class_name: str = "nfs-csi",
-        base_model: str = "ibm-granite/granite-7b-base",
+        base_model: str = BASE_MODE,
         # minimal subset of MMLU_TASKS
-        mmlu_tasks_list: str = "mmlu_anatomy,mmlu_astronomy",
-        model_dtype: str = "bfloat16",
-        few_shots: int = 5,
-        batch_size: int = 8,
-        max_workers: str = "auto",
-        merge_system_user_message: bool = False,
+        mmlu_tasks_list: str = MMLU_TASKS_LIST,
+        model_dtype: str = MODEL_DTYPE,
+        few_shots: int = FEW_SHOTS,
+        batch_size: int = BATCH_SIZE,
+        max_workers: str = MAX_WORKERS,
+        merge_system_user_message: bool = MERGE_SYSTEM_USER_MESSAGE,
         device: str = None,
     ):
         # SDG stage
@@ -325,7 +338,6 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
     return pipeline
 
 
-@click.command()
 @click.option(
     "--mock",
     type=click.Choice(MOCKED_STAGES, case_sensitive=False),
@@ -333,12 +345,348 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
     multiple=True,
     default=[],
 )
-def cli(mock):
+@click.group(invoke_without_command=True)
+@click.pass_context
+def cli(ctx: click.Context, mock):
+    if ctx.invoked_subcommand is None:
+        generate_pipeline(mock)
+
+
+def generate_pipeline(mock):
     p = pipeline_wrapper(mock)
 
     with click.progressbar(length=1, label="Generating pipeline") as bar:
-        compiler.Compiler().compile(p, "pipeline.yaml")
+        compiler.Compiler().compile(p, PIPELINE_FILE_NAME)
         bar.update(1)
+
+
+@cli.command(name="gen-standalone")
+def gen_standalone():
+    """
+    Generates a standalone script that mimics the behavior of the pipeline.
+
+    This function should be used when Kubeflow Pipelines are not available. It will generate a
+    script that replicates the pipeline's functionality.
+
+    Example usage: ``` $ python pipeline.py gen-standalone ```
+    """
+    from jinja2 import Template
+    from jinja2.exceptions import TemplateSyntaxError
+    import yaml
+    from os import path
+
+    click.echo("Generating pipeline YAML file...")
+    try:
+        generate_pipeline(mock=None)
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise click.exceptions.Exit(1)
+
+    # Load the YAML pipeline file which contains multiple documents
+    with open(PIPELINE_FILE_NAME, "r", encoding="utf-8") as file:
+        try:
+            documents = list(yaml.safe_load_all(file))
+        except ValueError as e:
+            click.echo(f"Error: {e}", err=True)
+            raise click.exceptions.Exit(1)
+
+    # The list of executor names to extract details from to generate the standalone script
+    executors = {
+        "exec-data-processing-op": {
+            "inputs": {
+                "parameterValues": {
+                    "max_seq_len": 4096,
+                    "max_batch_len": 20000,
+                },
+                "artifacts": {
+                    "sdg": {
+                        "artifacts": [
+                            {
+                                "name": "sdg",
+                                "uri": "/input_data/generated",  # TODO: do not hardcode!!
+                            }
+                        ]
+                    },
+                    "model": {
+                        "artifacts": [
+                            {
+                                "name": "model",
+                                "uri": "/input_model",  # TODO: do not hardcode!!
+                            }
+                        ]
+                    },
+                },
+            },
+            "outputs": {
+                "outputFile": "/tmp/kfp_outputs/output_metadata.json",
+                "artifacts": {
+                    "processed_data": {
+                        "artifacts": [
+                            {
+                                "name": "processed_data",
+                                "uri": "/input_data/processed_data",  # TODO: do not hardcode!!
+                            }
+                        ]
+                    },
+                },
+            },
+        },
+        "exec-sdg-op": {
+            "inputs": {
+                "parameterValues": {
+                    "num_instructions_to_generate": 2,
+                    "repo_branch": "",
+                    "repo_pr": "",
+                },
+                "artifacts": {
+                    "taxonomy": {
+                        "artifacts": [
+                            {
+                                "name": "taxonomy",
+                                "uri": "/input_data/taxonomy",  # TODO: do not hardcode!!
+                            }
+                        ]
+                    }
+                },
+            },
+            "outputs": {
+                "outputFile": "/tmp/kfp_outputs/output_metadata.json",
+                "artifacts": {
+                    "sdg": {
+                        "artifacts": [
+                            {
+                                "name": "sdg",
+                                "uri": "/input_data/generated",  # TODO: do not hardcode!!
+                            }
+                        ]
+                    },
+                },
+            },
+        },
+        "exec-git-clone-op": {},
+        "exec-huggingface-importer-op": {
+            "inputs": {
+                "parameterValues": {
+                    "repo_name": BASE_MODE,
+                },
+            },
+            "outputs": {
+                "outputFile": "/tmp/kfp_outputs/output_metadata.json",
+                "artifacts": {
+                    "model": {
+                        "artifacts": [
+                            {
+                                "name": "model",
+                                "uri": "/input_model",  # TODO: do not hardcode!!
+                            }
+                        ]
+                    },
+                },
+            },
+        },
+        "exec-run-mmlu-op": {
+            "inputs": {
+                "parameterValues": {
+                    "models_path_prefix": "/output/model/hf_format",
+                    "mmlu_tasks_list": MMLU_TASKS_LIST,
+                    "model_dtype": MODEL_DTYPE,
+                    "few_shots": FEW_SHOTS,
+                    "batch_size": BATCH_SIZE,
+                    "models_folder": "/output/model/hf_format",
+                },
+            },
+            "outputs": {
+                "outputFile": "/tmp/kfp_outputs/output_metadata.json",
+                "artifacts": {
+                    "mmlu_output": {
+                        "artifacts": [
+                            {
+                                "name": "mmlu_output",
+                                "uri": "/output/mmlu-results.txt",  # TODO: do not hardcode!!
+                            }
+                        ]
+                    },
+                },
+            },
+        },
+        "exec-run-mt-bench-op": {
+            "inputs": {
+                "parameterValues": {
+                    "models_path_prefix": "/output/model/hf_format",
+                    "merge_system_user_message": MERGE_SYSTEM_USER_MESSAGE,
+                    "max_workers": MAX_WORKERS,
+                },
+            },
+            "outputs": {
+                "outputFile": "/tmp/kfp_outputs/output_metadata.json",
+                "artifacts": {
+                    "mt_bench_output": {
+                        "artifacts": [
+                            {
+                                "name": "mt_bench_output",
+                                "uri": "/output/mt-bench-results.txt",  # TODO: do not hardcode!!
+                            }
+                        ]
+                    },
+                },
+            },
+        },
+    }
+
+    details = {}
+    for executor_name, executor_input_param in executors.items():
+        try:
+            executor_name_camelize = executor_name.replace("-", "_")
+            # replace "-" with "_" in executor_name to match the key in the details dictionary
+            executor_details = get_executor_details(documents, executor_name)
+            if executor_details is not None:
+                details[executor_name_camelize + "_image"] = executor_details["image"]
+                details[executor_name_camelize + "_command"] = executor_details[
+                    "command"
+                ]
+                details[executor_name_camelize + "_args"] = remove_template_markers(
+                    executor_details["args"],
+                    executor_name_camelize,
+                    executor_input_param,
+                )
+        except ValueError as e:
+            click.echo(f"Error: {e}", err=True)
+            raise click.exceptions.Exit(1)
+
+    # Populate the KFP model server ConfigMap
+    with open(
+        path.join(path.dirname(__file__), KFP_MODEL_SERVER_CM), encoding="utf-8"
+    ) as f:
+        details["kfp_model_server_cm"] = f.read()
+
+    # Open the template file
+    try:
+        with open(
+            STANDALONE_TEMPLATE_FILE_NAME, "r", encoding="utf-8"
+        ) as template_file:
+            template_content = template_file.read()
+    except FileNotFoundError as e:
+        click.echo(
+            f"Error: The template file '{STANDALONE_TEMPLATE_FILE_NAME}' was not found.",
+            err=True,
+        )
+        raise click.exceptions.Exit(1) from e
+    except IOError as e:
+        click.echo(
+            f"Error: An I/O error occurred while reading '{STANDALONE_TEMPLATE_FILE_NAME}': {e}",
+            err=True,
+        )
+        raise click.exceptions.Exit(1)
+
+    # Prepare the Jinja2 Template
+    try:
+        template = Template(template_content)
+    except TemplateSyntaxError as e:
+        click.echo(
+            f"Error: The template file '{STANDALONE_TEMPLATE_FILE_NAME}' contains a syntax error: {e}",
+            err=True,
+        )
+        raise click.exceptions.Exit(1)
+
+    # Render the template with dynamic values
+    rendered_code = template.render(details)
+
+    # Write the rendered code to a new Python file
+    with open(GENERATED_STANDALONE_FILE_NAME, "w", encoding="utf-8") as output_file:
+        output_file.write(rendered_code)
+
+    click.echo(f"Successfully generated '{GENERATED_STANDALONE_FILE_NAME}' script.")
+
+
+def get_executor_details(
+    documents: typing.List[typing.Dict[str, typing.Any]], executor_name: str
+) -> dict | None:
+    """
+    Extracts the command, args, and image of a given executor container from the provided YAML
+    documents.
+
+    Args:
+        documents (List[Dict[str, Any]]): List of YAML documents loaded as dictionaries.
+        executor_name (str): The name of the executor to search for.
+
+    Returns:
+        dict: A dictionary containing the 'command', 'args', and 'image' of the executor container
+        if found, otherwise raise en error.
+    """
+    spec = "deploymentSpec"
+    deployment_spec_found = False
+    for doc in documents:
+        deployment_spec = doc.get(spec)
+        if not deployment_spec:
+            continue
+        else:
+            deployment_spec_found = True
+        for executors_value in deployment_spec.values():
+            for executor, executor_value in executors_value.items():
+                if executor == executor_name:
+                    container = executor_value.get("container", {})
+                    if not all(
+                        key in container for key in ("command", "args", "image")
+                    ):
+                        raise ValueError(
+                            f"Executor '{executor_name}' does not have the required "
+                            "'command', 'args', or 'image' fields."
+                        )
+                    return {
+                        "command": container["command"],
+                        "args": container["args"],
+                        "image": container["image"],
+                    }
+        print(f"Executor '{executor_name}' not found in the provided {spec} document.")
+        return None
+    if not deployment_spec_found:
+        raise ValueError(
+            "The provided documents do not contain a 'deploymentSpec' key."
+        )
+
+
+def remove_template_markers(
+    rendered_code: list, executor_name: str, executor_input_param: str
+) -> list:
+    """
+    Removes the Jinja2 template markers from each element of the rendered code list.
+
+    Args:
+        rendered_code (list): The list of rendered code elements containing Jinja2 template markers.
+
+    Returns:
+        list: The list of rendered code elements with Jinja2 template markers removed.
+
+    Examples with an executor name of 'exec':
+        Input: ["{{$.inputs.parameters['repo_name']}}", "{{$.inputs.parameters['model']}}"]
+        Output: ["{exec_repo_name}", "{exec_model}"]
+
+    """
+    import re
+    import json
+
+    pattern = r"\{\{\$\.inputs\.parameters\['([^']+)'\]\}\}"
+    rendered_code = [
+        re.sub(pattern, r"{%s_\1}" % executor_name, element)
+        for element in rendered_code
+    ]
+
+    # TODO: find a better approach
+    # Only useful for git_clone_op at the moment
+    # additionally remove {{$.outputs.artifacts[\'taxonomy\'].path}}
+    pattern = r"\{\{\$\.outputs\.artifacts\['([^']+)'\]\.path\}\}"
+    rendered_code = [
+        re.sub(pattern, r"{TAXONOMY_PATH}", element) for element in rendered_code
+    ]
+
+    # Replace '{{$}}' with input_param
+    pattern = r"\{\{\$\}\}"
+    rendered_code = [
+        re.sub(pattern, json.dumps(executor_input_param), element)
+        for element in rendered_code
+    ]
+
+    return rendered_code
 
 
 if __name__ == "__main__":
