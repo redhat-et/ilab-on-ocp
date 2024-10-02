@@ -111,6 +111,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             data=model_to_artifact.outputs["model"], pvc_path="/model"
         )
         model_to_pvc_task.set_caching_options(False)
+        model_to_pvc_task.set_retry(3)
         mount_pvc(
             task=model_to_pvc_task, pvc_name=model_pvc_task.output, mount_path="/model"
         )

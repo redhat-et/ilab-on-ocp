@@ -1235,6 +1235,11 @@ root:
             pvc_path:
               runtimeValue:
                 constant: /model
+        retryPolicy:
+          backoffDuration: 0s
+          backoffFactor: 2.0
+          backoffMaxDuration: 3600s
+          maxRetryCount: 3
         taskInfo:
           name: artifact-to-pvc-op
       artifact-to-pvc-op-2:
