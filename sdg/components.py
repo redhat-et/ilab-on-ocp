@@ -60,4 +60,6 @@ def sdg_op(
         taxonomy=taxonomy.path,
         taxonomy_base=taxonomy_base,
         model_name=model,
+        chunk_word_count=1000,
+        server_ctx_size=4096,
     )
