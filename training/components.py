@@ -6,69 +6,76 @@ from typing import NamedTuple
 from utils.consts import PYTHON_IMAGE
 from typing import Optional
 
-@dsl.component(base_image=PYTHON_IMAGE,
-               packages_to_install=["instructlab-training@git+https://github.com/instructlab/training.git"])
+
+@dsl.component(
+    base_image=PYTHON_IMAGE,
+    packages_to_install=[
+        "instructlab-training@git+https://github.com/instructlab/training.git"
+    ],
+)
 def data_processing_op(
     sdg: dsl.Input[dsl.Dataset],
     processed_data: dsl.Output[dsl.Dataset],
     model: dsl.Input[dsl.Artifact],
     max_seq_len: Optional[int] = 4096,
-    max_batch_len: Optional[int] = 20000
+    max_batch_len: Optional[int] = 20000,
 ):
     import instructlab.training.data_process as dp
     import os
     from instructlab.training import (
         TrainingArgs,
         DataProcessArgs,
-        )
-        # define training-specific arguments
+    )
+
+    # define training-specific arguments
     training_args = TrainingArgs(
         # define data-specific arguments
-        model_path = model.path,
-        data_path = f"{sdg.path}/*_train_msgs*.jsonl",
-        data_output_dir = processed_data.path,
-
+        model_path=model.path,
+        data_path=f"{sdg.path}/*_train_msgs*.jsonl",
+        data_output_dir=processed_data.path,
         # define model-trianing parameters
-        max_seq_len = max_seq_len,
-        max_batch_len = max_batch_len,
-
-       # XXX(shanand): We don't need the following arguments 
-       # for data processing. Added them for now to avoid
-       # Pydantic validation errors for TrainingArgs
-        ckpt_output_dir = "data/saved_checkpoints",
-        num_epochs = 2,
-        effective_batch_size = 3840,
-        save_samples = 0,
-        learning_rate = 2e-6,
-        warmup_steps = 800,
-        is_padding_free = True,
+        max_seq_len=max_seq_len,
+        max_batch_len=max_batch_len,
+        # XXX(shanand): We don't need the following arguments
+        # for data processing. Added them for now to avoid
+        # Pydantic validation errors for TrainingArgs
+        ckpt_output_dir="data/saved_checkpoints",
+        num_epochs=2,
+        effective_batch_size=3840,
+        save_samples=0,
+        learning_rate=2e-6,
+        warmup_steps=800,
+        is_padding_free=True,
     )
+
     def data_processing(train_args: TrainingArgs) -> None:
-      # early validation logic here
-      if train_args.max_batch_len < train_args.max_seq_len:
-          raise ValueError(
-              f"the `max_batch_len` cannot be less than `max_seq_len`: {train_args.max_batch_len=} < {train_args.max_seq_len=}"
-          )
-      
-          # process the training data
-      if not os.path.exists(train_args.data_output_dir):
-          os.makedirs(train_args.data_output_dir, exist_ok=True)
-      dp.main(
-          DataProcessArgs(
-              # XXX(osilkin): make a decision here, either:
-              #   1. the CLI is fully responsible for managing where the data is written
-              #   2. we never cache it and simply write it to a tmp file every time.
-              #
-              # An important reason for why #1 would be preferable is in the case of OpenShift/SELinux
-              # where the user has a defined place for new temporary data to be written.
-              data_output_path=train_args.data_output_dir,
-              model_path=train_args.model_path,
-              data_path=train_args.data_path,
-              max_seq_len=train_args.max_seq_len,
-              chat_tmpl_path=train_args.chat_tmpl_path,
-          )
-      )
+        # early validation logic here
+        if train_args.max_batch_len < train_args.max_seq_len:
+            raise ValueError(
+                f"the `max_batch_len` cannot be less than `max_seq_len`: {train_args.max_batch_len=} < {train_args.max_seq_len=}"
+            )
+
+            # process the training data
+        if not os.path.exists(train_args.data_output_dir):
+            os.makedirs(train_args.data_output_dir, exist_ok=True)
+        dp.main(
+            DataProcessArgs(
+                # XXX(osilkin): make a decision here, either:
+                #   1. the CLI is fully responsible for managing where the data is written
+                #   2. we never cache it and simply write it to a tmp file every time.
+                #
+                # An important reason for why #1 would be preferable is in the case of OpenShift/SELinux
+                # where the user has a defined place for new temporary data to be written.
+                data_output_path=train_args.data_output_dir,
+                model_path=train_args.model_path,
+                data_path=train_args.data_path,
+                max_seq_len=train_args.max_seq_len,
+                chat_tmpl_path=train_args.chat_tmpl_path,
+            )
+        )
+
     data_processing(train_args=training_args)
+
 
 @dsl.component(base_image=PYTHON_IMAGE)
 def pytorchjob_manifest_op(
@@ -77,17 +84,17 @@ def pytorchjob_manifest_op(
     output_pvc_name: str,
     name_suffix: str,
     path_to_model: str,
-    phase_name: str
+    phase_name: str,
 ) -> NamedTuple("outputs", manifest=str, name=str):
     import inspect
 
     Outputs = NamedTuple("outputs", manifest=str, name=str)
     name = f"train-{phase_name}-{name_suffix.rstrip('-sdg')}"
 
-    image = 'quay.io/shanand/test-train:0.0.4'
+    image = "quay.io/shanand/test-train:0.0.4"
     nprocPerNode = 3
     nnodes = 2
-    
+
     manifest = inspect.cleandoc(
         f"""
         apiVersion: kubeflow.org/v1

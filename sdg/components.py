@@ -5,6 +5,7 @@ from kfp import dsl
 
 IMAGE = "quay.io/tcoufal/ilab-sdg:latest"
 
+
 @dsl.container_component
 def git_clone_op(
     taxonomy: dsl.Output[dsl.Dataset],
