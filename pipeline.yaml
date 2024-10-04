@@ -10,6 +10,8 @@
 #    merge_system_user_message: bool [Default: False]
 #    mmlu_tasks_list: str [Default: 'mmlu_anatomy,mmlu_astronomy']
 #    model_dtype: str [Default: 'bfloat16']
+#    nnodes: int [Default: 2.0]
+#    nproc_per_node: int [Default: 3.0]
 #    num_instructions_to_generate: int [Default: 2.0]
 #    repo_branch: str
 #    repo_pr: int
@@ -398,6 +400,14 @@ components:
           parameterType: STRING
         name_suffix:
           parameterType: STRING
+        nnodes:
+          defaultValue: 2.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        nproc_per_node:
+          defaultValue: 3.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
         output_pvc_name:
           parameterType: STRING
         path_to_model:
@@ -420,6 +430,14 @@ components:
           parameterType: STRING
         name_suffix:
           parameterType: STRING
+        nnodes:
+          defaultValue: 2.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        nproc_per_node:
+          defaultValue: 3.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
         output_pvc_name:
           parameterType: STRING
         path_to_model:
@@ -822,15 +840,15 @@ deploymentSpec:
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef pytorchjob_manifest_op(\n    model_pvc_name: str,\n    input_pvc_name:\
           \ str,\n    output_pvc_name: str,\n    name_suffix: str,\n    path_to_model:\
-          \ str,\n    phase_name: str,\n) -> NamedTuple(\"outputs\", manifest=str,\
-          \ name=str):\n    import inspect\n\n    Outputs = NamedTuple(\"outputs\"\
-          , manifest=str, name=str)\n    name = f\"train-{phase_name}-{name_suffix.rstrip('-sdg')}\"\
-          \n\n    image = \"quay.io/shanand/test-train:0.0.4\"\n    nprocPerNode =\
-          \ 3\n    nnodes = 2\n\n    manifest = inspect.cleandoc(\n        f\"\"\"\
-          \n        apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n      \
-          \  metadata:\n          name: {name}\n        spec:\n          nprocPerNode:\
-          \ \\\\\"{nprocPerNode}\\\\\"\n          pytorchReplicaSpecs:\n         \
-          \   Master:\n              replicas: 1\n              restartPolicy: OnFailure\n\
+          \ str,\n    phase_name: str,\n    nproc_per_node: int = 3,\n    nnodes:\
+          \ int = 2,\n) -> NamedTuple(\"outputs\", manifest=str, name=str):\n    import\
+          \ inspect\n\n    Outputs = NamedTuple(\"outputs\", manifest=str, name=str)\n\
+          \    name = f\"train-{phase_name}-{name_suffix.rstrip('-sdg')}\"\n\n   \
+          \ image = \"quay.io/shanand/test-train:0.0.4\"\n\n    manifest = inspect.cleandoc(\n\
+          \        f\"\"\"\n        apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n\
+          \        metadata:\n          name: {name}\n        spec:\n          nprocPerNode:\
+          \ \\\\\"{nproc_per_node}\\\\\"\n          pytorchReplicaSpecs:\n       \
+          \     Master:\n              replicas: 1\n              restartPolicy: OnFailure\n\
           \              template:\n                metadata:\n                  annotations:\n\
           \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
           \                  containers:\n                    - args:\n          \
@@ -849,11 +867,11 @@ deploymentSpec:
           \ name: output\n                      env:\n                        - name:\
           \ NNODES\n                          value: \\\\\"{nnodes}\\\\\"\n      \
           \                  - name: NPROC_PER_NODE\n                          value:\
-          \ \\\\\"{nprocPerNode}\\\\\"\n                      resources:\n       \
-          \                 requests:\n                          cpu: 2\n        \
-          \                  \"nvidia.com/gpu\": {nprocPerNode}\n                \
-          \        limits:\n                          cpu: 2\n                   \
-          \       \"nvidia.com/gpu\": {nprocPerNode}\n                  volumes:\n\
+          \ \\\\\"{nproc_per_node}\\\\\"\n                      resources:\n     \
+          \                   requests:\n                          cpu: 2\n      \
+          \                    \"nvidia.com/gpu\": {nproc_per_node}\n            \
+          \            limits:\n                          cpu: 2\n               \
+          \           \"nvidia.com/gpu\": {nproc_per_node}\n                  volumes:\n\
           \                    - name: input-data\n                      persistentVolumeClaim:\n\
           \                        claimName: {input_pvc_name}\n                 \
           \   - name: model\n                      persistentVolumeClaim:\n      \
@@ -878,11 +896,11 @@ deploymentSpec:
           \         name: output\n                          readOnly: true\n     \
           \                 env:\n                        - name: NNODES\n       \
           \                   value: \\\\\"{nnodes}\\\\\"\n                      \
-          \  - name: NPROC_PER_NODE\n                          value: \\\\\"{nprocPerNode}\\\
+          \  - name: NPROC_PER_NODE\n                          value: \\\\\"{nproc_per_node}\\\
           \\\"\n                      resources:\n                        requests:\n\
           \                          cpu: 2\n                          \"nvidia.com/gpu\"\
-          : {nprocPerNode}\n                        limits:\n                    \
-          \      cpu: 2\n                          \"nvidia.com/gpu\": {nprocPerNode}\n\
+          : {nproc_per_node}\n                        limits:\n                  \
+          \        cpu: 2\n                          \"nvidia.com/gpu\": {nproc_per_node}\n\
           \                  volumes:\n                    - name: input-data\n  \
           \                    persistentVolumeClaim:\n                        claimName:\
           \ {input_pvc_name}\n                    - name: model\n                \
@@ -919,15 +937,15 @@ deploymentSpec:
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef pytorchjob_manifest_op(\n    model_pvc_name: str,\n    input_pvc_name:\
           \ str,\n    output_pvc_name: str,\n    name_suffix: str,\n    path_to_model:\
-          \ str,\n    phase_name: str,\n) -> NamedTuple(\"outputs\", manifest=str,\
-          \ name=str):\n    import inspect\n\n    Outputs = NamedTuple(\"outputs\"\
-          , manifest=str, name=str)\n    name = f\"train-{phase_name}-{name_suffix.rstrip('-sdg')}\"\
-          \n\n    image = \"quay.io/shanand/test-train:0.0.4\"\n    nprocPerNode =\
-          \ 3\n    nnodes = 2\n\n    manifest = inspect.cleandoc(\n        f\"\"\"\
-          \n        apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n      \
-          \  metadata:\n          name: {name}\n        spec:\n          nprocPerNode:\
-          \ \\\\\"{nprocPerNode}\\\\\"\n          pytorchReplicaSpecs:\n         \
-          \   Master:\n              replicas: 1\n              restartPolicy: OnFailure\n\
+          \ str,\n    phase_name: str,\n    nproc_per_node: int = 3,\n    nnodes:\
+          \ int = 2,\n) -> NamedTuple(\"outputs\", manifest=str, name=str):\n    import\
+          \ inspect\n\n    Outputs = NamedTuple(\"outputs\", manifest=str, name=str)\n\
+          \    name = f\"train-{phase_name}-{name_suffix.rstrip('-sdg')}\"\n\n   \
+          \ image = \"quay.io/shanand/test-train:0.0.4\"\n\n    manifest = inspect.cleandoc(\n\
+          \        f\"\"\"\n        apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n\
+          \        metadata:\n          name: {name}\n        spec:\n          nprocPerNode:\
+          \ \\\\\"{nproc_per_node}\\\\\"\n          pytorchReplicaSpecs:\n       \
+          \     Master:\n              replicas: 1\n              restartPolicy: OnFailure\n\
           \              template:\n                metadata:\n                  annotations:\n\
           \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
           \                  containers:\n                    - args:\n          \
@@ -946,11 +964,11 @@ deploymentSpec:
           \ name: output\n                      env:\n                        - name:\
           \ NNODES\n                          value: \\\\\"{nnodes}\\\\\"\n      \
           \                  - name: NPROC_PER_NODE\n                          value:\
-          \ \\\\\"{nprocPerNode}\\\\\"\n                      resources:\n       \
-          \                 requests:\n                          cpu: 2\n        \
-          \                  \"nvidia.com/gpu\": {nprocPerNode}\n                \
-          \        limits:\n                          cpu: 2\n                   \
-          \       \"nvidia.com/gpu\": {nprocPerNode}\n                  volumes:\n\
+          \ \\\\\"{nproc_per_node}\\\\\"\n                      resources:\n     \
+          \                   requests:\n                          cpu: 2\n      \
+          \                    \"nvidia.com/gpu\": {nproc_per_node}\n            \
+          \            limits:\n                          cpu: 2\n               \
+          \           \"nvidia.com/gpu\": {nproc_per_node}\n                  volumes:\n\
           \                    - name: input-data\n                      persistentVolumeClaim:\n\
           \                        claimName: {input_pvc_name}\n                 \
           \   - name: model\n                      persistentVolumeClaim:\n      \
@@ -975,11 +993,11 @@ deploymentSpec:
           \         name: output\n                          readOnly: true\n     \
           \                 env:\n                        - name: NNODES\n       \
           \                   value: \\\\\"{nnodes}\\\\\"\n                      \
-          \  - name: NPROC_PER_NODE\n                          value: \\\\\"{nprocPerNode}\\\
+          \  - name: NPROC_PER_NODE\n                          value: \\\\\"{nproc_per_node}\\\
           \\\"\n                      resources:\n                        requests:\n\
           \                          cpu: 2\n                          \"nvidia.com/gpu\"\
-          : {nprocPerNode}\n                        limits:\n                    \
-          \      cpu: 2\n                          \"nvidia.com/gpu\": {nprocPerNode}\n\
+          : {nproc_per_node}\n                        limits:\n                  \
+          \        cpu: 2\n                          \"nvidia.com/gpu\": {nproc_per_node}\n\
           \                  volumes:\n                    - name: input-data\n  \
           \                    persistentVolumeClaim:\n                        claimName:\
           \ {input_pvc_name}\n                    - name: model\n                \
@@ -1598,6 +1616,10 @@ root:
               taskOutputParameter:
                 outputParameterKey: name
                 producerTask: createpvc-2
+            nnodes:
+              componentInputParameter: nnodes
+            nproc_per_node:
+              componentInputParameter: nproc_per_node
             output_pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
@@ -1633,6 +1655,10 @@ root:
               taskOutputParameter:
                 outputParameterKey: name
                 producerTask: createpvc-2
+            nnodes:
+              componentInputParameter: nnodes
+            nproc_per_node:
+              componentInputParameter: nproc_per_node
             output_pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
@@ -1753,6 +1779,14 @@ root:
         defaultValue: bfloat16
         isOptional: true
         parameterType: STRING
+      nnodes:
+        defaultValue: 2.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      nproc_per_node:
+        defaultValue: 3.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
       num_instructions_to_generate:
         defaultValue: 2.0
         isOptional: true

@@ -75,6 +75,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         max_workers: str = "auto",
         merge_system_user_message: bool = False,
         device: str = None,
+        nproc_per_node: int = 3,
+        nnodes: int = 2,
     ):
         # SDG stage
         git_clone_task = git_clone_op(
@@ -151,6 +153,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             output_pvc_name=output_pvc_task.output,
             path_to_model="/input_model/model",
             phase_name="first",
+            nproc_per_node=nproc_per_node,
+            nnodes=nnodes,
         )
         pytorchjob_manifest_task.set_caching_options(False)
 
@@ -220,6 +224,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             output_pvc_name=output_pvc_task.output,
             path_to_model=run_mmlu_task.outputs["best_model"],
             phase_name="second",
+            nproc_per_node=nproc_per_node,
+            nnodes=nnodes,
         )
 
         pytorchjob_manifest_2_task.set_caching_options(False)

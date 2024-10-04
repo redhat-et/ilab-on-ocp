@@ -85,6 +85,8 @@ def pytorchjob_manifest_op(
     name_suffix: str,
     path_to_model: str,
     phase_name: str,
+    nproc_per_node: int = 3,
+    nnodes: int = 2,
 ) -> NamedTuple("outputs", manifest=str, name=str):
     import inspect
 
@@ -92,8 +94,6 @@ def pytorchjob_manifest_op(
     name = f"train-{phase_name}-{name_suffix.rstrip('-sdg')}"
 
     image = "quay.io/shanand/test-train:0.0.4"
-    nprocPerNode = 3
-    nnodes = 2
 
     manifest = inspect.cleandoc(
         f"""
@@ -102,7 +102,7 @@ def pytorchjob_manifest_op(
         metadata:
           name: {name}
         spec:
-          nprocPerNode: \\"{nprocPerNode}\\"
+          nprocPerNode: \\"{nproc_per_node}\\"
           pytorchReplicaSpecs:
             Master:
               replicas: 1
@@ -137,14 +137,14 @@ def pytorchjob_manifest_op(
                         - name: NNODES
                           value: \\"{nnodes}\\"
                         - name: NPROC_PER_NODE
-                          value: \\"{nprocPerNode}\\"
+                          value: \\"{nproc_per_node}\\"
                       resources:
                         requests:
                           cpu: 2
-                          "nvidia.com/gpu": {nprocPerNode}
+                          "nvidia.com/gpu": {nproc_per_node}
                         limits:
                           cpu: 2
-                          "nvidia.com/gpu": {nprocPerNode}
+                          "nvidia.com/gpu": {nproc_per_node}
                   volumes:
                     - name: input-data
                       persistentVolumeClaim:
@@ -188,14 +188,14 @@ def pytorchjob_manifest_op(
                         - name: NNODES
                           value: \\"{nnodes}\\"
                         - name: NPROC_PER_NODE
-                          value: \\"{nprocPerNode}\\"
+                          value: \\"{nproc_per_node}\\"
                       resources:
                         requests:
                           cpu: 2
-                          "nvidia.com/gpu": {nprocPerNode}
+                          "nvidia.com/gpu": {nproc_per_node}
                         limits:
                           cpu: 2
-                          "nvidia.com/gpu": {nprocPerNode}
+                          "nvidia.com/gpu": {nproc_per_node}
                   volumes:
                     - name: input-data
                       persistentVolumeClaim:
