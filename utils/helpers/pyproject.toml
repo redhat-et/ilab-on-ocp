@@ -1,0 +1,7 @@
+[project]
+name = "helpers"
+version = "0.0.1"
+
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"

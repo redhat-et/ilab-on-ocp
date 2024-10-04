@@ -7,7 +7,14 @@ from utils.consts import PYTHON_IMAGE
 EVAL_IMAGE = "quay.io/sallyom/instructlab-ocp:eval"
 
 
-@component(base_image=EVAL_IMAGE, packages_to_install=["vllm"])
+# TODO: package vllm, etc within base image
+@component(
+    base_image=EVAL_IMAGE,
+    packages_to_install=[
+        "vllm",
+        "git+https://github.com/sallyom/ilab-on-ocp.git@final-eval#subdirectory=utils/helpers",
+    ],
+)
 def run_mt_bench_op(
     models_path_prefix: str,
     mt_bench_output: Output[Artifact],
@@ -20,97 +27,15 @@ def run_mt_bench_op(
     models_folder: Optional[str] = None,
     device: str = None,
 ) -> NamedTuple("outputs", best_model=str, best_score=float):
-    def launch_vllm_server_background(
-        model_path: str, gpu_count: int, retries: int = 60, delay: int = 5
-    ):
-        import subprocess
-        import sys
-        import time
-        import requests
-
-        if gpu_count > 0:
-            command = [
-                sys.executable,
-                "-m",
-                "vllm.entrypoints.openai.api_server",
-                "--model",
-                model_path,
-                "--tensor-parallel-size",
-                str(gpu_count),
-            ]
-        else:
-            command = [
-                sys.executable,
-                "-m",
-                "vllm.entrypoints.openai.api_server",
-                "--model",
-                model_path,
-            ]
-
-        subprocess.Popen(args=command)
-
-        server_url = "http://localhost:8000/v1"
-        print(f"Waiting for vLLM server to start at {server_url}...")
-
-        for attempt in range(retries):
-            try:
-                response = requests.get(f"{server_url}/models")
-                if response.status_code == 200:
-                    print(f"vLLM server is up and running at {server_url}.")
-                    return
-            except requests.ConnectionError:
-                pass
-
-            print(
-                f"Server not available yet, retrying in {delay} seconds (Attempt {attempt + 1}/{retries})..."
-            )
-            time.sleep(delay)
-
-        raise RuntimeError(
-            f"Failed to start vLLM server at {server_url} after {retries} retries."
-        )
-
-    # This seems like excessive effort to stop the vllm process, but merely saving & killing the pid doesn't work
-    # Also, the base image does not include `pkill` cmd, so can't pkill -f vllm.entrypoints.openai.api_server either
-    def stop_vllm_server_by_name():
-        import psutil
-
-        for process in psutil.process_iter(attrs=["pid", "name", "cmdline"]):
-            cmdline = process.info.get("cmdline")
-            if cmdline and "vllm.entrypoints.openai.api_server" in cmdline:
-                print(
-                    f"Found vLLM server process with PID: {process.info['pid']}, terminating..."
-                )
-                try:
-                    process.terminate()  # Try graceful termination
-                    process.wait(timeout=5)  # Wait a bit for it to terminate
-                    if process.is_running():
-                        print(
-                            f"Forcefully killing vLLM server process with PID: {process.info['pid']}"
-                        )
-                        process.kill()  # Force kill if it's still running
-                    print(
-                        f"Successfully stopped vLLM server with PID: {process.info['pid']}"
-                    )
-                except psutil.NoSuchProcess:
-                    print(f"Process with PID {process.info['pid']} no longer exists.")
-                except psutil.AccessDenied:
-                    print(
-                        f"Access denied when trying to terminate process with PID {process.info['pid']}."
-                    )
-                except Exception as e:
-                    print(
-                        f"Failed to terminate process with PID {process.info['pid']}. Error: {e}"
-                    )
-
     import json
     import torch
     import os
 
-    from instructlab.eval import mt_bench_answers, mt_bench_judgment
+    from instructlab.eval.mt_bench import MTBenchEvaluator
+    from helpers import launch_local_vllm, stop_local_vllm, VLLM_SERVER
 
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-    candidate_server_url = "http://localhost:8000/v1"
+    candidate_server_url = VLLM_SERVER
 
     gpu_available = torch.cuda.is_available()
     gpu_name = (
@@ -153,8 +78,7 @@ def run_mt_bench_op(
         print(f"Serving candidate model: {model_name}")
         model_path = f"{models_path_prefix}/{model_name}"
 
-        # Launch the vLLM server and wait until it is ready
-        launch_vllm_server_background(model_path, gpu_count)
+        launch_local_vllm(model_path, gpu_count)
 
         # model ID is the model_path value in vLLM
         print("Generating answers...")
@@ -178,7 +102,7 @@ def run_mt_bench_op(
             )
         )
 
-        stop_vllm_server_by_name()
+        stop_local_vllm()
 
         mt_bench_data = {
             "report_title": "SKILLS EVALUATION REPORT",

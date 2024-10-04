@@ -9,7 +9,13 @@ from utils.consts import PYTHON_IMAGE, EVAL_IMAGE
 # https://github.com/instructlab/instructlab/blob/main/src/instructlab/model/evaluate.py
 # TODO: package vllm, etc within base image
 @component(
-    base_image=EVAL_IMAGE, packages_to_install=["vllm", "tenacity", "lm-eval[api]"]
+    base_image=EVAL_IMAGE,
+    packages_to_install=[
+        "vllm",
+        "lm-eval[api]",
+        "tenacity",
+        "git+https://github.com/sallyom/ilab-on-ocp.git@final-eval#subdirectory=utils/helpers",
+    ],
 )
 def run_mmlu_branch_mt_bench_branch_op(
     mmlu_branch_output: Output[Artifact],
@@ -32,93 +38,12 @@ def run_mmlu_branch_mt_bench_branch_op(
 
     from instructlab.eval.mmlu import MMLUBranchEvaluator, MMLU_TASKS
     from instructlab.eval.mt_bench import MTBenchBranchEvaluator
-
-    # TODO: package these embedded functions within the base image
-
-    def launch_local_vllm(
-        model_path: str, gpu_count: int, retries: int = 60, delay: int = 5
-    ):
-        import subprocess
-        import sys
-        import time
-        import requests
-
-        # TODO: assign global var
-        vllm_server = "http://localhost:8000/v1"
-
-        if gpu_count > 0:
-            command = [
-                sys.executable,
-                "-m",
-                "vllm.entrypoints.openai.api_server",
-                "--model",
-                model_path,
-                "--tensor-parallel-size",
-                str(gpu_count),
-            ]
-        else:
-            command = [
-                sys.executable,
-                "-m",
-                "vllm.entrypoints.openai.api_server",
-                "--model",
-                model_path,
-            ]
-
-        subprocess.Popen(args=command)
-
-        print(f"Waiting for vLLM server to start at {vllm_server}...")
-
-        for attempt in range(retries):
-            try:
-                response = requests.get(f"{vllm_server}/models")
-                if response.status_code == 200:
-                    print(f"vLLM server is up and running at {vllm_server}.")
-                    return
-            except requests.ConnectionError:
-                pass
-
-            print(
-                f"Server not available yet, retrying in {delay} seconds (Attempt {attempt + 1}/{retries})..."
-            )
-            time.sleep(delay)
-
-        raise RuntimeError(
-            f"Failed to start vLLM server at {vllm_server} after {retries} retries."
-        )
-
-    # This seems like excessive effort to stop the vllm process, but merely saving & killing the pid doesn't work
-    # Also, the base image does not include `pkill` cmd, so can't pkill -f vllm.entrypoints.openai.api_server either
-    def stop_local_vllm():
-        import psutil
-
-        for process in psutil.process_iter(attrs=["pid", "name", "cmdline"]):
-            cmdline = process.info.get("cmdline")
-            if cmdline and "vllm.entrypoints.openai.api_server" in cmdline:
-                print(
-                    f"Found vLLM server process with PID: {process.info['pid']}, terminating..."
-                )
-                try:
-                    process.terminate()  # Try graceful termination
-                    process.wait(timeout=5)  # Wait a bit for it to terminate
-                    if process.is_running():
-                        print(
-                            f"Forcefully killing vLLM server process with PID: {process.info['pid']}"
-                        )
-                        process.kill()  # Force kill if it's still running
-                    print(
-                        f"Successfully stopped vLLM server with PID: {process.info['pid']}"
-                    )
-                except psutil.NoSuchProcess:
-                    print(f"Process with PID {process.info['pid']} no longer exists.")
-                except psutil.AccessDenied:
-                    print(
-                        f"Access denied when trying to terminate process with PID {process.info['pid']}."
-                    )
-                except Exception as e:
-                    print(
-                        f"Failed to terminate process with PID {process.info['pid']}. Error: {e}"
-                    )
+    from helpers import (
+        find_matching_directories,
+        launch_local_vllm,
+        stop_local_vllm,
+        VLLM_SERVER,
+    )
 
     def branch_eval_summary_to_json(
         improvements: list[tuple[str, float]],
@@ -170,20 +95,6 @@ def run_mmlu_branch_mt_bench_branch_op(
             qna_to_avg_scores[qna] = sum(scores) / len(scores)
         return qna_to_avg_scores
 
-    def find_matching_directories(base_directory: str, pattern: str):
-        import re
-        import os
-
-        matching_dirs = []
-        regex = re.compile(pattern)
-
-        for root, dirs, files in os.walk(base_directory):
-            for directory in dirs:
-                if regex.search(directory):
-                    matching_dirs.append(os.path.join(root, directory))
-
-        return matching_dirs
-
     gpu_available = torch.cuda.is_available()
     gpu_name = (
         torch.cuda.get_device_name(torch.cuda.current_device())
@@ -193,9 +104,6 @@ def run_mmlu_branch_mt_bench_branch_op(
     gpu_count = torch.cuda.device_count() if gpu_available else 0
 
     print(f"GPU Available: {gpu_available}, Using: {gpu_name}")
-
-    # TODO: assign global var
-    vllm_server = "http://localhost:8000/v1"
 
     # MT_BENCH_BRANCH
 
@@ -213,10 +121,6 @@ def run_mmlu_branch_mt_bench_branch_op(
     # ??
     base_branch = base_branch or "main"
     candidate_branch = candidate_branch or "main"
-
-    # TODO: Fix logic for branch
-    # ilab is set up to test branches from a single repo,
-    # not a fork of a repo with a PR# comparing across forks.
 
     mt_bench_evaluators = [
         MTBenchBranchEvaluator(
@@ -251,7 +155,7 @@ def run_mmlu_branch_mt_bench_branch_op(
         )
         launch_local_vllm(candidate_model, gpu_count)
 
-        evaluator.gen_answers(vllm_server)
+        evaluator.gen_answers(VLLM_SERVER)
 
         stop_local_vllm()
 
@@ -340,7 +244,7 @@ def run_mmlu_branch_mt_bench_branch_op(
         for i, evaluator in enumerate(mmlu_branch_evaluators):
             m_path = m_paths[i]
             launch_local_vllm(candidate_model, gpu_count)
-            overall_score, individual_scores = evaluator.run(vllm_server)
+            overall_score, individual_scores = evaluator.run(VLLM_SERVER)
             overall_scores.append(overall_score)
             individual_scores_list.append(individual_scores)
             stop_local_vllm()
