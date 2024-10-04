@@ -80,7 +80,12 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         repo_branch: Optional[str] = None,
         repo_pr: Optional[int] = None,
         storage_class_name: str = "nfs-csi",
+<<<<<<< HEAD
         base_model: str = BASE_MODE,
+=======
+        base_model: str = "ibm-granite/granite-7b-base",
+        base_model_name: str = "/model/model",
+>>>>>>> fc72dff (add base_model_name and update branch outputs)
         # minimal subset of MMLU_TASKS
         mmlu_tasks_list: str = MMLU_TASKS_LIST,
         model_dtype: str = MODEL_DTYPE,
@@ -309,6 +314,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             tasks=sdg_task.outputs["sdg"],
             # TODO: we need both candidate_branch and base_branch
             base_branch=repo_branch,
+            base_model_name=base_model_name,
             candidate_branch=repo_branch,
             max_workers=max_workers,
             merge_system_user_message=merge_system_user_message,

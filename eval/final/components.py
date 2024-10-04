@@ -22,6 +22,7 @@ def run_mmlu_branch_mt_bench_branch_op(
     mt_bench_branch_output: Output[Artifact],
     candidate_model: str,
     base_model: str,
+    base_model_name: str,
     tasks: Input[Dataset],
     taxonomy: Input[Dataset],
     base_branch: str,
@@ -46,38 +47,77 @@ def run_mmlu_branch_mt_bench_branch_op(
         VLLM_SERVER,
     )
 
+    ######################################################################
+    # This is copied from instructlab/model/evaluate
+    # https://github.com/instructlab/instructlab/blob/main/src/instructlab/model/evaluate.py
+    # TODO: Move this logic to library to share
+    def sort_score(pairing: tuple[str, float, float, float]) -> float:
+        """helper func for display_branch_eval_summary
+        takes a tuple pairing and returns just the score
+        """
+        return pairing[1]
+
     def branch_eval_summary_to_json(
-        improvements: list[tuple[str, float]],
-        regressions: list[tuple[str, float]],
-        no_changes: list[str],
+        improvements: list[tuple[str, float, float, float]],
+        regressions: list[tuple[str, float, float, float]],
+        no_changes: list[tuple[str, float]],
         new=None,
     ) -> str:
-        """takes in results lists from mt_bench_branch and mmlu_branch benchmark evaluation
-        returns a JSON object with diff between the branches
-        """
+        """Generates a JSON object from the _branch benchmark evaluations"""
+
+        import json
+
+        summary = {
+            "improvements": [],
+            "regressions": [],
+            "no_changes": [],
+            "new": []
+        }
+
         if len(improvements) > 0:
             improvements.sort(key=sort_score, reverse=True)
+            for improvement in improvements:
+                task, delta, base_score, new_score = improvement
+                summary["improvements"].append({
+                    "task": task,
+                    "base_score": round(base_score, 2),
+                    "new_score": round(new_score, 2),
+                    "delta": delta
+                })
 
         if len(regressions) > 0:
             regressions.sort(key=sort_score)
+            for regression in regressions:
+                task, delta, base_score, new_score = regression
+                summary["regressions"].append({
+                    "task": task,
+                    "base_score": round(base_score, 2),
+                    "new_score": round(new_score, 2),
+                    "delta": delta
+                })
 
-        summary = {
-            "improvements": [
-                {"task": task, "delta": delta} for task, delta in improvements
-            ],
-            "regressions": [
-                {"task": task, "delta": delta} for task, delta in regressions
-            ],
-            "no_changes": [{"task": task} for task in no_changes],
-        }
+        if len(no_changes) > 0:
+            for entry in no_changes:
+                task, avg_score = entry
+                summary["no_changes"].append({
+                    "task": task,
+                    "average_score": round(avg_score, 2)
+                })
 
         if new is not None and len(new) > 0:
-            summary["new"] = [{"qna": qna} for qna in new]
+            for entry in new:
+                na, avg_score = entry
+                summary["new"].append({
+                    "qna": qna,
+                    "average_score": round(avg_score, 2)
+                })
 
         return json.dumps(summary, indent=4)
 
-    # Copied from instructlab/instructlab
-    # https://github.com/instructlab/instructlab/blob/f7b0d1587741bfebe62f9b7bfd1b82a94b59f809/src/instructlab/model/evaluate.py#L203
+    ######################################################################
+    # This is copied from instructlab/model/evaluate
+    # https://github.com/instructlab/instructlab/blob/main/src/instructlab/model/evaluate.py
+    # TODO: Move this logic to library to share
     def qa_pairs_to_qna_to_avg_scores(qa_pairs: list[dict]) -> dict[str, float]:
         """takes in a list of qa_pair dicts
         returns a dict of average scores per qna file
@@ -96,6 +136,8 @@ def run_mmlu_branch_mt_bench_branch_op(
             qna_to_avg_scores[qna] = sum(scores) / len(scores)
         return qna_to_avg_scores
 
+    ######################################################################
+
     gpu_available = torch.cuda.is_available()
     gpu_name = (
         torch.cuda.get_device_name(torch.cuda.current_device())
@@ -108,10 +150,6 @@ def run_mmlu_branch_mt_bench_branch_op(
 
     # MT_BENCH_BRANCH
 
-    # model_name is same as model_path with ilab setup
-    candidate_model_name = candidate_model
-    base_model_name = base_model
-
     judge_api_key = os.getenv("JUDGE_API_KEY", "")
     judge_model_name = os.getenv("JUDGE_NAME")
     judge_endpoint = os.getenv("JUDGE_ENDPOINT")
@@ -123,9 +161,10 @@ def run_mmlu_branch_mt_bench_branch_op(
     base_branch = base_branch or "main"
     candidate_branch = candidate_branch or "main"
 
+    # model_name is same as model_path with ilab setup
     mt_bench_evaluators = [
         MTBenchBranchEvaluator(
-            model_name=candidate_model_name,
+            model_name=candidate_model,
             judge_model_name=judge_model_name,
             taxonomy_git_repo_path=taxonomy.path,
             branch=candidate_branch,
@@ -154,17 +193,15 @@ def run_mmlu_branch_mt_bench_branch_op(
 
     branches = [candidate_branch, base_branch]
     m_paths = [candidate_model, base_model]
-    m_names = [candidate_model_name, base_model_name]
     qa_pairs_and_errors = []
     for i, evaluator in enumerate(mt_bench_evaluators):
         branch = branches[i]
         m_path = m_paths[i]
-        m_name = m_names[i]
 
         print(
             f"Generating questions and reference answers from qna files for branch {branch}..."
         )
-        launch_local_vllm(candidate_model, gpu_count)
+        launch_local_vllm(m_path, gpu_count)
 
         evaluator.gen_answers(
             server_url=VLLM_SERVER,
@@ -175,56 +212,71 @@ def run_mmlu_branch_mt_bench_branch_op(
         stop_local_vllm()
 
         print(f"Evaluating answers for branch {branch}...")
-        judgement = evaluator.judge_answers(
+        overall_score, qa_pairs, error_rate = evaluator.judge_answers(
             server_url=judge_endpoint,
             api_key=judge_api_key,
             serving_gpus=gpu_count,
             max_workers=max_workers,
         )
 
-        if len(judgement) == 3:
-            qa_pairs = judgement[1]
-            error_rate = judgement[2]
-        else:
-            qa_pairs = judgement[0]
-            error_rate = judgement[1]
+        qa_pairs_and_errors.append((overall_score, qa_pairs, error_rate))
 
-        qa_pairs_and_errors.append((qa_pairs, error_rate))
+    ######################################################################
+    # This is copied from instructlab/model/evaluate
+    # https://github.com/instructlab/instructlab/blob/main/src/instructlab/model/evaluate.py
+    # TODO: Move this logic to library to share
+    overall_score, qa_pairs, error_rate = qa_pairs_and_errors[0]
+    base_overall_score, base_qa_pairs, base_error_rate = qa_pairs_and_errors[1]
 
-    candidate_qa_pairs, candidate_error_rate = qa_pairs_and_errors[0]
-    base_qa_pairs, base_error_rate = qa_pairs_and_errors[1]
-
-    candidate_qna_to_avg_scores = qa_pairs_to_qna_to_avg_scores(qa_pairs)
+    qna_to_avg_scores = qa_pairs_to_qna_to_avg_scores(qa_pairs)
     base_qna_to_avg_scores = qa_pairs_to_qna_to_avg_scores(base_qa_pairs)
 
     improvements, regressions, no_changes, new_qnas = [], [], [], []
-    for qna, avg_score in candidate_qna_to_avg_scores.items():
+
+    for qna, avg_score in qna_to_avg_scores.items():
         base_avg_score = base_qna_to_avg_scores.get(qna)
         if base_avg_score is not None:
             if avg_score > base_avg_score:
-                improvements.append((qna, round(avg_score - base_avg_score, 2)))
+                improvements.append(
+                    (
+                        qna,
+                        round(avg_score - base_avg_score, 2),
+                        base_avg_score,
+                        avg_score,
+                    )
+                )
             elif avg_score == base_avg_score:
-                no_changes.append(qna)
+                no_changes.append((qna, avg_score))
             else:
-                regressions.append((qna, round(avg_score - base_avg_score, 2)))
+                regressions.append(
+                    (
+                        qna,
+                        round(avg_score - base_avg_score, 2),
+                        base_avg_score,
+                        avg_score,
+                    )
+                )
         else:
-            new_qnas.append((qna))
+            new_qnas.append((qna, avg_score))
 
-    error_rate = (candidate_error_rate + base_error_rate) / 2
+
+    error_rate = (error_rate + base_error_rate) / 2
     if error_rate > 0:
         error_rate = round(error_rate, 2)
 
+    ######################################################################
+
     summary = branch_eval_summary_to_json(
-        improvements, regressions, no_changes, new_qnas
+        improvements, regressions, no_changes, new_qnas,
     )
 
-    mt_bench_data = {
+    mt_bench_branch_data = {
         "report_title": "SKILLS EVALUATION REPORT",
-        "model": candidate_model_path,
+        "model": candidate_model,
         "judge_model": judge_model_name,
+        "max_score": "10.0",
         "overall_score": overall_score,
-        "turn_scores": turn_scores,
-        "qa_scores": qa_pairs,
+        "base_overall_score": base_overall_score,
         "error_rate": error_rate,
         "summary": summary,
     }
@@ -244,16 +296,16 @@ def run_mmlu_branch_mt_bench_branch_op(
 
         mmlu_branch_evaluators = [
             MMLUBranchEvaluator(
-                candidate_model,
-                tasks_dir,
-                mmlu_tasks,
+                model_path=candidate_model,
+                tasks_dir=tasks_dir,
+                tasks=mmlu_tasks,
                 few_shots=few_shots,
                 batch_size=batch_size,
             ),
             MMLUBranchEvaluator(
-                base_model,
-                tasks_dir,
-                mmlu_tasks,
+                model_path=base_model,
+                tasks_dir=tasks_dir,
+                tasks=mmlu_tasks,
                 few_shots=few_shots,
                 batch_size=batch_size,
             ),
@@ -263,48 +315,40 @@ def run_mmlu_branch_mt_bench_branch_op(
         individual_scores_list = []
         for i, evaluator in enumerate(mmlu_branch_evaluators):
             m_path = m_paths[i]
-            launch_local_vllm(candidate_model, gpu_count)
+            launch_local_vllm(m_path, gpu_count)
             overall_score, individual_scores = evaluator.run(VLLM_SERVER)
             overall_scores.append(overall_score)
             individual_scores_list.append(individual_scores)
             stop_local_vllm()
 
-        candidate_overall_score = overall_scores[0]
+        overall_score = overall_scores[0]
         base_overall_score = overall_scores[1]
-        candidate_individual_scores = individual_scores_list[0]
+        individual_scores = individual_scores_list[0]
         base_individual_scores = individual_scores_list[1]
-        delta = round(candidate_overall_score - base_overall_score, 2)
-        if delta >= 0:
-            average = f"+{delta}"
-        else:
-            average = delta
 
         improvements, regressions, no_changes = [], [], []
-        for task, score in candidate_individual_scores.items():
+        for task, score in individual_scores.items():
             base_score = base_individual_scores[task]
             s = score["score"]
             b_s = base_score["score"]
             d = round(s - b_s, 2)
             if s > b_s:
-                improvements.append((task, d))
+                improvements.append((task, d, b_s, s))
             elif b_s > s:
-                regressions.append((task, d))
+                regressions.append((task, d, b_s, s))
             else:
-                no_changes.append(task)
+                no_changes.append((task, s))
 
         summary = branch_eval_summary_to_json(
-            improvements, regressions, no_changes, new_tasks
+            improvements, regressions, no_changes,
         )
         mmlu_branch_data = {
             "report_title": "KNOWLEDGE EVALUATION REPORT",
-            "candidate_model": candidate_model,
+            "max_score": "1.0",
+            "model": candidate_model,
+            "model_score": round(overall_score, 2),
             "base_model": base_model,
-            "average_score": average,
-            "number_of_tasks": len(candidate_individual_scores),
-            "individual_scores": [
-                {task: round(score["score"], 2)}
-                for task, score in candidate_individual_scores.items()
-            ],
+            "base_model_score": round(base_overall_score, 2),
             "summary": summary,
         }
 
