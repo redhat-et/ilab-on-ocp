@@ -15,10 +15,11 @@ def git_clone_op(
     return
 
 
+# TODO: Update once merged into main
 @dsl.component(
     base_image=PYTHON_IMAGE,
     packages_to_install=[
-        "git+https://github.com/redhat-et/ilab-on-ocp.git#subdirectory=sdg/faked/fixtures"
+        "git+https://github.com/sallyom/ilab-on-ocp.git@final-eval#subdirectory=sdg/faked/fixtures"
     ],
 )
 def sdg_op(
