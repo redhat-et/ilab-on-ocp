@@ -26,6 +26,7 @@ def run_mmlu_branch_mt_bench_branch_op(
     taxonomy: Input[Dataset],
     base_branch: str,
     candidate_branch: str,
+    max_workers: str,
     model_dtype: str,
     few_shots: int,
     batch_size: int,
@@ -141,6 +142,16 @@ def run_mmlu_branch_mt_bench_branch_op(
         ),
     ]
 
+    # generate_answers,judgment uses a magic word for its mt_bench evaluator  - `auto`
+    # with `auto`, number of gpus allocated for serving is calculated based on environment
+    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
+    if max_workers == "auto":
+        try:
+            usable_cpu_count = len(os.sched_getaffinity(0)) // 2
+        except AttributeError:
+            usable_cpu_count = multiprocessing.cpu_count() // 2
+        max_workers = usable_cpu_count
+
     branches = [candidate_branch, base_branch]
     m_paths = [candidate_model, base_model]
     m_names = [candidate_model_name, base_model_name]
@@ -155,12 +166,21 @@ def run_mmlu_branch_mt_bench_branch_op(
         )
         launch_local_vllm(candidate_model, gpu_count)
 
-        evaluator.gen_answers(VLLM_SERVER)
+        evaluator.gen_answers(
+            server_url=VLLM_SERVER,
+            serving_gpus=gpu_count,
+            max_workers=max_workers,
+        )
 
         stop_local_vllm()
 
         print(f"Evaluating answers for branch {branch}...")
-        judgement = evaluator.judge_answers(judge_endpoint, api_key=judge_api_key)
+        judgement = evaluator.judge_answers(
+            server_url=judge_endpoint,
+            api_key=judge_api_key,
+            serving_gpus=gpu_count,
+            max_workers=max_workers,
+        )
 
         if len(judgement) == 3:
             qa_pairs = judgement[1]

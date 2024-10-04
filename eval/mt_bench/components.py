@@ -19,12 +19,16 @@ def run_mt_bench_op(
     models_path_prefix: str,
     mt_bench_output: Output[Artifact],
     merge_system_user_message: bool,
+<<<<<<< HEAD
     # generate_answers,judgment uses a magic word for its mt_bench evaluator  - `auto`
     # with `auto`, number of gpus allocated for serving is calculated based on environment
     # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
     max_workers: str = "auto",
     models_list: List[str] = None,
     models_folder: Optional[str] = None,
+=======
+    max_workers: str,
+>>>>>>> e477a9f (add max_workers back)
     device: str = None,
 ) -> NamedTuple("outputs", best_model=str, best_score=float):
     import json
@@ -57,6 +61,16 @@ def run_mt_bench_op(
     scores = {}
     all_mt_bench_data = []
 
+    # generate_answers,judgment uses a magic word for its mt_bench evaluator  - `auto`
+    # with `auto`, number of gpus allocated for serving is calculated based on environment
+    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
+    if max_workers == "auto":
+        try:
+            usable_cpu_count = len(os.sched_getaffinity(0)) // 2
+        except AttributeError:
+            usable_cpu_count = multiprocessing.cpu_count() // 2
+        max_workers = usable_cpu_count
+
     for model_name in models_list:
         print(f"Serving candidate model: {model_name}")
         model_path = f"{models_path_prefix}/{model_name}"
@@ -71,12 +85,19 @@ def run_mt_bench_op(
             merge_system_user_message=merge_system_user_message,
         )
 
-        evaluator.gen_answers(candidate_server_url)
+        evaluator.gen_answers(
+            server_url=VLLM_SERVER,
+            serving_gpus=gpu_count,
+            max_workers=max_workers,
+        )
 
         stop_local_vllm()
 
         overall_score, qa_pairs, turn_scores, error_rate = evaluator.judge_answers(
-            judge_endpoint, api_key=judge_api_key
+            server_url=judge_endpoint,
+            api_key=judge_api_key,
+            serving_gpus=gpu_count,
+            max_workers=max_workers,
         )
 
         mt_bench_data = {

@@ -277,6 +277,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         run_mt_bench_task = run_mt_bench_op(
             models_list=models_list_2_task.output,
             models_path_prefix="/output/model/hf_format",
+            max_workers=max_workers,
             merge_system_user_message=merge_system_user_message,
             device=device,
         )
@@ -309,6 +310,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             # TODO: we need both candidate_branch and base_branch
             base_branch=repo_branch,
             candidate_branch=repo_branch,
+            max_workers=max_workers,
             merge_system_user_message=merge_system_user_message,
             model_dtype=model_dtype,
             few_shots=few_shots,

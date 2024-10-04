@@ -24,6 +24,7 @@ def git_clone_op(
         ],
     )
 
+
 # TODO: Update once merged into main
 @dsl.component(
     base_image=PYTHON_IMAGE,
