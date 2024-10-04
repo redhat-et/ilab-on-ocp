@@ -115,7 +115,7 @@ def run_mmlu_branch_mt_bench_branch_op(
     judge_model_name = os.getenv("JUDGE_NAME")
     judge_endpoint = os.getenv("JUDGE_ENDPOINT")
 
-    output_dir = ("/tmp/eval_output",)
+    output_dir = "/tmp/eval_output"
 
     # TODO: candidate_branch must be in same repo, not a fork, or, can compare main branch against candidate, base models
     # ??
@@ -124,19 +124,19 @@ def run_mmlu_branch_mt_bench_branch_op(
 
     mt_bench_evaluators = [
         MTBenchBranchEvaluator(
-            candidate_model_name,
-            judge_model_name,
-            taxonomy.path,
-            candidate_branch,
-            output_dir,
+            model_name=candidate_model_name,
+            judge_model_name=judge_model_name,
+            taxonomy_git_repo_path=taxonomy.path,
+            branch=candidate_branch,
+            output_dir=output_dir,
             merge_system_user_message=merge_system_user_message,
         ),
         MTBenchBranchEvaluator(
-            base_model_name,
-            judge_model_name,
-            taxonomy.path,
-            base_branch,
-            output_dir,
+            model_name=base_model_name,
+            judge_model_name=judge_model_name,
+            taxonomy_git_repo_path=taxonomy.path,
+            branch=base_branch,
+            output_dir=output_dir,
             merge_system_user_message=merge_system_user_message,
         ),
     ]
