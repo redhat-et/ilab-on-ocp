@@ -67,50 +67,47 @@ def run_mmlu_branch_mt_bench_branch_op(
 
         import json
 
-        summary = {
-            "improvements": [],
-            "regressions": [],
-            "no_changes": [],
-            "new": []
-        }
+        summary = {"improvements": [], "regressions": [], "no_changes": [], "new": []}
 
         if len(improvements) > 0:
             improvements.sort(key=sort_score, reverse=True)
             for improvement in improvements:
                 task, delta, base_score, new_score = improvement
-                summary["improvements"].append({
-                    "task": task,
-                    "base_score": round(base_score, 2),
-                    "new_score": round(new_score, 2),
-                    "delta": delta
-                })
+                summary["improvements"].append(
+                    {
+                        "task": task,
+                        "base_score": round(base_score, 2),
+                        "new_score": round(new_score, 2),
+                        "delta": delta,
+                    }
+                )
 
         if len(regressions) > 0:
             regressions.sort(key=sort_score)
             for regression in regressions:
                 task, delta, base_score, new_score = regression
-                summary["regressions"].append({
-                    "task": task,
-                    "base_score": round(base_score, 2),
-                    "new_score": round(new_score, 2),
-                    "delta": delta
-                })
+                summary["regressions"].append(
+                    {
+                        "task": task,
+                        "base_score": round(base_score, 2),
+                        "new_score": round(new_score, 2),
+                        "delta": delta,
+                    }
+                )
 
         if len(no_changes) > 0:
             for entry in no_changes:
                 task, avg_score = entry
-                summary["no_changes"].append({
-                    "task": task,
-                    "average_score": round(avg_score, 2)
-                })
+                summary["no_changes"].append(
+                    {"task": task, "average_score": round(avg_score, 2)}
+                )
 
         if new is not None and len(new) > 0:
             for entry in new:
                 na, avg_score = entry
-                summary["new"].append({
-                    "qna": qna,
-                    "average_score": round(avg_score, 2)
-                })
+                summary["new"].append(
+                    {"qna": qna, "average_score": round(avg_score, 2)}
+                )
 
         return json.dumps(summary, indent=4)
 
@@ -259,7 +256,6 @@ def run_mmlu_branch_mt_bench_branch_op(
         else:
             new_qnas.append((qna, avg_score))
 
-
     error_rate = (error_rate + base_error_rate) / 2
     if error_rate > 0:
         error_rate = round(error_rate, 2)
@@ -267,7 +263,10 @@ def run_mmlu_branch_mt_bench_branch_op(
     ######################################################################
 
     summary = branch_eval_summary_to_json(
-        improvements, regressions, no_changes, new_qnas,
+        improvements,
+        regressions,
+        no_changes,
+        new_qnas,
     )
 
     mt_bench_branch_data = {
@@ -340,7 +339,9 @@ def run_mmlu_branch_mt_bench_branch_op(
                 no_changes.append((task, s))
 
         summary = branch_eval_summary_to_json(
-            improvements, regressions, no_changes,
+            improvements,
+            regressions,
+            no_changes,
         )
         mmlu_branch_data = {
             "report_title": "KNOWLEDGE EVALUATION REPORT",

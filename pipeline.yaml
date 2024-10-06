@@ -3,6 +3,7 @@
 # Description: InstructLab pipeline
 # Inputs:
 #    base_model: str [Default: 'ibm-granite/granite-7b-base']
+#    base_model_name: str [Default: '/model/model']
 #    batch_size: int [Default: 8.0]
 #    device: str
 #    few_shots: int [Default: 5.0]
@@ -450,6 +451,51 @@ components:
           parameterType: STRING
         name:
           parameterType: STRING
+  comp-run-mmlu-branch-mt-bench-branch-op:
+    executorLabel: exec-run-mmlu-branch-mt-bench-branch-op
+    inputDefinitions:
+      artifacts:
+        tasks:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        taxonomy:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+      parameters:
+        base_branch:
+          parameterType: STRING
+        base_model:
+          parameterType: STRING
+        base_model_name:
+          parameterType: STRING
+        batch_size:
+          parameterType: NUMBER_INTEGER
+        candidate_branch:
+          parameterType: STRING
+        candidate_model:
+          parameterType: STRING
+        device:
+          parameterType: STRING
+        few_shots:
+          parameterType: NUMBER_INTEGER
+        max_workers:
+          parameterType: STRING
+        merge_system_user_message:
+          parameterType: BOOLEAN
+        model_dtype:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        mmlu_branch_output:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        mt_bench_branch_output:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
   comp-run-mmlu-op:
     executorLabel: exec-run-mmlu-op
     inputDefinitions:
@@ -492,8 +538,6 @@ components:
           isOptional: true
           parameterType: STRING
         max_workers:
-          defaultValue: auto
-          isOptional: true
           parameterType: STRING
         merge_system_user_message:
           parameterType: BOOLEAN
@@ -1015,6 +1059,201 @@ deploymentSpec:
           \                        claimName: {output_pvc_name}\n        \"\"\"\n\
           \    )\n\n    return Outputs(manifest, name)\n\n"
         image: registry.access.redhat.com/ubi9/python-311:latest
+    exec-run-mmlu-branch-mt-bench-branch-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - run_mmlu_branch_mt_bench_branch_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'vllm' 'lm-eval[api]'\
+          \ 'tenacity' 'git+https://github.com/sallyom/ilab-on-ocp.git@final-eval#subdirectory=utils/helpers'\
+          \ && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef run_mmlu_branch_mt_bench_branch_op(\n    mmlu_branch_output:\
+          \ Output[Artifact],\n    mt_bench_branch_output: Output[Artifact],\n   \
+          \ candidate_model: str,\n    base_model: str,\n    base_model_name: str,\n\
+          \    tasks: Input[Dataset],\n    taxonomy: Input[Dataset],\n    base_branch:\
+          \ str,\n    candidate_branch: str,\n    max_workers: str,\n    model_dtype:\
+          \ str,\n    few_shots: int,\n    batch_size: int,\n    device: str,\n  \
+          \  merge_system_user_message: bool,\n):\n    import json\n    import os\n\
+          \    import torch\n\n    from instructlab.eval.mmlu import MMLUBranchEvaluator,\
+          \ MMLU_TASKS\n    from instructlab.eval.mt_bench import MTBenchBranchEvaluator\n\
+          \    from helpers import (\n        find_matching_directories,\n       \
+          \ launch_local_vllm,\n        stop_local_vllm,\n        VLLM_SERVER,\n \
+          \   )\n\n    ######################################################################\n\
+          \    # This is copied from instructlab/model/evaluate\n    # https://github.com/instructlab/instructlab/blob/main/src/instructlab/model/evaluate.py\n\
+          \    # TODO: Move this logic to library to share\n    def sort_score(pairing:\
+          \ tuple[str, float, float, float]) -> float:\n        \"\"\"helper func\
+          \ for display_branch_eval_summary\n        takes a tuple pairing and returns\
+          \ just the score\n        \"\"\"\n        return pairing[1]\n\n    def branch_eval_summary_to_json(\n\
+          \        improvements: list[tuple[str, float, float, float]],\n        regressions:\
+          \ list[tuple[str, float, float, float]],\n        no_changes: list[tuple[str,\
+          \ float]],\n        new=None,\n    ) -> str:\n        \"\"\"Generates a\
+          \ JSON object from the _branch benchmark evaluations\"\"\"\n\n        import\
+          \ json\n\n        summary = {\"improvements\": [], \"regressions\": [],\
+          \ \"no_changes\": [], \"new\": []}\n\n        if len(improvements) > 0:\n\
+          \            improvements.sort(key=sort_score, reverse=True)\n         \
+          \   for improvement in improvements:\n                task, delta, base_score,\
+          \ new_score = improvement\n                summary[\"improvements\"].append(\n\
+          \                    {\n                        \"task\": task,\n      \
+          \                  \"base_score\": round(base_score, 2),\n             \
+          \           \"new_score\": round(new_score, 2),\n                      \
+          \  \"delta\": delta,\n                    }\n                )\n\n     \
+          \   if len(regressions) > 0:\n            regressions.sort(key=sort_score)\n\
+          \            for regression in regressions:\n                task, delta,\
+          \ base_score, new_score = regression\n                summary[\"regressions\"\
+          ].append(\n                    {\n                        \"task\": task,\n\
+          \                        \"base_score\": round(base_score, 2),\n       \
+          \                 \"new_score\": round(new_score, 2),\n                \
+          \        \"delta\": delta,\n                    }\n                )\n\n\
+          \        if len(no_changes) > 0:\n            for entry in no_changes:\n\
+          \                task, avg_score = entry\n                summary[\"no_changes\"\
+          ].append(\n                    {\"task\": task, \"average_score\": round(avg_score,\
+          \ 2)}\n                )\n\n        if new is not None and len(new) > 0:\n\
+          \            for entry in new:\n                na, avg_score = entry\n\
+          \                summary[\"new\"].append(\n                    {\"qna\"\
+          : qna, \"average_score\": round(avg_score, 2)}\n                )\n\n  \
+          \      return json.dumps(summary, indent=4)\n\n    ######################################################################\n\
+          \    # This is copied from instructlab/model/evaluate\n    # https://github.com/instructlab/instructlab/blob/main/src/instructlab/model/evaluate.py\n\
+          \    # TODO: Move this logic to library to share\n    def qa_pairs_to_qna_to_avg_scores(qa_pairs:\
+          \ list[dict]) -> dict[str, float]:\n        \"\"\"takes in a list of qa_pair\
+          \ dicts\n        returns a dict of average scores per qna file\n       \
+          \ \"\"\"\n        qna_to_scores: dict[str, list[float]] = {}\n        for\
+          \ qa_pair in qa_pairs:\n            qna_file = qa_pair[\"qna_file\"]\n \
+          \           score = qa_pair[\"score\"]\n            scores = qna_to_scores.get(qna_file)\n\
+          \            if scores is None:\n                qna_to_scores[qna_file]\
+          \ = [score]\n            else:\n                scores.append(score)\n \
+          \       qna_to_avg_scores = {}\n        for qna, scores in qna_to_scores.items():\n\
+          \            qna_to_avg_scores[qna] = sum(scores) / len(scores)\n      \
+          \  return qna_to_avg_scores\n\n    ######################################################################\n\
+          \n    gpu_available = torch.cuda.is_available()\n    gpu_name = (\n    \
+          \    torch.cuda.get_device_name(torch.cuda.current_device())\n        if\
+          \ gpu_available\n        else \"No GPU available\"\n    )\n    gpu_count\
+          \ = torch.cuda.device_count() if gpu_available else 0\n\n    print(f\"GPU\
+          \ Available: {gpu_available}, Using: {gpu_name}\")\n\n    # MT_BENCH_BRANCH\n\
+          \n    judge_api_key = os.getenv(\"JUDGE_API_KEY\", \"\")\n    judge_model_name\
+          \ = os.getenv(\"JUDGE_NAME\")\n    judge_endpoint = os.getenv(\"JUDGE_ENDPOINT\"\
+          )\n\n    output_dir = \"/tmp/eval_output\"\n\n    # TODO: candidate_branch\
+          \ must be in same repo, not a fork, or, can compare main branch against\
+          \ candidate, base models\n    # ??\n    base_branch = base_branch or \"\
+          main\"\n    candidate_branch = candidate_branch or \"main\"\n\n    # model_name\
+          \ is same as model_path with ilab setup\n    mt_bench_evaluators = [\n \
+          \       MTBenchBranchEvaluator(\n            model_name=candidate_model,\n\
+          \            judge_model_name=judge_model_name,\n            taxonomy_git_repo_path=taxonomy.path,\n\
+          \            branch=candidate_branch,\n            output_dir=output_dir,\n\
+          \            merge_system_user_message=merge_system_user_message,\n    \
+          \    ),\n        MTBenchBranchEvaluator(\n            model_name=base_model_name,\n\
+          \            judge_model_name=judge_model_name,\n            taxonomy_git_repo_path=taxonomy.path,\n\
+          \            branch=base_branch,\n            output_dir=output_dir,\n \
+          \           merge_system_user_message=merge_system_user_message,\n     \
+          \   ),\n    ]\n\n    # generate_answers,judgment uses a magic word for its\
+          \ mt_bench evaluator  - `auto`\n    # with `auto`, number of gpus allocated\
+          \ for serving is calculated based on environment\n    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36\n\
+          \    if max_workers == \"auto\":\n        try:\n            usable_cpu_count\
+          \ = len(os.sched_getaffinity(0)) // 2\n        except AttributeError:\n\
+          \            usable_cpu_count = multiprocessing.cpu_count() // 2\n     \
+          \   max_workers = usable_cpu_count\n\n    branches = [candidate_branch,\
+          \ base_branch]\n    m_paths = [candidate_model, base_model]\n    qa_pairs_and_errors\
+          \ = []\n    for i, evaluator in enumerate(mt_bench_evaluators):\n      \
+          \  branch = branches[i]\n        m_path = m_paths[i]\n\n        print(\n\
+          \            f\"Generating questions and reference answers from qna files\
+          \ for branch {branch}...\"\n        )\n        launch_local_vllm(m_path,\
+          \ gpu_count)\n\n        evaluator.gen_answers(\n            server_url=VLLM_SERVER,\n\
+          \            serving_gpus=gpu_count,\n            max_workers=max_workers,\n\
+          \        )\n\n        stop_local_vllm()\n\n        print(f\"Evaluating answers\
+          \ for branch {branch}...\")\n        overall_score, qa_pairs, error_rate\
+          \ = evaluator.judge_answers(\n            server_url=judge_endpoint,\n \
+          \           api_key=judge_api_key,\n            serving_gpus=gpu_count,\n\
+          \            max_workers=max_workers,\n        )\n\n        qa_pairs_and_errors.append((overall_score,\
+          \ qa_pairs, error_rate))\n\n    ######################################################################\n\
+          \    # This is copied from instructlab/model/evaluate\n    # https://github.com/instructlab/instructlab/blob/main/src/instructlab/model/evaluate.py\n\
+          \    # TODO: Move this logic to library to share\n    overall_score, qa_pairs,\
+          \ error_rate = qa_pairs_and_errors[0]\n    base_overall_score, base_qa_pairs,\
+          \ base_error_rate = qa_pairs_and_errors[1]\n\n    qna_to_avg_scores = qa_pairs_to_qna_to_avg_scores(qa_pairs)\n\
+          \    base_qna_to_avg_scores = qa_pairs_to_qna_to_avg_scores(base_qa_pairs)\n\
+          \n    improvements, regressions, no_changes, new_qnas = [], [], [], []\n\
+          \n    for qna, avg_score in qna_to_avg_scores.items():\n        base_avg_score\
+          \ = base_qna_to_avg_scores.get(qna)\n        if base_avg_score is not None:\n\
+          \            if avg_score > base_avg_score:\n                improvements.append(\n\
+          \                    (\n                        qna,\n                 \
+          \       round(avg_score - base_avg_score, 2),\n                        base_avg_score,\n\
+          \                        avg_score,\n                    )\n           \
+          \     )\n            elif avg_score == base_avg_score:\n               \
+          \ no_changes.append((qna, avg_score))\n            else:\n             \
+          \   regressions.append(\n                    (\n                       \
+          \ qna,\n                        round(avg_score - base_avg_score, 2),\n\
+          \                        base_avg_score,\n                        avg_score,\n\
+          \                    )\n                )\n        else:\n            new_qnas.append((qna,\
+          \ avg_score))\n\n    error_rate = (error_rate + base_error_rate) / 2\n \
+          \   if error_rate > 0:\n        error_rate = round(error_rate, 2)\n\n  \
+          \  ######################################################################\n\
+          \n    summary = branch_eval_summary_to_json(\n        improvements,\n  \
+          \      regressions,\n        no_changes,\n        new_qnas,\n    )\n\n \
+          \   mt_bench_branch_data = {\n        \"report_title\": \"SKILLS EVALUATION\
+          \ REPORT\",\n        \"model\": candidate_model,\n        \"judge_model\"\
+          : judge_model_name,\n        \"max_score\": \"10.0\",\n        \"overall_score\"\
+          : overall_score,\n        \"base_overall_score\": base_overall_score,\n\
+          \        \"error_rate\": error_rate,\n        \"summary\": summary,\n  \
+          \  }\n\n    with open(mt_bench_branch_output.path, \"w\") as f:\n      \
+          \  json.dump(mt_bench_branch_data, f, indent=4)\n\n    # MMLU_BRANCH\n\n\
+          \    # These are specific to ilab/eval\n    pattern = r\"node_datasets_\"\
+          \n    mmlu_tasks = [\"mmlu_pr\"]\n\n    node_dataset_dirs = find_matching_directories(tasks.path,\
+          \ pattern)\n    if node_dataset_dirs:\n        tasks_dir = node_dataset_dirs[0]\n\
+          \n        mmlu_branch_evaluators = [\n            MMLUBranchEvaluator(\n\
+          \                model_path=candidate_model,\n                tasks_dir=tasks_dir,\n\
+          \                tasks=mmlu_tasks,\n                few_shots=few_shots,\n\
+          \                batch_size=batch_size,\n            ),\n            MMLUBranchEvaluator(\n\
+          \                model_path=base_model,\n                tasks_dir=tasks_dir,\n\
+          \                tasks=mmlu_tasks,\n                few_shots=few_shots,\n\
+          \                batch_size=batch_size,\n            ),\n        ]\n   \
+          \     m_paths = [candidate_model, base_model]\n        overall_scores =\
+          \ []\n        individual_scores_list = []\n        for i, evaluator in enumerate(mmlu_branch_evaluators):\n\
+          \            m_path = m_paths[i]\n            launch_local_vllm(m_path,\
+          \ gpu_count)\n            overall_score, individual_scores = evaluator.run(VLLM_SERVER)\n\
+          \            overall_scores.append(overall_score)\n            individual_scores_list.append(individual_scores)\n\
+          \            stop_local_vllm()\n\n        overall_score = overall_scores[0]\n\
+          \        base_overall_score = overall_scores[1]\n        individual_scores\
+          \ = individual_scores_list[0]\n        base_individual_scores = individual_scores_list[1]\n\
+          \n        improvements, regressions, no_changes = [], [], []\n        for\
+          \ task, score in individual_scores.items():\n            base_score = base_individual_scores[task]\n\
+          \            s = score[\"score\"]\n            b_s = base_score[\"score\"\
+          ]\n            d = round(s - b_s, 2)\n            if s > b_s:\n        \
+          \        improvements.append((task, d, b_s, s))\n            elif b_s >\
+          \ s:\n                regressions.append((task, d, b_s, s))\n          \
+          \  else:\n                no_changes.append((task, s))\n\n        summary\
+          \ = branch_eval_summary_to_json(\n            improvements,\n          \
+          \  regressions,\n            no_changes,\n        )\n        mmlu_branch_data\
+          \ = {\n            \"report_title\": \"KNOWLEDGE EVALUATION REPORT\",\n\
+          \            \"max_score\": \"1.0\",\n            \"model\": candidate_model,\n\
+          \            \"model_score\": round(overall_score, 2),\n            \"base_model\"\
+          : base_model,\n            \"base_model_score\": round(base_overall_score,\
+          \ 2),\n            \"summary\": summary,\n        }\n\n        with open(mmlu_branch_output.path,\
+          \ \"w\") as f:\n            json.dump(mmlu_branch_data, f, indent=4)\n \
+          \   else:\n        print(\"No MMLU tasks directories found, skipping MMLU_branch\
+          \ evaluation.\")\n\n"
+        image: quay.io/sallyom/instructlab-ocp:eval-new
+        resources:
+          accelerator:
+            count: '1'
+            type: nvidia.com/gpu
     exec-run-mmlu-op:
       container:
         args:
@@ -1077,7 +1316,7 @@ deploymentSpec:
           \ = NamedTuple(\"outputs\", best_model=str, best_score=float)\n    best_model\
           \ = max(scores, key=scores.get)\n    best_score = scores[best_model]\n \
           \   return outputs(best_model=best_model, best_score=best_score)\n\n"
-        image: quay.io/sallyom/instructlab-ocp:eval
+        image: quay.io/sallyom/instructlab-ocp:eval-new
         resources:
           accelerator:
             count: '1'
@@ -1096,8 +1335,8 @@ deploymentSpec:
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
           \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'vllm' && \"\
-          $0\" \"$@\"\n"
+          \  python3 -m pip install --quiet --no-warn-script-location 'vllm' 'git+https://github.com/sallyom/ilab-on-ocp.git@final-eval#subdirectory=utils/helpers'\
+          \ && \"$0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -1110,98 +1349,46 @@ deploymentSpec:
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef run_mt_bench_op(\n    models_path_prefix: str,\n    mt_bench_output:\
-          \ Output[Artifact],\n    merge_system_user_message: bool,\n    # generate_answers,judgment\
+          \ Output[Artifact],\n    merge_system_user_message: bool,\n    max_workers:\
+          \ str,\n    models_list: List[str] = None,\n    models_folder: Optional[str]\
+          \ = None,\n    device: str = None,\n) -> NamedTuple(\"outputs\", best_model=str,\
+          \ best_score=float):\n    import json\n    import torch\n    import os\n\
+          \n    from instructlab.eval.mt_bench import MTBenchEvaluator\n    from helpers\
+          \ import launch_local_vllm, stop_local_vllm, VLLM_SERVER\n\n    os.environ[\"\
+          PYTORCH_CUDA_ALLOC_CONF\"] = \"expandable_segments:True\"\n    candidate_server_url\
+          \ = VLLM_SERVER\n\n    gpu_available = torch.cuda.is_available()\n    gpu_name\
+          \ = (\n        torch.cuda.get_device_name(torch.cuda.current_device())\n\
+          \        if gpu_available\n        else \"No GPU available\"\n    )\n  \
+          \  gpu_count = torch.cuda.device_count() if gpu_available else 0\n\n   \
+          \ print(f\"GPU Available: {gpu_available}, {gpu_name}\")\n\n    if models_list\
+          \ is None and models_folder:\n        models_list = os.listdir(models_folder)\n\
+          \n    judge_api_key = os.getenv(\"JUDGE_API_KEY\", \"\")\n    judge_model_name\
+          \ = os.getenv(\"JUDGE_NAME\")\n    judge_endpoint = os.getenv(\"JUDGE_ENDPOINT\"\
+          )\n\n    scores = {}\n    all_mt_bench_data = []\n\n    # generate_answers,judgment\
           \ uses a magic word for its mt_bench evaluator  - `auto`\n    # with `auto`,\
           \ number of gpus allocated for serving is calculated based on environment\n\
           \    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36\n\
-          \    max_workers: str = \"auto\",\n    models_list: List[str] = None,\n\
-          \    models_folder: Optional[str] = None,\n    device: str = None,\n) ->\
-          \ NamedTuple(\"outputs\", best_model=str, best_score=float):\n    def launch_vllm_server_background(\n\
-          \        model_path: str, gpu_count: int, retries: int = 60, delay: int\
-          \ = 5\n    ):\n        import subprocess\n        import sys\n        import\
-          \ time\n        import requests\n\n        if gpu_count > 0:\n         \
-          \   command = [\n                sys.executable,\n                \"-m\"\
-          ,\n                \"vllm.entrypoints.openai.api_server\",\n           \
-          \     \"--model\",\n                model_path,\n                \"--tensor-parallel-size\"\
-          ,\n                str(gpu_count),\n            ]\n        else:\n     \
-          \       command = [\n                sys.executable,\n                \"\
-          -m\",\n                \"vllm.entrypoints.openai.api_server\",\n       \
-          \         \"--model\",\n                model_path,\n            ]\n\n \
-          \       subprocess.Popen(args=command)\n\n        server_url = \"http://localhost:8000/v1\"\
-          \n        print(f\"Waiting for vLLM server to start at {server_url}...\"\
-          )\n\n        for attempt in range(retries):\n            try:\n        \
-          \        response = requests.get(f\"{server_url}/models\")\n           \
-          \     if response.status_code == 200:\n                    print(f\"vLLM\
-          \ server is up and running at {server_url}.\")\n                    return\n\
-          \            except requests.ConnectionError:\n                pass\n\n\
-          \            print(\n                f\"Server not available yet, retrying\
-          \ in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\n          \
-          \  )\n            time.sleep(delay)\n\n        raise RuntimeError(\n   \
-          \         f\"Failed to start vLLM server at {server_url} after {retries}\
-          \ retries.\"\n        )\n\n    # This seems like excessive effort to stop\
-          \ the vllm process, but merely saving & killing the pid doesn't work\n \
-          \   # Also, the base image does not include `pkill` cmd, so can't pkill\
-          \ -f vllm.entrypoints.openai.api_server either\n    def stop_vllm_server_by_name():\n\
-          \        import psutil\n\n        for process in psutil.process_iter(attrs=[\"\
-          pid\", \"name\", \"cmdline\"]):\n            cmdline = process.info.get(\"\
-          cmdline\")\n            if cmdline and \"vllm.entrypoints.openai.api_server\"\
-          \ in cmdline:\n                print(\n                    f\"Found vLLM\
-          \ server process with PID: {process.info['pid']}, terminating...\"\n   \
-          \             )\n                try:\n                    process.terminate()\
-          \  # Try graceful termination\n                    process.wait(timeout=5)\
-          \  # Wait a bit for it to terminate\n                    if process.is_running():\n\
-          \                        print(\n                            f\"Forcefully\
-          \ killing vLLM server process with PID: {process.info['pid']}\"\n      \
-          \                  )\n                        process.kill()  # Force kill\
-          \ if it's still running\n                    print(\n                  \
-          \      f\"Successfully stopped vLLM server with PID: {process.info['pid']}\"\
-          \n                    )\n                except psutil.NoSuchProcess:\n\
-          \                    print(f\"Process with PID {process.info['pid']} no\
-          \ longer exists.\")\n                except psutil.AccessDenied:\n     \
-          \               print(\n                        f\"Access denied when trying\
-          \ to terminate process with PID {process.info['pid']}.\"\n             \
-          \       )\n                except Exception as e:\n                    print(\n\
-          \                        f\"Failed to terminate process with PID {process.info['pid']}.\
-          \ Error: {e}\"\n                    )\n\n    import json\n    import torch\n\
-          \    import os\n\n    from instructlab.eval import mt_bench_answers, mt_bench_judgment\n\
-          \n    os.environ[\"PYTORCH_CUDA_ALLOC_CONF\"] = \"expandable_segments:True\"\
-          \n    candidate_server_url = \"http://localhost:8000/v1\"\n\n    gpu_available\
-          \ = torch.cuda.is_available()\n    gpu_name = (\n        torch.cuda.get_device_name(torch.cuda.current_device())\n\
-          \        if gpu_available\n        else \"No GPU available\"\n    )\n  \
-          \  gpu_count = torch.cuda.device_count() if gpu_available else 0\n\n   \
-          \ print(f\"GPU Available: {gpu_available}, {gpu_name}\")\n\n    # See note\
-          \ above about magic word \"auto\"\n    if max_workers == \"auto\":\n   \
-          \     try:\n            usable_cpu_count = len(os.sched_getaffinity(0))\
-          \ // 2\n        except AttributeError:\n            usable_cpu_count = multiprocessing.cpu_count()\
-          \ // 2\n        max_workers = usable_cpu_count\n\n    # TODO: Using evaluator\
-          \ results in connection errors, need to determine why.\n    #       For\
-          \ now, using mt_bench_answers.generate_answers & mt_bench_judgment.generate_judgment\n\
-          \    # evaluator = MTBenchEvaluator(\n    #    model_name=candidate_model_name,\n\
-          \    #    judge_model_name=judge_model_name,\n    #    max_workers=max_workers,\n\
-          \    #    merge_system_user_message=merge_system_user_message\n    # )\n\
-          \n    if models_list is None and models_folder:\n        models_list = os.listdir(models_folder)\n\
-          \n    judge_api_key = os.getenv(\"JUDGE_API_KEY\", \"\")\n    judge_model_name\
-          \ = os.getenv(\"JUDGE_NAME\")\n    judge_endpoint = os.getenv(\"JUDGE_ENDPOINT\"\
-          )\n\n    scores = {}\n    all_mt_bench_data = []\n\n    for model_name in\
-          \ models_list:\n        print(f\"Serving candidate model: {model_name}\"\
-          )\n        model_path = f\"{models_path_prefix}/{model_name}\"\n\n     \
-          \   # Launch the vLLM server and wait until it is ready\n        launch_vllm_server_background(model_path,\
+          \    if max_workers == \"auto\":\n        try:\n            usable_cpu_count\
+          \ = len(os.sched_getaffinity(0)) // 2\n        except AttributeError:\n\
+          \            usable_cpu_count = multiprocessing.cpu_count() // 2\n     \
+          \   max_workers = usable_cpu_count\n\n    for model_name in models_list:\n\
+          \        print(f\"Serving candidate model: {model_name}\")\n        model_path\
+          \ = f\"{models_path_prefix}/{model_name}\"\n\n        launch_local_vllm(model_path,\
           \ gpu_count)\n\n        # model ID is the model_path value in vLLM\n   \
-          \     print(\"Generating answers...\")\n        mt_bench_answers.generate_answers(\n\
-          \            model_name=model_path,\n            model_api_base=candidate_server_url,\n\
-          \            output_dir=\"/tmp/eval_output\",\n            max_workers=max_workers,\n\
-          \        )\n\n        print(\"Judging answers...\")\n        overall_score,\
-          \ qa_pairs, turn_scores, error_rate = (\n            mt_bench_judgment.generate_judgment(\n\
-          \                model_name=model_path,\n                judge_model_name=judge_model_name,\n\
-          \                model_api_base=judge_endpoint,\n                api_key=judge_api_key,\n\
-          \                output_dir=\"/tmp/eval_output\",\n                max_workers=max_workers,\n\
-          \                merge_system_user_message=merge_system_user_message,\n\
-          \            )\n        )\n\n        stop_vllm_server_by_name()\n\n    \
-          \    mt_bench_data = {\n            \"report_title\": \"SKILLS EVALUATION\
-          \ REPORT\",\n            \"model\": model_path,\n            \"judge_model\"\
-          : judge_model_name,\n            \"overall_score\": overall_score,\n   \
-          \         \"turn_scores\": turn_scores,\n            \"qa_scores\": qa_pairs,\n\
-          \            \"error_rate\": error_rate,\n        }\n\n        all_mt_bench_data.append(mt_bench_data)\n\
+          \     evaluator = MTBenchEvaluator(\n            model_name=model_path,\n\
+          \            judge_model_name=judge_model_name,\n            output_dir=\"\
+          /tmp/eval_output\",\n            merge_system_user_message=merge_system_user_message,\n\
+          \        )\n\n        evaluator.gen_answers(\n            server_url=VLLM_SERVER,\n\
+          \            serving_gpus=gpu_count,\n            max_workers=max_workers,\n\
+          \        )\n\n        stop_local_vllm()\n\n        overall_score, qa_pairs,\
+          \ turn_scores, error_rate = evaluator.judge_answers(\n            server_url=judge_endpoint,\n\
+          \            api_key=judge_api_key,\n            serving_gpus=gpu_count,\n\
+          \            max_workers=max_workers,\n        )\n\n        mt_bench_data\
+          \ = {\n            \"report_title\": \"SKILLS EVALUATION REPORT\",\n   \
+          \         \"model\": model_path,\n            \"judge_model\": judge_model_name,\n\
+          \            \"overall_score\": overall_score,\n            \"turn_scores\"\
+          : turn_scores,\n            \"qa_scores\": qa_pairs,\n            \"error_rate\"\
+          : error_rate,\n        }\n\n        all_mt_bench_data.append(mt_bench_data)\n\
           \        scores[model_path] = overall_score\n\n    with open(mt_bench_output.path,\
           \ \"w\") as f:\n        json.dump(all_mt_bench_data, f, indent=4)\n\n  \
           \  outputs = NamedTuple(\"outputs\", best_model=str, best_score=float)\n\
@@ -1685,6 +1872,55 @@ root:
                 constant: second
         taskInfo:
           name: pytorchjob-manifest-op-2
+      run-mmlu-branch-mt-bench-branch-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-run-mmlu-branch-mt-bench-branch-op
+        dependentTasks:
+        - createpvc
+        - createpvc-3
+        - git-clone-op
+        - run-mt-bench-op
+        - sdg-op
+        inputs:
+          artifacts:
+            tasks:
+              taskOutputArtifact:
+                outputArtifactKey: sdg
+                producerTask: sdg-op
+            taxonomy:
+              taskOutputArtifact:
+                outputArtifactKey: taxonomy
+                producerTask: git-clone-op
+          parameters:
+            base_branch:
+              componentInputParameter: repo_branch
+            base_model:
+              runtimeValue:
+                constant: /model
+            base_model_name:
+              componentInputParameter: base_model_name
+            batch_size:
+              componentInputParameter: batch_size
+            candidate_branch:
+              componentInputParameter: repo_branch
+            candidate_model:
+              taskOutputParameter:
+                outputParameterKey: best_model
+                producerTask: run-mt-bench-op
+            device:
+              componentInputParameter: device
+            few_shots:
+              componentInputParameter: few_shots
+            max_workers:
+              componentInputParameter: max_workers
+            merge_system_user_message:
+              componentInputParameter: merge_system_user_message
+            model_dtype:
+              componentInputParameter: model_dtype
+        taskInfo:
+          name: run-mmlu-branch-mt-bench-branch-op
       run-mmlu-op:
         cachingOptions: {}
         componentRef:
@@ -1763,6 +1999,10 @@ root:
     parameters:
       base_model:
         defaultValue: ibm-granite/granite-7b-base
+        isOptional: true
+        parameterType: STRING
+      base_model_name:
+        defaultValue: /model/model
         isOptional: true
         parameterType: STRING
       batch_size:
@@ -1861,6 +2101,28 @@ platforms:
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-3
+        exec-run-mmlu-branch-mt-bench-branch-op:
+          configMapAsEnv:
+          - configMapName: kfp-model-server
+            keyToEnv:
+            - configMapKey: endpoint
+              envVar: JUDGE_ENDPOINT
+            - configMapKey: model
+              envVar: JUDGE_NAME
+          pvcMount:
+          - mountPath: /output
+            taskOutputParameter:
+              outputParameterKey: name
+              producerTask: createpvc-3
+          - mountPath: /model
+            taskOutputParameter:
+              outputParameterKey: name
+              producerTask: createpvc
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: JUDGE_API_KEY
+              secretKey: api_key
+            secretName: judge-server
         exec-run-mmlu-op:
           pvcMount:
           - mountPath: /output

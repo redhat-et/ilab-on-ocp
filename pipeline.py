@@ -23,6 +23,7 @@ GENERATED_STANDALONE_FILE_NAME = "standalone.py"
 DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
 KFP_MODEL_SERVER_CM = "sdg/kfp-model-server.yaml"
 BASE_MODE = "ibm-granite/granite-7b-base"
+BASE_MODEL_ID = "/model/model"  # <- "model ID for vLLM chat/completions - corresponds to path within pvc"
 MMLU_TASKS_LIST = "mmlu_anatomy,mmlu_astronomy"
 MODEL_DTYPE = "bfloat16"
 FEW_SHOTS = 5
@@ -80,12 +81,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         repo_branch: Optional[str] = None,
         repo_pr: Optional[int] = None,
         storage_class_name: str = "nfs-csi",
-<<<<<<< HEAD
         base_model: str = BASE_MODE,
-=======
-        base_model: str = "ibm-granite/granite-7b-base",
-        base_model_name: str = "/model/model",
->>>>>>> fc72dff (add base_model_name and update branch outputs)
+        base_model_name: str = BASE_MODEL_ID,
         # minimal subset of MMLU_TASKS
         mmlu_tasks_list: str = MMLU_TASKS_LIST,
         model_dtype: str = MODEL_DTYPE,
@@ -151,8 +148,6 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         sdg_to_pvc_task = artifact_to_pvc_op(
             data=data_processing_task.outputs["processed_data"], pvc_path="/data"
         )
-        # Why do we need this??
-        sdg_to_pvc_task.after(sdg_task)
         sdg_to_pvc_task.set_caching_options(False)
         mount_pvc(
             task=sdg_to_pvc_task, pvc_name=sdg_input_pvc_task.output, mount_path="/data"

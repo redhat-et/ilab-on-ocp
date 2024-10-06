@@ -19,16 +19,9 @@ def run_mt_bench_op(
     models_path_prefix: str,
     mt_bench_output: Output[Artifact],
     merge_system_user_message: bool,
-<<<<<<< HEAD
-    # generate_answers,judgment uses a magic word for its mt_bench evaluator  - `auto`
-    # with `auto`, number of gpus allocated for serving is calculated based on environment
-    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
-    max_workers: str = "auto",
+    max_workers: str,
     models_list: List[str] = None,
     models_folder: Optional[str] = None,
-=======
-    max_workers: str,
->>>>>>> e477a9f (add max_workers back)
     device: str = None,
 ) -> NamedTuple("outputs", best_model=str, best_score=float):
     import json
