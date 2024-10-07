@@ -1,15 +1,16 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error,no-member
-from typing import List, Literal, Optional
-import click
 import typing
-from kfp import dsl, compiler
+from typing import List, Literal, Optional
+
+import click
+from kfp import compiler, dsl
 from kfp.kubernetes import (
-    use_config_map_as_env,
-    use_secret_as_env,
     CreatePVC,
     DeletePVC,
     mount_pvc,
+    use_config_map_as_env,
+    use_secret_as_env,
 )
 
 # For now, all external models are the same mistral, but won't be always
@@ -43,30 +44,30 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
     # Imports for Training stage
     if mock is not None and "train" in mock:
         from training.faked import pytorchjob_manifest_op
+        from utils import artifact_to_pvc_op
         from utils.faked import (
+            huggingface_importer_op,
             kubectl_apply_op,
             kubectl_wait_for_op,
-            huggingface_importer_op,
             pvc_to_artifact_op,
             pvc_to_model_op,
         )
-        from utils import artifact_to_pvc_op
     else:
         from training import data_processing_op, pytorchjob_manifest_op
         from utils import (
-            kubectl_apply_op,
-            kubectl_wait_for_op,
             artifact_to_pvc_op,
             huggingface_importer_op,
+            kubectl_apply_op,
+            kubectl_wait_for_op,
             pvc_to_artifact_op,
             pvc_to_model_op,
         )
 
     # Imports for MMLU, MT_BENCH stage
     # TODO: Add mock/fake components
+    from eval.mmlu import load_mmlu_results_op, run_mmlu_op
+    from eval.mt_bench import load_mt_bench_results_op, run_mt_bench_op
     from utils import list_models_in_directory_op
-    from eval.mmlu import run_mmlu_op, load_mmlu_results_op
-    from eval.mt_bench import run_mt_bench_op, load_mt_bench_results_op
 
     @dsl.pipeline(
         display_name="InstructLab",
@@ -370,10 +371,11 @@ def gen_standalone():
 
     Example usage: ``` $ python pipeline.py gen-standalone ```
     """
+    from os import path
+
+    import yaml
     from jinja2 import Template
     from jinja2.exceptions import TemplateSyntaxError
-    import yaml
-    from os import path
 
     click.echo("Generating pipeline YAML file...")
     try:
@@ -662,8 +664,8 @@ def remove_template_markers(
         Output: ["{exec_repo_name}", "{exec_model}"]
 
     """
-    import re
     import json
+    import re
 
     pattern = r"\{\{\$\.inputs\.parameters\['([^']+)'\]\}\}"
     rendered_code = [

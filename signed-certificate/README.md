@@ -6,8 +6,8 @@ The endpoint url for vLLM inference servers that are deployed using vLLM Serving
 
 1. Copy secrets **letsencrypt-production-key** and **aws-route53-credentials** from **openshift-ingress** namespace into **istio-system** namespace.
 
-2. Create an **Issuer** for the **istio-system** namespace  
-   i. Navigate to **Administration** → **Custom Resource Definitions** → **Issuer**  
+2. Create an **Issuer** for the **istio-system** namespace
+   i. Navigate to **Administration** → **Custom Resource Definitions** → **Issuer**
    ii. Create an Issuer based upon an existing Issuer in the istio-system.
 
     ```
@@ -65,7 +65,7 @@ The endpoint url for vLLM inference servers that are deployed using vLLM Serving
     secretName: rhoai-letscrypt-cert
     ```
 
-3. A secret **rhoai-letscrypt-cert** should be created in the **istio-system** namespace  
+3. A secret **rhoai-letscrypt-cert** should be created in the **istio-system** namespace
 
 ## Update KServe configuration to use signed certificates
 
@@ -73,7 +73,7 @@ The endpoint url for vLLM inference servers that are deployed using vLLM Serving
 
    ![Data Science Cluster](./images/dsc.png)
 
-2. Click on **default-dsc → YAML**  
+2. Click on **default-dsc → YAML**
 3. For the kserve component update the certificate section to use the provided certificate. Secret name should be the same as you configured while creating the certificate.
 
     ```
@@ -96,11 +96,11 @@ The endpoint url for vLLM inference servers that are deployed using vLLM Serving
 
 The rhoai-operator does not reconcile the Gateway correctly. To verify if the operator has reconciled correctly
 
-1. Navigate to the Administration → Custom Resource Definitions → Gateway  
+1. Navigate to the Administration → Custom Resource Definitions → Gateway
 
     ![Gateways](./images/gateway.png)
 
-2. Click on Gateway → Instances  
+2. Click on Gateway → Instances
 
     ![Gateway instance](./images/gateway-instance.png)
 
@@ -127,16 +127,16 @@ The rhoai-operator does not reconcile the Gateway correctly. To verify if the op
         mode: SIMPLE
     ```
 
-4. If the tls section is not present, force the operator to reconcile manually: 
+4. If the tls section is not present, force the operator to reconcile manually:
 
-   i. Navigate to **Operators** → **Installed Operators** → **Red Hat OpenShift AI** → **Feature Tracker**  
+   i. Navigate to **Operators** → **Installed Operators** → **Red Hat OpenShift AI** → **Feature Tracker**
    ii. Search for Gateways and delete the Feature Tracker. It will be recreated.
 
     ![Feature Tracker](./images/feature-tracker.png)
 
-   iii. Navigate to Workload → Pods in the r**edhat-ods-operator** 
+   iii. Navigate to Workload → Pods in the r**edhat-ods-operator**
 
     ![Feature Tracker](./images/operator.png)
 
-   iv. Delete the rhodes-operator pod. It will be recreated.  
+   iv. Delete the rhodes-operator pod. It will be recreated.
    v. Verify the Gateway Instance as described above.

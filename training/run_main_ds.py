@@ -2,8 +2,7 @@ import argparse
 import os
 import subprocess
 
-from instructlab.training import TorchrunArgs, TrainingArgs, DeepSpeedOptions, config
-
+from instructlab.training import DeepSpeedOptions, TorchrunArgs, TrainingArgs, config
 from instructlab.training.utils import StreamablePopen
 
 

@@ -1,7 +1,9 @@
 # type: ignore
 # pylint: disable=unused-argument
 from typing import Optional
+
 from kfp import dsl
+
 from utils.consts import PYTHON_IMAGE
 
 
@@ -28,9 +30,9 @@ def sdg_op(
     repo_branch: Optional[str],
     repo_pr: Optional[int],
 ):
+    import shutil
     import sys
     from pathlib import Path
-    import shutil
 
     shutil.copytree(Path(sys.prefix) / "sdg_fixtures", sdg.path, dirs_exist_ok=True)
     return

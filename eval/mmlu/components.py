@@ -1,7 +1,9 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error
 from typing import List, NamedTuple, Optional
-from kfp.dsl import component, Input, Output, Artifact, Model, importer
+
+from kfp.dsl import Artifact, Input, Model, Output, component, importer
+
 from utils.consts import PYTHON_IMAGE
 
 EVAL_IMAGE = "quay.io/sallyom/instructlab-ocp:eval"
@@ -21,8 +23,9 @@ def run_mmlu_op(
 ) -> NamedTuple("outputs", best_model=str, best_score=float):
     import json
     import os
+
     import torch
-    from instructlab.eval.mmlu import MMLUEvaluator, MMLU_TASKS
+    from instructlab.eval.mmlu import MMLU_TASKS, MMLUEvaluator
 
     mmlu_tasks = mmlu_tasks_list.split(",") if mmlu_tasks_list else MMLU_TASKS
 
