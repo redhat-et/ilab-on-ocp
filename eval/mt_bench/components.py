@@ -23,9 +23,7 @@ def run_mt_bench_op(
     models_folder: Optional[str] = None,
     device: str = None,
 ) -> NamedTuple("outputs", best_model=str, best_score=float):
-    def launch_vllm(
-        model_path: str, gpu_count: int, retries: int = 60, delay: int = 5
-    ):
+    def launch_vllm(model_path: str, gpu_count: int, retries: int = 60, delay: int = 5):
         import subprocess
         import sys
         import time
