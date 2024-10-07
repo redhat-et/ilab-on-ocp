@@ -24,6 +24,7 @@ GENERATED_STANDALONE_FILE_NAME = "standalone.py"
 DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
 KFP_MODEL_SERVER_CM = "sdg/kfp-model-server.yaml"
 BASE_MODE = "ibm-granite/granite-7b-base"
+BASE_MODEL_DIR = "/model/model"  # <- "model ID for vLLM chat/completions - corresponds to path within pvc"
 MMLU_TASKS_LIST = "mmlu_anatomy,mmlu_astronomy"
 MODEL_DTYPE = "bfloat16"
 FEW_SHOTS = 5
@@ -63,8 +64,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             pvc_to_model_op,
         )
 
-    # Imports for MMLU, MT_BENCH stage
-    # TODO: Add mock/fake components
+    # Imports for evaluation
+    from eval.final import run_mt_bench_branch_op
     from eval.mmlu import load_mmlu_results_op, run_mmlu_op
 
     ## from eval.mmlu import run_mmlu_op, load_mmlu_results_op
@@ -311,6 +312,37 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
 
         use_secret_as_env(run_mt_bench_task, JUDGE_SECRET, {"api_key": "JUDGE_API_KEY"})
+
+        final_eval_task = run_mt_bench_branch_op(
+            candidate_model=run_mt_bench_task.outputs["best_model"],
+            taxonomy=git_clone_task.outputs["taxonomy"],
+            # TODO: DO we need both candidate_branch and base_branch
+            base_branch=repo_branch,
+            candidate_branch=repo_branch,
+            device=device,
+            base_model_dir=BASE_MODEL_DIR,
+            max_workers=max_workers,
+            merge_system_user_message=merge_system_user_message,
+        )
+
+        mount_pvc(
+            task=final_eval_task, pvc_name=output_pvc_task.output, mount_path="/output"
+        )
+
+        mount_pvc(
+            task=final_eval_task, pvc_name=model_pvc_task.output, mount_path="/model"
+        )
+
+        use_config_map_as_env(
+            final_eval_task,
+            JUDGE_CONFIG_MAP,
+            dict(endpoint="JUDGE_ENDPOINT", model="JUDGE_NAME"),
+        )
+
+        use_secret_as_env(final_eval_task, JUDGE_SECRET, {"api_key": "JUDGE_API_KEY"})
+
+        final_eval_task.set_accelerator_type("nvidia.com/gpu")
+        final_eval_task.set_accelerator_limit(1)
 
         # Technically `output_model_task` and `output_data_task` can happen before evaluation,
         # however the PVC can only be mounted once, so, setting these to _after_ so the eval proceeds.
