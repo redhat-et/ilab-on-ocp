@@ -1,10 +1,11 @@
 # type: ignore
 # pylint: disable=import-outside-toplevel,missing-function-docstring
 
+from typing import NamedTuple, Optional
+
 from kfp import dsl
-from typing import NamedTuple
+
 from utils.consts import PYTHON_IMAGE
-from typing import Optional
 
 
 @dsl.component(
@@ -20,11 +21,12 @@ def data_processing_op(
     max_seq_len: Optional[int] = 4096,
     max_batch_len: Optional[int] = 20000,
 ):
-    import instructlab.training.data_process as dp
     import os
+
+    import instructlab.training.data_process as dp
     from instructlab.training import (
-        TrainingArgs,
         DataProcessArgs,
+        TrainingArgs,
     )
 
     # define training-specific arguments

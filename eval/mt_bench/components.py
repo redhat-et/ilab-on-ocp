@@ -1,7 +1,9 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error
 from typing import List, NamedTuple, Optional
-from kfp.dsl import component, Input, Output, Artifact, Model, importer
+
+from kfp.dsl import Artifact, Input, Model, Output, component, importer
+
 from utils.consts import PYTHON_IMAGE
 
 # TODO: replace with ilab image
@@ -27,6 +29,7 @@ def run_mt_bench_op(
         import subprocess
         import sys
         import time
+
         import requests
 
         if gpu_count > 0:
@@ -105,10 +108,10 @@ def run_mt_bench_op(
                     )
 
     import json
-    import torch
     import os
 
-    from instructlab.eval.mt_bench import MTBenchEvaluator
+    import torch
+    from instructlab.eval import mt_bench_answers, mt_bench_judgment
 
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     vllm_server = "http://localhost:8000/v1"

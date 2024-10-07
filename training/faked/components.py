@@ -1,8 +1,10 @@
 # type: ignore
 # pylint: disable=import-outside-toplevel,missing-function-docstring,unused-argument
 
-from kfp import dsl
 from typing import NamedTuple
+
+from kfp import dsl
+
 from utils.consts import PYTHON_IMAGE
 
 

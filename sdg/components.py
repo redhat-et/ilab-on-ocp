@@ -1,6 +1,7 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error,no-member
 from typing import Optional
+
 from kfp import dsl
 
 IMAGE = "quay.io/tcoufal/ilab-sdg:latest"
@@ -34,10 +35,11 @@ def sdg_op(
     repo_branch: Optional[str],
     repo_pr: Optional[int],
 ):
+    from os import getenv
+
     import openai
     from instructlab.sdg import generate_data
     from instructlab.sdg.utils.taxonomy import read_taxonomy
-    from os import getenv
 
     api_key = getenv("api_key")
     model = getenv("model")

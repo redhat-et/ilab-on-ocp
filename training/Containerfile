@@ -30,4 +30,3 @@ ENV XDG_CACHE_HOME="/tmp"
 COPY run_main_ds.py .
 
 USER 1001
-

@@ -1,6 +1,7 @@
 # type: ignore
 # pylint: disable=unused-argument,missing-function-docstring
 from kfp import dsl
+
 from ..consts import PYTHON_IMAGE
 
 

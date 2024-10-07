@@ -17,7 +17,7 @@ spec:
         - name: HF_TOKEN
           valueFrom:
             secretKeyRef:
-              name: huggingtoken 
+              name: huggingtoken
               key: HF_TOKEN
         - name: S3_FOLDER
           value: "models"

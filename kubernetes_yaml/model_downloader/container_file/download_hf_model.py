@@ -1,12 +1,13 @@
-from typing import Union
-from pathlib import Path
+import logging
 import os
 import shutil
-import logging
+from pathlib import Path
+from typing import Union
+
 import boto3
 from dotenv import load_dotenv
+from huggingface_hub import login, snapshot_download
 from tqdm import tqdm
-from huggingface_hub import snapshot_download, login
 
 # Load environment variables
 load_dotenv()
