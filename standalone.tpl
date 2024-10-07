@@ -21,9 +21,11 @@ TODO:
       kubernetes_yaml/mixtral_serve/mixtral_serve.yaml
 """
 
+import base64
 import json
 import logging
 import typing
+from urllib.parse import urlparse
 
 import click
 import kubernetes
@@ -43,6 +45,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
 K8S_NAME = "kfp-model-server"
 TOOLBOX_IMAGE = "registry.access.redhat.com/ubi9/toolbox"
+PYTHON_IMAGE = "registry.access.redhat.com/ubi9/python-311:latest"
 SDG_PVC_NAME = "sdg-data"
 SDG_PVC_MOUNT_PATH = "/input_data"
 SDG_VOLUME_NAME = "input-data"
@@ -57,6 +60,7 @@ PYTORCH_NNODES = 2
 PYTORCH_IMAGE = "quay.io/shanand/test-train:0.0.4"
 MMLU_SCORES_PATH = "/output/mmlu-results.txt"
 MT_BENCH_SCORES_PATH = "/output/mt-bench-results.txt"
+SDG_OBJECT_STORE_SECRET_NAME = "sdg-object-store-credentials"
 KFP_MODEL_SERVER_CM = """
 # TODO: remove the following line and replace it with the actual ConfigMap/Secret
 {{kfp_model_server_cm}}
@@ -173,6 +177,54 @@ spec:
               persistentVolumeClaim:
                 claimName: {output_pvc_name}
 """
+# TODO: support signature version?
+SDG_DATA_DOWNLOAD_SCRIPT = f"""
+set -e
+
+if python3 -c 'import boto3'; then
+  echo 'boto3 is already installed'
+else
+  if ! [ -x "$(command -v pip)" ]; then
+    python3 -m ensurepip || python3 -m ensurepip --user || dnf install python3-pip -y
+  fi
+  python3 -m pip install boto3
+fi
+
+
+tmp=$(mktemp -d)
+cat <<EOF > "$tmp"/download_s3.py
+import os
+import boto3
+
+def str_to_bool(s):
+  if s is None:
+    return False
+  return s.lower() in ['true', '1', 't', 'y', 'yes']
+
+def download_s3_file():
+    s3 = boto3.client(
+        's3',
+        aws_access_key_id=os.getenv('SDG_OBJECT_STORE_ACCESS_KEY'),
+        aws_secret_access_key=os.getenv('SDG_OBJECT_STORE_SECRET_KEY'),
+        endpoint_url=os.getenv('SDG_OBJECT_STORE_ENDPOINT', None),
+        region_name=os.getenv('SDG_OBJECT_STORE_REGION', None),
+        verify=str_to_bool(os.getenv('SDG_OBJECT_STORE_VERIFY_TLS', None))
+    )
+
+    bucket_name = os.getenv('SDG_OBJECT_STORE_BUCKET')
+    s3_key = os.getenv('SDG_OBJECT_STORE_DATA_KEY')
+    output_file = '{SDG_PVC_MOUNT_PATH}/sdg.tar.gz'
+
+    s3.download_file(bucket_name, s3_key, output_file)
+
+if __name__ == "__main__":
+    download_s3_file()
+EOF
+
+python "$tmp"/download_s3.py
+mkdir -p {SDG_PVC_MOUNT_PATH}/generated
+tar -xvf {SDG_PVC_MOUNT_PATH}/sdg.tar.gz -C {SDG_PVC_MOUNT_PATH}/generated
+"""
 
 
 @click.group()
@@ -242,6 +294,70 @@ def cli():
     help="Path to model to train (PVC filesystem path)",
     type=str,
 )
+@click.option(
+    "--sdg-object-store-endpoint",
+    envvar="SDG_OBJECT_STORE_ENDPOINT",
+    help=(
+        "Object store endpoint for SDG if different than the official AWS S3 endpoint. "
+        "Expects an URL. TLS with self-signed certificates is not supported. (SDG_OBJECT_STORE_ENDPOINT env var)"
+        "e.g. https://s3.openshift-storage.svc:443"
+        "Don't forget the URL scheme (http/https) and the port"
+    ),
+    type=str,
+)
+@click.option(
+    "--sdg-object-store-bucket",
+    envvar="SDG_OBJECT_STORE_BUCKET",
+    help="Object store bucket containing SDG data. (SDG_OBJECT_STORE_BUCKET env var)",
+    type=str,
+)
+@click.option(
+    "--sdg-object-store-access-key",
+    envvar="SDG_OBJECT_STORE_ACCESS_KEY",
+    help="Object store access key for SDG. (SDG_OBJECT_STORE_ACCESS_KEY env var)",
+    type=str,
+)
+@click.option(
+    "--sdg-object-store-secret-key",
+    envvar="SDG_OBJECT_STORE_SECRET_KEY",
+    help="Object store secret key for SDG. (SDG_OBJECT_STORE_SECRET_KEY env var)",
+    type=str,
+)
+@click.option(
+    "--sdg-object-store-region",
+    envvar="SDG_OBJECT_STORE_REGION",
+    help="Region for the object store. (SDG_OBJECT_STORE_REGION env var)",
+    type=str,
+)
+@click.option(
+    "--sdg-object-store-data-key",
+    envvar="SDG_OBJECT_STORE_DATA_KEY",
+    help=(
+        "Name of tarball that contains SDG data. (SDG_OBJECT_STORE_DATA_KEY env var)."
+        "The tarball MUST NOT contain a top-level directory. "
+        "To archive your SDG data, use the following command: cd /path/to/data && tar -czvf sdg.tar.gz *"
+    ),
+    type=str,
+)
+@click.option(
+    "--sdg-object-store-verify-tls",
+    envvar="SDG_OBJECT_STORE_VERIFY_TLS",
+    help="Verify TLS for the object store. (SDG_OBJECT_STORE_VERIFY_TLS env var).",
+    type=bool,
+)
+@click.option(
+    "--sdg-object-store-secret",
+    envvar="SDG_OBJECT_STORE_SECRET",
+    help=(
+        "Name of the Kubernetes Secret containing the SDG object store credentials. "
+        "The namespace is inferred from the namespace option. "
+        "The following keys are expected: bucket, access_key, secret_key, data_key. "
+        " (SDG_OBJECT_STORE_SECRET env var)"
+        "If used, the  endpoint, bucket, access_key, secret_key, region, data_key, verify_tls options will be ignored."
+        "All supported options are: endpoint, bucket, access_key, secret_key, region, data_key, verify_tls"
+    ),
+    type=str,
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -256,6 +372,14 @@ def run(
     eval_type: typing.Optional[str] = None,
     training_phase: typing.Optional[str] = None,
     model_to_train: typing.Optional[str] = None,
+    sdg_object_store_endpoint: typing.Optional[str] = None,
+    sdg_object_store_bucket: typing.Optional[str] = None,
+    sdg_object_store_access_key: typing.Optional[str] = None,
+    sdg_object_store_secret_key: typing.Optional[str] = None,
+    sdg_object_store_region: typing.Optional[str] = None,
+    sdg_object_store_data_key: typing.Optional[str] = None,
+    sdg_object_store_verify_tls: typing.Optional[bool] = None,
+    sdg_object_store_secret: typing.Optional[str] = None,
 ):
     """
     Execute the distributed training on Kubernetes.
@@ -272,6 +396,14 @@ def run(
         eval_type (str): The type of evaluation to run.
         training_phase (str): The type of training phase to run.
         model_to_train (str): The path to model to train (PVC filesystem path).
+        sdg_object_store_endpoint (str): The object store endpoint for SDG.
+        sdg_object_store_bucket (str): The object store bucket containing SDG data.
+        sdg_object_store_access_key (str): The object store access key for SDG.
+        sdg_object_store_secret_key (str): The object store secret key for SDG.
+        sdg_object_store_region (str): The region for the object store.
+        sdg_object_store_data_key (str): The name of the tarball that contains SDG data.
+        sdg_object_store_verify_tls (bool): Verify TLS for the object store.
+        sdg_object_store_secret (str): The name of the Kubernetes Secret containing the SDG object store credentials. The namespace is inferred from the namespace option.
 
     Returns:
         None
@@ -288,6 +420,14 @@ def run(
     ctx.obj["eval_type"] = eval_type
     ctx.obj["training_phase"] = training_phase
     ctx.obj["model_to_train"] = model_to_train
+    ctx.obj["sdg_object_store_endpoint"] = sdg_object_store_endpoint
+    ctx.obj["sdg_object_store_bucket"] = sdg_object_store_bucket
+    ctx.obj["sdg_object_store_access_key"] = sdg_object_store_access_key
+    ctx.obj["sdg_object_store_secret_key"] = sdg_object_store_secret_key
+    ctx.obj["sdg_object_store_region"] = sdg_object_store_region
+    ctx.obj["sdg_object_store_data_key"] = sdg_object_store_data_key
+    ctx.obj["sdg_object_store_verify_tls"] = sdg_object_store_verify_tls
+    ctx.obj["sdg_object_store_secret"] = sdg_object_store_secret
 
     ##########################
     # MAIN WORKFLOW SEQUENCE #
@@ -295,8 +435,11 @@ def run(
     # When the script is simply called like: 'python standalone.py run'
     # We will run the entire workflow
     if ctx.invoked_subcommand is None:
-        # SDG
-        ctx.invoke(sdg)
+        # SDG Full
+        # ctx.invoke(sdg)
+
+        # SDG Data Fetch
+        ctx.invoke(sdg_data_fetch)
 
         # Begin multi-phased distributed training
         logger.info("Running multi-phased distributed training.")
@@ -498,6 +641,138 @@ def create_sdg_job(
     return job
 
 
+def create_sdg_data_fetch_job(
+    namespace: str,
+    job_name: str,
+    sdg_object_store_secret: str,
+) -> kubernetes.client.V1Job:
+    """
+    Create a Kubernetes Job object.
+
+    This function generates a Kubernetes Job object configured to fetch SDG data from an object store.
+
+    Args:
+        namespace (str): The namespace in which the job will be created.
+        job_name (str): The name of the job.
+        sdg_object_store_secret (str): The name of the Kubernetes Secret containing the SDG object store credentials.
+
+    Returns:
+        kubernetes.client.V1Job: A Kubernetes Job object configured with the specified parameters.
+    """
+
+    container = kubernetes.client.V1Container(
+        name="fetch-sdg-files-from-object-store",
+        image=PYTHON_IMAGE,
+        command=["/bin/sh", "-c"],
+        args=[SDG_DATA_DOWNLOAD_SCRIPT],
+        volume_mounts=get_sdg_vol_mount(),
+        env=[
+            kubernetes.client.V1EnvVar(
+                name="SDG_OBJECT_STORE_ENDPOINT",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                        name=sdg_object_store_secret, key="endpoint", optional=True
+                    )
+                ),
+            ),
+            kubernetes.client.V1EnvVar(
+                name="SDG_OBJECT_STORE_BUCKET",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                        name=sdg_object_store_secret, key="bucket", optional=False
+                    )
+                ),
+            ),
+            kubernetes.client.V1EnvVar(
+                name="SDG_OBJECT_STORE_ACCESS_KEY",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                        name=sdg_object_store_secret, key="access_key", optional=False
+                    )
+                ),
+            ),
+            kubernetes.client.V1EnvVar(
+                name="SDG_OBJECT_STORE_SECRET_KEY",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                        name=sdg_object_store_secret, key="secret_key", optional=False
+                    )
+                ),
+            ),
+            kubernetes.client.V1EnvVar(
+                name="SDG_OBJECT_STORE_REGION",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                        name=sdg_object_store_secret, key="region", optional=True
+                    )
+                ),
+            ),
+            kubernetes.client.V1EnvVar(
+                name="SDG_OBJECT_STORE_DATA_KEY",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                        name=sdg_object_store_secret, key="data_key", optional=False
+                    )
+                ),
+            ),
+            kubernetes.client.V1EnvVar(
+                name="SDG_OBJECT_STORE_VERIFY_TLS",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                        name=sdg_object_store_secret, key="verify_tls", optional=True
+                    )
+                ),
+            ),
+        ],
+    )
+
+    volumes = [
+        kubernetes.client.V1Volume(
+            name=SDG_VOLUME_NAME,
+            persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
+                claim_name=SDG_PVC_NAME
+            ),
+        ),
+        kubernetes.client.V1Volume(
+            name=MODEL_VOLUME_NAME,
+            persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
+                claim_name=MODEL_PVC_NAME
+            ),
+        ),
+        kubernetes.client.V1Volume(
+            name=TRAINING_VOLUME_NAME,
+            persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
+                claim_name=TRAINING_PVC_NAME
+            ),
+        ),
+    ]
+
+    # Create and configure a spec section
+    template = kubernetes.client.V1PodTemplateSpec(
+        metadata=kubernetes.client.V1ObjectMeta(labels={"app": "sdg-data-fetch"}),
+        spec=kubernetes.client.V1PodSpec(
+            restart_policy="Never",
+            containers=[container],
+            volumes=volumes,
+        ),
+    )
+
+    # Create the specification of deployment
+    spec = kubernetes.client.V1JobSpec(
+        template=template,
+    )
+
+    # Instantiate the job object
+    job = kubernetes.client.V1Job(
+        api_version="batch/v1",
+        kind="Job",
+        metadata=kubernetes.client.V1ObjectMeta(name=job_name, namespace=namespace),
+        spec=spec,
+    )
+
+    return job
+
+
 def create_eval_job(
     namespace: str,
     job_name: str,
@@ -670,6 +945,9 @@ def run_job(namespace: str, job: kubernetes.client.V1Job) -> str:
 
                 def log_pod_containers(pod, container_type):
                     containers = getattr(pod.spec, container_type)
+                    # If there are no containers, skip (e.g. noinit_containers)
+                    if containers is None:
+                        return
                     for container in containers:
                         try:
                             pod_log = core_v1.read_namespaced_pod_log(
@@ -831,6 +1109,186 @@ def sdg(
     )
     run_job(namespace, job)
     logger.info("SDG setup completed.")
+
+
+def validate_url(url: str) -> str:
+    """
+    Validate if the given string is a valid URL.
+
+    Args:
+        url (str): The URL string to validate.
+
+    Returns:
+        str: The original URL if valid.
+
+    Raises:
+        ValueError: If the URL is not valid.
+    """
+    parsed = urlparse(url)
+    if not all([parsed.scheme, parsed.netloc]):
+        raise ValueError(f"Invalid URL: {url}")
+    return url
+
+
+@run.command(name="sdg-data-fetch")
+@click.pass_context
+def sdg_data_fetch(
+    ctx: click.Context,
+) -> None:
+    """
+    Fetches SDG data from an object store and put in a Persistent Volume Claim (PVC)
+    """
+    # Populate variables from context
+    namespace = ctx.obj["namespace"]
+    storage_class = ctx.obj["storage_class"]
+    sdg_object_store_endpoint = ctx.obj["sdg_object_store_endpoint"]
+    sdg_object_store_bucket = ctx.obj["sdg_object_store_bucket"]
+    sdg_object_store_access_key = ctx.obj["sdg_object_store_access_key"]
+    sdg_object_store_secret_key = ctx.obj["sdg_object_store_secret_key"]
+    sdg_object_store_region = ctx.obj["sdg_object_store_region"]
+    sdg_object_store_data_key = ctx.obj["sdg_object_store_data_key"]
+    sdg_object_store_verify_tls = ctx.obj["sdg_object_store_verify_tls"]
+    sdg_object_store_secret = ctx.obj["sdg_object_store_secret"]
+
+    # Check if all required arguments are provided
+    if not sdg_object_store_secret:
+        if not all(
+            [
+                sdg_object_store_bucket,
+                sdg_object_store_access_key,
+                sdg_object_store_secret_key,
+                sdg_object_store_data_key,
+            ]
+        ):
+            # Endpoint is optional if AWS S3 is used
+            raise ValueError(
+                "All of '--sdg-object-store-bucket', "
+                "'--sdg-object-store-access-key', '--sdg-object-store-secret-key', '--sdg-object-store-data-key' "
+                "must be provided to the 'sdg-data-fetch' command. Alternatively, provide "
+                "'--sdg-object-store-secret' to use a Kubernetes Secret."
+            )
+
+    logger.info("Running setup for SDG data fetch.")
+
+    # Request the Kubernetes API
+    v1 = kubernetes.client.CoreV1Api()
+
+    # Create the object store secret if it does not exist
+    if (
+        # Endpoint (if AWS S3 is used) and Region are optional
+        all(
+            [
+                sdg_object_store_bucket,
+                sdg_object_store_access_key,
+                sdg_object_store_secret_key,
+                sdg_object_store_data_key,
+            ]
+        )
+        and not sdg_object_store_secret
+    ):
+        sdg_object_store_secret = SDG_OBJECT_STORE_SECRET_NAME
+        secret = kubernetes.client.V1Secret(
+            metadata=kubernetes.client.V1ObjectMeta(
+                name=sdg_object_store_secret, namespace=namespace
+            ),
+            string_data={
+                "bucket": sdg_object_store_bucket,
+                "access_key": sdg_object_store_access_key,
+                "secret_key": sdg_object_store_secret_key,
+                "data_key": sdg_object_store_data_key,
+            },
+        )
+
+        # Endpoint is optional if AWS S3 is used
+        if sdg_object_store_endpoint:
+            validate_url(sdg_object_store_endpoint)
+            secret.string_data["endpoint"] = sdg_object_store_endpoint
+
+        # Region is optional
+        if sdg_object_store_region:
+            secret.string_data["region"] = sdg_object_store_region
+
+        if not sdg_object_store_verify_tls:
+            secret.string_data["verify_tls"] = "false"
+
+        try:
+            v1.create_namespaced_secret(namespace=namespace, body=secret)
+        except kubernetes.client.rest.ApiException as exc:
+            if exc.status == 409:
+                logger.info("Secret '%s' already exists.", secret.metadata.name)
+            else:
+                raise
+
+    # If the secret exists, verify the presence of the keys
+    elif sdg_object_store_secret:
+        secret = v1.read_namespaced_secret(
+            name=sdg_object_store_secret, namespace=namespace
+        )
+
+        def decode_base64(data):
+            return base64.b64decode(data).decode("utf-8")
+
+        endpoint = decode_base64(secret.data.get("endpoint"))
+        validate_url(endpoint)
+        if not all(
+            [
+                secret.data.get("bucket"),
+                secret.data.get("access_key"),
+                secret.data.get("secret_key"),
+                secret.data.get("data_key"),
+            ]
+        ):
+            raise ValueError(
+                f"The provided secret {sdg_object_store_secret} must contain the keys:"
+                "'bucket', 'access_key', 'secret_key', 'data_key'.",
+            )
+
+    # list of PVCs to create and their details
+    pvcs = [
+        {
+            "name": SDG_PVC_NAME,
+            "namespace": namespace,
+            "storage_class": storage_class,
+            "access_modes": ["ReadWriteOnce"],
+            "size": "1Gi",
+        },
+        {
+            "name": MODEL_PVC_NAME,
+            "namespace": namespace,
+            "storage_class": storage_class,
+            "access_modes": ["ReadWriteOnce"],
+            "size": "50Gi",
+        },
+        {
+            "name": TRAINING_PVC_NAME,
+            "namespace": namespace,
+            "storage_class": storage_class,
+            "access_modes": ["ReadWriteMany"],
+            "size": "50Gi",
+        },
+    ]
+    for pvc in pvcs:
+        try:
+            v1.create_namespaced_persistent_volume_claim(
+                namespace=namespace, body=create_pvc(**pvc)
+            )
+            logger.info("Successfully creayed PVC '%s' created.", pvc.get("name"))
+        except kubernetes.client.rest.ApiException as exc:
+            if exc.status == 409:
+                logger.info("PVC '%s' already exists.", pvc["name"])
+            else:
+                raise
+
+    # Create the job to run the pod to execute the SDG data fetch
+    job = create_sdg_data_fetch_job(
+        namespace=namespace,
+        job_name="sdg-data-fetch",
+        sdg_object_store_secret=sdg_object_store_secret,
+    )
+
+    # Run the job
+    run_job(namespace, job)
+    logger.info("SDG fetch completed.")
 
 
 @run.command(name="train")
