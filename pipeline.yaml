@@ -1247,7 +1247,8 @@ deploymentSpec:
           \ `empty`\n    # it allows generating from the whole repo, see:\n    # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230\n\
           \    generate_data(\n        client=client,\n        num_instructions_to_generate=num_instructions_to_generate,\n\
           \        output_dir=sdg.path,\n        taxonomy=taxonomy.path,\n       \
-          \ taxonomy_base=taxonomy_base,\n        model_name=model,\n    )\n\n"
+          \ taxonomy_base=taxonomy_base,\n        model_name=model,\n        chunk_word_count=1000,\n\
+          \        server_ctx_size=4096\n    )\n\n"
         image: quay.io/tcoufal/ilab-sdg:latest
 pipelineInfo:
   description: InstructLab pipeline
