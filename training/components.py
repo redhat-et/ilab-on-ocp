@@ -85,17 +85,31 @@ def pytorchjob_manifest_op(
     input_pvc_name: str,
     output_pvc_name: str,
     name_suffix: str,
-    path_to_model: str,
+    # path_to_model: str,
     phase_name: str,
     nproc_per_node: int = 3,
     nnodes: int = 2,
 ) -> NamedTuple("outputs", manifest=str, name=str):
     import inspect
+    import os
+
+    def list_phase1_final_model():
+        model_dir = "/output/model/hf_format"
+        models = os.listdir(model_dir)
+        newest_idx = max(
+            (os.path.getmtime(model), i) for i, model in enumerate(models)
+        )[-1]
+        newest_model = models[newest_idx]
+        return f"{model_dir}/{newest_model}"
 
     Outputs = NamedTuple("outputs", manifest=str, name=str)
     name = f"train-{phase_name}-{name_suffix.rstrip('-sdg')}"
 
     image = "quay.io/shanand/test-train:0.0.4"
+    if phase_name == "first":
+        path_to_model = "/input_model/model"
+    elif phase_name == "second":
+        path_to_model = list_phase1_final_model()
 
     manifest = inspect.cleandoc(
         f"""

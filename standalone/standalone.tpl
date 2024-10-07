@@ -58,7 +58,7 @@ TRAINING_PVC_MOUNT_PATH = "/output"
 TRAINING_VOLUME_NAME = "output"
 PYTORCH_NNODES = 2
 PYTORCH_IMAGE = "quay.io/shanand/test-train:0.0.4"
-MMLU_SCORES_PATH = "/output/mmlu-results.txt"
+# MMLU_SCORES_PATH = "/output/mmlu-results.txt"
 MT_BENCH_SCORES_PATH = "/output/mt-bench-results.txt"
 SDG_OBJECT_STORE_SECRET_NAME = "sdg-object-store-credentials"
 KFP_MODEL_SERVER_CM = """
@@ -442,7 +442,7 @@ def show(
 @click.option(
     "--eval-type",
     help="Type of evaluation to run",
-    type=click.Choice(["mmlu", "mt-bench"]),
+    type=click.Choice(["mt-bench"]),
     hidden=True,
 )
 @click.option(
@@ -611,12 +611,12 @@ def run(
         ctx.invoke(train)
 
         # Evaluation of phase 1 with MMLU
-        ctx.obj["eval_type"] = "mmlu"
-        scores = ctx.invoke(evaluation)
-        scores = json.loads(scores)
-        best_model = max(scores, key=lambda x: x["average_score"])
-        logger.info("Best model: %s", best_model.get("model"))
-        ctx.obj["model_to_train"] = best_model.get("model")
+        # ctx.obj["eval_type"] = "mmlu"
+        # scores = ctx.invoke(evaluation)
+        # scores = json.loads(scores)
+        # best_model = max(scores, key=lambda x: x["average_score"])
+        # logger.info("Best model: %s", best_model.get("model"))
+        # ctx.obj["model_to_train"] = best_model.get("model")
 
         # Training Phase 2
         # ctx.invoke(train)
@@ -957,32 +957,32 @@ def create_eval_job(
         kubernetes.client.V1Job: A Kubernetes Job object configured with the specified parameters.
     """
 
-    if eval_type == "mmlu":
-        init_containers = [
-            kubernetes.client.V1Container(
-                name=f"run-eval-{eval_type}",
-                image="{{exec_run_mmlu_op_image}}",
-                command={{exec_run_mmlu_op_command}},
-                args={{exec_run_mmlu_op_args}},
-                volume_mounts=[
-                    kubernetes.client.V1VolumeMount(
-                        name=TRAINING_VOLUME_NAME, mount_path=TRAINING_PVC_MOUNT_PATH
-                    ),
-                ],
-            )
-        ]
-        container = kubernetes.client.V1Container(
-            name=f"output-eval-{eval_type}-scores",
-            image="{{exec_run_mmlu_op_image}}",
-            command=["/bin/sh", "-c"],
-            args=[f"cat {MMLU_SCORES_PATH}"],
-            volume_mounts=[
-                kubernetes.client.V1VolumeMount(
-                    name=TRAINING_VOLUME_NAME, mount_path=TRAINING_PVC_MOUNT_PATH
-                ),
-            ],
-        )
-    elif eval_type == "mt-bench":
+    # if eval_type == "mmlu":
+    #     init_containers = [
+    #         kubernetes.client.V1Container(
+    #             name=f"run-eval-{eval_type}",
+    #             image="{{exec_run_mmlu_op_image}}",
+    #             command={{exec_run_mmlu_op_command}},
+    #             args={{exec_run_mmlu_op_args}},
+    #             volume_mounts=[
+    #                 kubernetes.client.V1VolumeMount(
+    #                     name=TRAINING_VOLUME_NAME, mount_path=TRAINING_PVC_MOUNT_PATH
+    #                 ),
+    #             ],
+    #         )
+    #     ]
+    #     container = kubernetes.client.V1Container(
+    #         name=f"output-eval-{eval_type}-scores",
+    #         image="{{exec_run_mmlu_op_image}}",
+    #         command=["/bin/sh", "-c"],
+    #         args=[f"cat {MMLU_SCORES_PATH}"],
+    #         volume_mounts=[
+    #             kubernetes.client.V1VolumeMount(
+    #                 name=TRAINING_VOLUME_NAME, mount_path=TRAINING_PVC_MOUNT_PATH
+    #             ),
+    #         ],
+    #     )
+    if eval_type == "mt-bench":
         init_containers = [
             kubernetes.client.V1Container(
                 name=f"run-eval-{eval_type}",
@@ -1569,9 +1569,7 @@ def evaluation(ctx: click.Context) -> str:
     eval_type = ctx.obj["eval_type"]
 
     if eval_type is None:
-        raise ValueError(
-            "Evaluation type must be provided with --eval-type=[mmlu|mt-bench]"
-        )
+        raise ValueError("Evaluation type must be provided with --eval-type=[mt-bench]")
 
     logger.info("Running %s evaluation.", eval_type)
 
