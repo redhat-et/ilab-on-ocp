@@ -106,6 +106,21 @@ aws cp sdg.tar.gz s3://sdg-data/sdg.tar.gz
 > [!CAUTION]
 > Ensures SDG data is packaged as a tarball **without** top-level directories. So you must run `tar` inside the directory containing the SDG data.
 
+#### Alternative Method to AWS CLI
+
+Alternatively, you can use the [standalone/sdg-data-on-s3.py](standalone/sdg-data-on-s3.py) script
+to upload the SDG data to the object store.
+
+```bash
+./sdg-data-on-s3.py upload \
+  --object-store-bucket sdg-data \
+  --object-store-access-key $ACCESS_KEY \
+  --object-store-secret-key $SECRET_KEY \
+  --sdg-data-archive-file-path sdg.tar.gz
+```
+
+Run `./sdg-data-on-s3.py upload --help` to see all available options.
+
 ### Creating the Kubernetes Secret
 
 The simplest method to supply the script with the required information for retrieving SDG data is by
