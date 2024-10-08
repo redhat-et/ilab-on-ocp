@@ -758,24 +758,25 @@ deploymentSpec:
           \ int = 2,\n) -> NamedTuple(\"outputs\", manifest=str, name=str):\n    import\
           \ inspect\n    import os\n\n    def list_phase1_final_model():\n       \
           \ model_dir = \"/output/model/hf_format\"\n        models = os.listdir(model_dir)\n\
-          \        newest_idx = max(\n            (os.path.getmtime(model), i) for\
-          \ i, model in enumerate(models)\n        )[-1]\n        newest_model = models[newest_idx]\n\
-          \        return f\"{model_dir}/{newest_model}\"\n\n    Outputs = NamedTuple(\"\
-          outputs\", manifest=str, name=str)\n    name = f\"train-{phase_name}-{name_suffix.rstrip('-sdg')}\"\
-          \n\n    image = \"quay.io/shanand/test-train:0.0.4\"\n    if phase_name\
-          \ == \"first\":\n        path_to_model = \"/input_model/model\"\n    elif\
-          \ phase_name == \"second\":\n        path_to_model = list_phase1_final_model()\n\
-          \n    manifest = inspect.cleandoc(\n        f\"\"\"\n        apiVersion:\
-          \ kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n       \
-          \   name: {name}\n        spec:\n          nprocPerNode: \\\\\"{nproc_per_node}\\\
-          \\\"\n          pytorchReplicaSpecs:\n            Master:\n            \
-          \  replicas: 1\n              restartPolicy: OnFailure\n              template:\n\
-          \                metadata:\n                  annotations:\n           \
-          \         sidecar.istio.io/inject: 'false'\n                spec:\n    \
-          \              containers:\n                    - args:\n              \
-          \          - |\n                          mkdir -p /output/model;\n    \
-          \                      mkdir -p /output/data;\n                        \
-          \  python3.11 -u run_main_ds.py --model_path {path_to_model} --ckpt_output_dir\
+          \        newest_idx = max(\n            (os.path.getmtime(f\"{model_dir}/{model}\"\
+          ), i)\n            for i, model in enumerate(models)\n        )[-1]\n  \
+          \      newest_model = models[newest_idx]\n        return f\"{model_dir}/{newest_model}\"\
+          \n\n    Outputs = NamedTuple(\"outputs\", manifest=str, name=str)\n    name\
+          \ = f\"train-{phase_name}-{name_suffix.rstrip('-sdg')}\"\n\n    image =\
+          \ \"quay.io/shanand/test-train:0.0.4\"\n    if phase_name == \"first\":\n\
+          \        path_to_model = \"/input_model/model\"\n    elif phase_name ==\
+          \ \"second\":\n        path_to_model = list_phase1_final_model()\n\n   \
+          \ manifest = inspect.cleandoc(\n        f\"\"\"\n        apiVersion: kubeflow.org/v1\n\
+          \        kind: PyTorchJob\n        metadata:\n          name: {name}\n \
+          \       spec:\n          nprocPerNode: \\\\\"{nproc_per_node}\\\\\"\n  \
+          \        pytorchReplicaSpecs:\n            Master:\n              replicas:\
+          \ 1\n              restartPolicy: OnFailure\n              template:\n \
+          \               metadata:\n                  annotations:\n            \
+          \        sidecar.istio.io/inject: 'false'\n                spec:\n     \
+          \             containers:\n                    - args:\n               \
+          \         - |\n                          mkdir -p /output/model;\n     \
+          \                     mkdir -p /output/data;\n                         \
+          \ python3.11 -u run_main_ds.py --model_path {path_to_model} --ckpt_output_dir\
           \ /output/model --data_output_dir /input_data/processed_data\n         \
           \             command:\n                        - /bin/bash\n          \
           \              - '-c'\n                        - '--'\n                \
@@ -862,24 +863,25 @@ deploymentSpec:
           \ int = 2,\n) -> NamedTuple(\"outputs\", manifest=str, name=str):\n    import\
           \ inspect\n    import os\n\n    def list_phase1_final_model():\n       \
           \ model_dir = \"/output/model/hf_format\"\n        models = os.listdir(model_dir)\n\
-          \        newest_idx = max(\n            (os.path.getmtime(model), i) for\
-          \ i, model in enumerate(models)\n        )[-1]\n        newest_model = models[newest_idx]\n\
-          \        return f\"{model_dir}/{newest_model}\"\n\n    Outputs = NamedTuple(\"\
-          outputs\", manifest=str, name=str)\n    name = f\"train-{phase_name}-{name_suffix.rstrip('-sdg')}\"\
-          \n\n    image = \"quay.io/shanand/test-train:0.0.4\"\n    if phase_name\
-          \ == \"first\":\n        path_to_model = \"/input_model/model\"\n    elif\
-          \ phase_name == \"second\":\n        path_to_model = list_phase1_final_model()\n\
-          \n    manifest = inspect.cleandoc(\n        f\"\"\"\n        apiVersion:\
-          \ kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n       \
-          \   name: {name}\n        spec:\n          nprocPerNode: \\\\\"{nproc_per_node}\\\
-          \\\"\n          pytorchReplicaSpecs:\n            Master:\n            \
-          \  replicas: 1\n              restartPolicy: OnFailure\n              template:\n\
-          \                metadata:\n                  annotations:\n           \
-          \         sidecar.istio.io/inject: 'false'\n                spec:\n    \
-          \              containers:\n                    - args:\n              \
-          \          - |\n                          mkdir -p /output/model;\n    \
-          \                      mkdir -p /output/data;\n                        \
-          \  python3.11 -u run_main_ds.py --model_path {path_to_model} --ckpt_output_dir\
+          \        newest_idx = max(\n            (os.path.getmtime(f\"{model_dir}/{model}\"\
+          ), i)\n            for i, model in enumerate(models)\n        )[-1]\n  \
+          \      newest_model = models[newest_idx]\n        return f\"{model_dir}/{newest_model}\"\
+          \n\n    Outputs = NamedTuple(\"outputs\", manifest=str, name=str)\n    name\
+          \ = f\"train-{phase_name}-{name_suffix.rstrip('-sdg')}\"\n\n    image =\
+          \ \"quay.io/shanand/test-train:0.0.4\"\n    if phase_name == \"first\":\n\
+          \        path_to_model = \"/input_model/model\"\n    elif phase_name ==\
+          \ \"second\":\n        path_to_model = list_phase1_final_model()\n\n   \
+          \ manifest = inspect.cleandoc(\n        f\"\"\"\n        apiVersion: kubeflow.org/v1\n\
+          \        kind: PyTorchJob\n        metadata:\n          name: {name}\n \
+          \       spec:\n          nprocPerNode: \\\\\"{nproc_per_node}\\\\\"\n  \
+          \        pytorchReplicaSpecs:\n            Master:\n              replicas:\
+          \ 1\n              restartPolicy: OnFailure\n              template:\n \
+          \               metadata:\n                  annotations:\n            \
+          \        sidecar.istio.io/inject: 'false'\n                spec:\n     \
+          \             containers:\n                    - args:\n               \
+          \         - |\n                          mkdir -p /output/model;\n     \
+          \                     mkdir -p /output/data;\n                         \
+          \ python3.11 -u run_main_ds.py --model_path {path_to_model} --ckpt_output_dir\
           \ /output/model --data_output_dir /input_data/processed_data\n         \
           \             command:\n                        - /bin/bash\n          \
           \              - '-c'\n                        - '--'\n                \
