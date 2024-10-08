@@ -14,15 +14,20 @@ from utils.consts import EVAL_IMAGE, PYTHON_IMAGE
         "vllm",
     ],
 )
-def run_mt_bench_branch_op(
+def run_final_eval_op(
+    mmlu_branch_output: Output[Artifact],
     mt_bench_branch_output: Output[Artifact],
     candidate_model: str,
     base_model_dir: str,
+    tasks: Input[Dataset],
     taxonomy: Input[Dataset],
     base_branch: str,
     candidate_branch: str,
     max_workers: str,
     device: str,
+    model_dtype: str,
+    few_shots: int,
+    batch_size: int,
     merge_system_user_message: bool,
 ):
     import json
@@ -34,6 +39,7 @@ def run_mt_bench_branch_op(
         launch_vllm,
         stop_vllm,
     )
+    from instructlab.eval.mmlu import MMLU_TASKS, MMLUBranchEvaluator
     from instructlab.eval.mt_bench import MTBenchBranchEvaluator
     from instructlab.model.evaluate import qa_pairs_to_qna_to_avg_scores, sort_score
 
@@ -105,6 +111,101 @@ def run_mt_bench_branch_op(
     gpu_count = torch.cuda.device_count() if gpu_available else 0
 
     print(f"GPU Available: {gpu_available}, Using: {gpu_name}")
+
+    # MMLU_BRANCH
+
+    # find_node_dataset_directories to find sdg output node_datasets_*
+    def find_node_dataset_directories(base_directory: str):
+        import os
+        import re
+
+        # This is specific to ilab/eval output
+        pattern = r"node_datasets_"
+        matching_dirs = []
+        regex = re.compile(pattern)
+
+        for root, dirs, files in os.walk(base_directory):
+            for directory in dirs:
+                if regex.search(directory):
+                    matching_dirs.append(os.path.join(root, directory))
+
+        return matching_dirs
+
+    mmlu_tasks = ["mmlu_pr"]
+
+    node_dataset_dirs = find_node_dataset_directories(tasks.path)
+    # This assumes generated filesystem from ilab sdg, which
+    # generates a node_datasets_ directory for MMLU custom tasks data
+    if node_dataset_dirs:
+        tasks_dir = node_dataset_dirs[0]
+
+        mmlu_branch_evaluators = [
+            MMLUBranchEvaluator(
+                model_path=candidate_model,
+                tasks_dir=tasks_dir,
+                tasks=mmlu_tasks,
+                few_shots=few_shots,
+                batch_size=batch_size,
+            ),
+            MMLUBranchEvaluator(
+                model_path=base_model_dir,
+                tasks_dir=tasks_dir,
+                tasks=mmlu_tasks,
+                few_shots=few_shots,
+                batch_size=batch_size,
+            ),
+        ]
+        m_paths = [candidate_model, base_model_dir]
+        overall_scores = []
+        individual_scores_list = []
+        for i, evaluator in enumerate(mmlu_branch_evaluators):
+            m_path = m_paths[i]
+            launch_vllm(m_path, gpu_count)
+            overall_score, individual_scores = evaluator.run(VLLM_SERVER)
+            overall_scores.append(overall_score)
+            individual_scores_list.append(individual_scores)
+            stop_vllm()
+
+        # TODO: update instructlab/instructlab model/evaluate.py
+        # so this logic can be imported outside of the CLI
+        overall_score = overall_scores[0]
+        base_overall_score = overall_scores[1]
+        individual_scores = individual_scores_list[0]
+        base_individual_scores = individual_scores_list[1]
+
+        improvements, regressions, no_changes = [], [], []
+        for task, score in individual_scores.items():
+            base_score = base_individual_scores[task]
+            s = score["score"]
+            b_s = base_score["score"]
+            d = round(s - b_s, 2)
+            if s > b_s:
+                improvements.append((task, d, b_s, s))
+            elif b_s > s:
+                regressions.append((task, d, b_s, s))
+            else:
+                no_changes.append((task, s))
+
+        summary = branch_eval_summary_to_json(
+            improvements,
+            regressions,
+            no_changes,
+        )
+
+        mmlu_branch_data = {
+            "report_title": "KNOWLEDGE EVALUATION REPORT",
+            "max_score": "1.0",
+            "model": candidate_model,
+            "model_score": round(overall_score, 2),
+            "base_model": base_model_dir,
+            "base_model_score": round(base_overall_score, 2),
+            "summary": summary,
+        }
+
+        with open(mmlu_branch_output.path, "w") as f:
+            json.dump(mmlu_branch_data, f, indent=4)
+    else:
+        print("No MMLU tasks directories found, skipping MMLU_branch evaluation.")
 
     # MT_BENCH_BRANCH
 

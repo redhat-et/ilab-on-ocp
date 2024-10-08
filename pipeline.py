@@ -65,7 +65,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
 
     # Imports for evaluation
-    from eval.final import run_mt_bench_branch_op
+    from eval.final import run_final_eval_op
     from eval.mmlu import load_mmlu_results_op, run_mmlu_op
 
     ## from eval.mmlu import run_mmlu_op, load_mmlu_results_op
@@ -313,9 +313,10 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
         use_secret_as_env(run_mt_bench_task, JUDGE_SECRET, {"api_key": "JUDGE_API_KEY"})
 
-        final_eval_task = run_mt_bench_branch_op(
+        final_eval_task = run_final_eval_op(
             candidate_model=run_mt_bench_task.outputs["best_model"],
             taxonomy=git_clone_task.outputs["taxonomy"],
+            tasks=sdg_task.outputs["sdg"],
             # TODO: DO we need both candidate_branch and base_branch
             base_branch=repo_branch,
             candidate_branch=repo_branch,
@@ -323,6 +324,9 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             base_model_dir=BASE_MODEL_DIR,
             max_workers=max_workers,
             merge_system_user_message=merge_system_user_message,
+            model_dtype=model_dtype,
+            few_shots=few_shots,
+            batch_size=batch_size,
         )
 
         mount_pvc(

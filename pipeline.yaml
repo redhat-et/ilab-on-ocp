@@ -423,10 +423,14 @@ components:
           parameterType: STRING
         name:
           parameterType: STRING
-  comp-run-mt-bench-branch-op:
-    executorLabel: exec-run-mt-bench-branch-op
+  comp-run-final-eval-op:
+    executorLabel: exec-run-final-eval-op
     inputDefinitions:
       artifacts:
+        tasks:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
         taxonomy:
           artifactType:
             schemaTitle: system.Dataset
@@ -436,18 +440,28 @@ components:
           parameterType: STRING
         base_model_dir:
           parameterType: STRING
+        batch_size:
+          parameterType: NUMBER_INTEGER
         candidate_branch:
           parameterType: STRING
         candidate_model:
           parameterType: STRING
         device:
           parameterType: STRING
+        few_shots:
+          parameterType: NUMBER_INTEGER
         max_workers:
           parameterType: STRING
         merge_system_user_message:
           parameterType: BOOLEAN
+        model_dtype:
+          parameterType: STRING
     outputDefinitions:
       artifacts:
+        mmlu_branch_output:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
         mt_bench_branch_output:
           artifactType:
             schemaTitle: system.Artifact
@@ -934,13 +948,13 @@ deploymentSpec:
           \                        claimName: {output_pvc_name}\n        \"\"\"\n\
           \    )\n\n    return Outputs(manifest, name)\n\n"
         image: registry.access.redhat.com/ubi9/python-311:latest
-    exec-run-mt-bench-branch-op:
+    exec-run-final-eval-op:
       container:
         args:
         - --executor_input
         - '{{$}}'
         - --function_to_execute
-        - run_mt_bench_branch_op
+        - run_final_eval_op
         command:
         - sh
         - -c
@@ -961,15 +975,17 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef run_mt_bench_branch_op(\n    mt_bench_branch_output: Output[Artifact],\n\
-          \    candidate_model: str,\n    base_model_dir: str,\n    taxonomy: Input[Dataset],\n\
+          \ *\n\ndef run_final_eval_op(\n    mmlu_branch_output: Output[Artifact],\n\
+          \    mt_bench_branch_output: Output[Artifact],\n    candidate_model: str,\n\
+          \    base_model_dir: str,\n    tasks: Input[Dataset],\n    taxonomy: Input[Dataset],\n\
           \    base_branch: str,\n    candidate_branch: str,\n    max_workers: str,\n\
-          \    device: str,\n    merge_system_user_message: bool,\n):\n    import\
-          \ json\n    import os\n\n    import torch\n    from helpers import (\n \
-          \       VLLM_SERVER,\n        launch_vllm,\n        stop_vllm,\n    )\n\
-          \    from instructlab.eval.mt_bench import MTBenchBranchEvaluator\n    from\
-          \ instructlab.model.evaluate import qa_pairs_to_qna_to_avg_scores, sort_score\n\
-          \n    ######################################################################\n\
+          \    device: str,\n    model_dtype: str,\n    few_shots: int,\n    batch_size:\
+          \ int,\n    merge_system_user_message: bool,\n):\n    import json\n    import\
+          \ os\n\n    import torch\n    from helpers import (\n        VLLM_SERVER,\n\
+          \        launch_vllm,\n        stop_vllm,\n    )\n    from instructlab.eval.mmlu\
+          \ import MMLU_TASKS, MMLUBranchEvaluator\n    from instructlab.eval.mt_bench\
+          \ import MTBenchBranchEvaluator\n    from instructlab.model.evaluate import\
+          \ qa_pairs_to_qna_to_avg_scores, sort_score\n\n    ######################################################################\n\
           \    # branch_eval_summary_to_json creates a json object from output of\
           \ instructlab/eval\n    # TODO: Add this to the instructlab/eval or instructlab/instructlab\
           \ repository\n    def branch_eval_summary_to_json(\n        improvements:\
@@ -1004,13 +1020,59 @@ deploymentSpec:
           \    torch.cuda.get_device_name(torch.cuda.current_device())\n        if\
           \ gpu_available\n        else \"No GPU available\"\n    )\n    gpu_count\
           \ = torch.cuda.device_count() if gpu_available else 0\n\n    print(f\"GPU\
-          \ Available: {gpu_available}, Using: {gpu_name}\")\n\n    # MT_BENCH_BRANCH\n\
-          \n    judge_api_key = os.getenv(\"JUDGE_API_KEY\", \"\")\n    judge_model_name\
-          \ = os.getenv(\"JUDGE_NAME\")\n    judge_endpoint = os.getenv(\"JUDGE_ENDPOINT\"\
-          )\n\n    output_dir = \"/tmp/eval_output\"\n\n    # TODO: candidate_branch\
-          \ must be in same repo, not a fork, or, can compare main branch against\
-          \ candidate, base models\n    base_branch = base_branch or \"main\"\n  \
-          \  candidate_branch = candidate_branch or \"main\"\n\n    ######################################################################\n\
+          \ Available: {gpu_available}, Using: {gpu_name}\")\n\n    # MMLU_BRANCH\n\
+          \n    # find_node_dataset_directories to find sdg output node_datasets_*\n\
+          \    def find_node_dataset_directories(base_directory: str):\n        import\
+          \ os\n        import re\n\n        # This is specific to ilab/eval output\n\
+          \        pattern = r\"node_datasets_\"\n        matching_dirs = []\n   \
+          \     regex = re.compile(pattern)\n\n        for root, dirs, files in os.walk(base_directory):\n\
+          \            for directory in dirs:\n                if regex.search(directory):\n\
+          \                    matching_dirs.append(os.path.join(root, directory))\n\
+          \n        return matching_dirs\n\n    mmlu_tasks = [\"mmlu_pr\"]\n\n   \
+          \ node_dataset_dirs = find_node_dataset_directories(tasks.path)\n    # This\
+          \ assumes generated filesystem from ilab sdg, which\n    # generates a node_datasets_\
+          \ directory for MMLU custom tasks data\n    if node_dataset_dirs:\n    \
+          \    tasks_dir = node_dataset_dirs[0]\n\n        mmlu_branch_evaluators\
+          \ = [\n            MMLUBranchEvaluator(\n                model_path=candidate_model,\n\
+          \                tasks_dir=tasks_dir,\n                tasks=mmlu_tasks,\n\
+          \                few_shots=few_shots,\n                batch_size=batch_size,\n\
+          \            ),\n            MMLUBranchEvaluator(\n                model_path=base_model_dir,\n\
+          \                tasks_dir=tasks_dir,\n                tasks=mmlu_tasks,\n\
+          \                few_shots=few_shots,\n                batch_size=batch_size,\n\
+          \            ),\n        ]\n        m_paths = [candidate_model, base_model_dir]\n\
+          \        overall_scores = []\n        individual_scores_list = []\n    \
+          \    for i, evaluator in enumerate(mmlu_branch_evaluators):\n          \
+          \  m_path = m_paths[i]\n            launch_vllm(m_path, gpu_count)\n   \
+          \         overall_score, individual_scores = evaluator.run(VLLM_SERVER)\n\
+          \            overall_scores.append(overall_score)\n            individual_scores_list.append(individual_scores)\n\
+          \            stop_vllm()\n\n        # TODO: update instructlab/instructlab\
+          \ model/evaluate.py\n        # so this logic can be imported outside of\
+          \ the CLI\n        overall_score = overall_scores[0]\n        base_overall_score\
+          \ = overall_scores[1]\n        individual_scores = individual_scores_list[0]\n\
+          \        base_individual_scores = individual_scores_list[1]\n\n        improvements,\
+          \ regressions, no_changes = [], [], []\n        for task, score in individual_scores.items():\n\
+          \            base_score = base_individual_scores[task]\n            s =\
+          \ score[\"score\"]\n            b_s = base_score[\"score\"]\n          \
+          \  d = round(s - b_s, 2)\n            if s > b_s:\n                improvements.append((task,\
+          \ d, b_s, s))\n            elif b_s > s:\n                regressions.append((task,\
+          \ d, b_s, s))\n            else:\n                no_changes.append((task,\
+          \ s))\n\n        summary = branch_eval_summary_to_json(\n            improvements,\n\
+          \            regressions,\n            no_changes,\n        )\n\n      \
+          \  mmlu_branch_data = {\n            \"report_title\": \"KNOWLEDGE EVALUATION\
+          \ REPORT\",\n            \"max_score\": \"1.0\",\n            \"model\"\
+          : candidate_model,\n            \"model_score\": round(overall_score, 2),\n\
+          \            \"base_model\": base_model_dir,\n            \"base_model_score\"\
+          : round(base_overall_score, 2),\n            \"summary\": summary,\n   \
+          \     }\n\n        with open(mmlu_branch_output.path, \"w\") as f:\n   \
+          \         json.dump(mmlu_branch_data, f, indent=4)\n    else:\n        print(\"\
+          No MMLU tasks directories found, skipping MMLU_branch evaluation.\")\n\n\
+          \    # MT_BENCH_BRANCH\n\n    judge_api_key = os.getenv(\"JUDGE_API_KEY\"\
+          , \"\")\n    judge_model_name = os.getenv(\"JUDGE_NAME\")\n    judge_endpoint\
+          \ = os.getenv(\"JUDGE_ENDPOINT\")\n\n    output_dir = \"/tmp/eval_output\"\
+          \n\n    # TODO: candidate_branch must be in same repo, not a fork, or, can\
+          \ compare main branch against candidate, base models\n    base_branch =\
+          \ base_branch or \"main\"\n    candidate_branch = candidate_branch or \"\
+          main\"\n\n    ######################################################################\n\
           \    # TODO: Update ilab/model/evaluate evaluate def logic to allow for\
           \ external judge model\n    # and when that happens, much of this logic\
           \ can be imported from the `evaluate` definition:\n    # https://github.com/instructlab/instructlab/blob/83ca501ecdd858677380046e2a56da5b2f3f14e7/src/instructlab/model/evaluate.py#L504\n\
@@ -1593,18 +1655,23 @@ root:
                 constant: second
         taskInfo:
           name: pytorchjob-manifest-op-2
-      run-mt-bench-branch-op:
+      run-final-eval-op:
         cachingOptions:
           enableCache: true
         componentRef:
-          name: comp-run-mt-bench-branch-op
+          name: comp-run-final-eval-op
         dependentTasks:
         - createpvc
         - createpvc-3
         - git-clone-op
         - run-mt-bench-op
+        - sdg-op
         inputs:
           artifacts:
+            tasks:
+              taskOutputArtifact:
+                outputArtifactKey: sdg
+                producerTask: sdg-op
             taxonomy:
               taskOutputArtifact:
                 outputArtifactKey: taxonomy
@@ -1615,6 +1682,8 @@ root:
             base_model_dir:
               runtimeValue:
                 constant: /model/model
+            batch_size:
+              componentInputParameter: batch_size
             candidate_branch:
               componentInputParameter: repo_branch
             candidate_model:
@@ -1623,12 +1692,16 @@ root:
                 producerTask: run-mt-bench-op
             device:
               componentInputParameter: device
+            few_shots:
+              componentInputParameter: few_shots
             max_workers:
               componentInputParameter: max_workers
             merge_system_user_message:
               componentInputParameter: merge_system_user_message
+            model_dtype:
+              componentInputParameter: model_dtype
         taskInfo:
-          name: run-mt-bench-branch-op
+          name: run-final-eval-op
       run-mt-bench-op:
         cachingOptions: {}
         componentRef:
@@ -1773,7 +1846,7 @@ platforms:
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-3
-        exec-run-mt-bench-branch-op:
+        exec-run-final-eval-op:
           configMapAsEnv:
           - configMapName: kfp-model-server
             keyToEnv:
