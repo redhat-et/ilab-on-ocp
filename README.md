@@ -42,3 +42,13 @@ To deploy a signed certificate in cluster follow [trusted cluster cert](signed-c
 This solution requires object storage to be in place either through S3 or using Noobaa.
 
 If you are using Noobaa apply the following [tuning paramters](noobaa/README.md)
+
+## Standalone Deployment
+
+See [standalone](standalone/README.md) for instructions on deploying the Instructlab solution
+without the need for RHOAI.
+To generate the `standalone.py` script, run the following command ([ruff](https://docs.astral.sh/ruff/installation/) tool must be installed):
+
+```bash
+make standalone
+```

@@ -563,19 +563,20 @@ def gen_standalone():
 
     # Open the template file
     try:
-        with open(
-            STANDALONE_TEMPLATE_FILE_NAME, "r", encoding="utf-8"
-        ) as template_file:
+        standalone_template_path = path.join(
+            "standalone", STANDALONE_TEMPLATE_FILE_NAME
+        )
+        with open(standalone_template_path, "r", encoding="utf-8") as template_file:
             template_content = template_file.read()
     except FileNotFoundError as e:
         click.echo(
-            f"Error: The template file '{STANDALONE_TEMPLATE_FILE_NAME}' was not found.",
+            f"Error: The template file '{standalone_template_path}' was not found.",
             err=True,
         )
         raise click.exceptions.Exit(1) from e
     except IOError as e:
         click.echo(
-            f"Error: An I/O error occurred while reading '{STANDALONE_TEMPLATE_FILE_NAME}': {e}",
+            f"Error: An I/O error occurred while reading '{standalone_template_path}': {e}",
             err=True,
         )
         raise click.exceptions.Exit(1)
@@ -585,7 +586,7 @@ def gen_standalone():
         template = Template(template_content)
     except TemplateSyntaxError as e:
         click.echo(
-            f"Error: The template file '{STANDALONE_TEMPLATE_FILE_NAME}' contains a syntax error: {e}",
+            f"Error: The template file '{standalone_template_path}' contains a syntax error: {e}",
             err=True,
         )
         raise click.exceptions.Exit(1)
@@ -594,10 +595,11 @@ def gen_standalone():
     rendered_code = template.render(details)
 
     # Write the rendered code to a new Python file
-    with open(GENERATED_STANDALONE_FILE_NAME, "w", encoding="utf-8") as output_file:
+    standalone_script_path = path.join("standalone", GENERATED_STANDALONE_FILE_NAME)
+    with open(standalone_script_path, "w", encoding="utf-8") as output_file:
         output_file.write(rendered_code)
 
-    click.echo(f"Successfully generated '{GENERATED_STANDALONE_FILE_NAME}' script.")
+    click.echo(f"Successfully generated '{standalone_script_path}' script.")
 
 
 def get_executor_details(
