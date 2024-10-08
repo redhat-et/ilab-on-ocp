@@ -178,8 +178,15 @@ spec:
                 claimName: {output_pvc_name}
 """
 # TODO: support signature version?
-SDG_DATA_DOWNLOAD_SCRIPT = f"""
+SDG_DATA_SCRIPT = """
 set -e
+
+export STRATEGY={strategy}
+
+if [ -z "$STRATEGY" ] || [ "$STRATEGY" == "None" ]; then
+  echo "STRATEGY is not set - must be 'download' or 'upload'"
+  exit 1
+fi
 
 if python3 -c 'import boto3'; then
   echo 'boto3 is already installed'
@@ -197,19 +204,22 @@ import os
 import boto3
 
 def str_to_bool(s):
-  if s is None:
-    return False
-  return s.lower() in ['true', '1', 't', 'y', 'yes']
+    if s is None:
+      return False
+    return s.lower() in ['true', '1', 't', 'y', 'yes']
+
+def build_boto3_client():
+  return boto3.client(
+    's3',
+    aws_access_key_id=os.getenv('SDG_OBJECT_STORE_ACCESS_KEY'),
+    aws_secret_access_key=os.getenv('SDG_OBJECT_STORE_SECRET_KEY'),
+    endpoint_url=os.getenv('SDG_OBJECT_STORE_ENDPOINT', None),
+    region_name=os.getenv('SDG_OBJECT_STORE_REGION', None),
+    verify=str_to_bool(os.getenv('SDG_OBJECT_STORE_VERIFY_TLS', None))
+)
 
 def download_s3_file():
-    s3 = boto3.client(
-        's3',
-        aws_access_key_id=os.getenv('SDG_OBJECT_STORE_ACCESS_KEY'),
-        aws_secret_access_key=os.getenv('SDG_OBJECT_STORE_SECRET_KEY'),
-        endpoint_url=os.getenv('SDG_OBJECT_STORE_ENDPOINT', None),
-        region_name=os.getenv('SDG_OBJECT_STORE_REGION', None),
-        verify=str_to_bool(os.getenv('SDG_OBJECT_STORE_VERIFY_TLS', None))
-    )
+    s3 = build_boto3_client()
 
     bucket_name = os.getenv('SDG_OBJECT_STORE_BUCKET')
     s3_key = os.getenv('SDG_OBJECT_STORE_DATA_KEY')
@@ -217,13 +227,65 @@ def download_s3_file():
 
     s3.download_file(bucket_name, s3_key, output_file)
 
+def upload_s3_file():
+    s3 = build_boto3_client()
+
+    bucket_name = os.getenv('SDG_OBJECT_STORE_BUCKET')
+    s3_key = os.getenv('SDG_OBJECT_STORE_DATA_KEY') # TODO: change the name for the model name
+    input_file = '{SDG_PVC_MOUNT_PATH}/sdg.tar.gz' # TODO: change for model path
+
+    s3.upload_file(input_file, bucket_name, s3_key)
+
 if __name__ == "__main__":
-    download_s3_file()
+    if os.getenv('STRATEGY') == 'download':
+      print('Downloading file from S3')
+      download_s3_file()
+    elif os.getenv('STRATEGY') == 'upload':
+      print('Uploading file to S3')
+      upload_s3_file()
+    else:
+      raise ValueError('Unknown STRATEGY')
 EOF
 
 python "$tmp"/download_s3.py
-mkdir -p {SDG_PVC_MOUNT_PATH}/generated
-tar -xvf {SDG_PVC_MOUNT_PATH}/sdg.tar.gz -C {SDG_PVC_MOUNT_PATH}/generated
+
+if [[ "$STRATEGY" == "download" ]]; then
+  mkdir -p {SDG_PVC_MOUNT_PATH}/generated
+  tar -xvf {SDG_PVC_MOUNT_PATH}/sdg.tar.gz -C {SDG_PVC_MOUNT_PATH}/generated
+fi
+"""
+
+JOB_SCRIPT_EXAMPLE = """
+kind: Job
+apiVersion: batch/v1
+metadata:
+  name: {name}
+  namespace: {namespace}
+spec:
+  template:
+    spec:
+      serviceAccountName: {service_account}
+      containers:
+      - name: {name}
+        image: {image}
+        command:
+        - "python3"
+        - "/config/{script_name}"
+        - "run"
+        - "--namespace"
+        - "{namespace_workflow}"
+        - "--storage-class"
+        - "{storage_class}"
+        - "--sdg-object-store-secret"
+        - "{sdg_object_store_secret}"
+        volumeMounts:
+        - name: script-config
+          mountPath: /config
+      restartPolicy: Never
+      volumes:
+      - name: script-config
+        configMap:
+          name: {script_configmap}
 """
 
 
@@ -239,6 +301,99 @@ def cli():
 
 @cli.group(invoke_without_command=True)
 @click.option(
+    "--namespace",
+    type=str,
+    default="default",
+    help="Kubernetes namespace to run the job",
+)
+@click.option(
+    "--namespace-workflow",
+    type=str,
+    default="default",
+    help="Kubernetes namespace to run the end-to-end workflow that the script will execute",
+)
+@click.option(
+    "--name",
+    type=str,
+    default="distributed-ilab",
+    help="Name of the Job to that can run the script",
+)
+@click.option(
+    "--image",
+    type=str,
+    help="Image to use to run the script in a Job",
+    required=True,
+)
+@click.option(
+    "--service-account",
+    type=str,
+    default="default",
+    help="Service account to use for the Job",
+)
+@click.option(
+    "--script-configmap",
+    type=str,
+    help="Name of the ConfigMap containing the standalone.py script",
+    required=True,
+)
+@click.option(
+    "--script-name",
+    type=str,
+    help="Name of the standalone script in the ConfigMap",
+    default="standalone.py",
+)
+@click.option(
+    "--storage-class",
+    type=str,
+    default="standard",
+    help="Storage class to use for the PersistentVolumeClaim - for SDG only",
+)
+@click.option(
+    "--sdg-object-store-secret",
+    envvar="SDG_OBJECT_STORE_SECRET",
+    help=(
+        "Name of the Kubernetes Secret containing the SDG object store credentials. "
+        "The namespace is inferred from the namespace option. "
+        "The following keys are expected: bucket, access_key, secret_key, data_key. "
+        " (SDG_OBJECT_STORE_SECRET env var)"
+        "If used, the  endpoint, bucket, access_key, secret_key, region, data_key, verify_tls options will be ignored."
+        "All supported options are: endpoint, bucket, access_key, secret_key, region, data_key, verify_tls"
+    ),
+    default=SDG_OBJECT_STORE_SECRET_NAME,
+    type=str,
+)
+def show(
+    namespace: str,
+    namespace_workflow: str,
+    name: str,
+    image: str,
+    script_configmap: str,
+    script_name: str,
+    service_account: str,
+    storage_class: str,
+    sdg_object_store_secret: str,
+):
+    """
+    Print an example Job YAML to stdout to run the script in a Kubernetes cluster.
+    The job excepts the standalone.py script to be available in a ConfigMap.
+    """
+    print(
+        JOB_SCRIPT_EXAMPLE.format(
+            name=name,
+            namespace=namespace,
+            namespace_workflow=namespace_workflow,
+            image=image,
+            script_configmap=script_configmap,
+            script_name=script_name,
+            service_account=service_account,
+            storage_class=storage_class,
+            sdg_object_store_secret=sdg_object_store_secret,
+        )
+    )
+
+
+@cli.group(invoke_without_command=True)
+@click.option(
     "--namespace", type=str, default="default", help="Kubernetes namespace to use"
 )
 @click.option(
@@ -246,16 +401,19 @@ def cli():
     type=str,
     default=DEFAULT_REPO_URL,
     help="URL of the taxonomy repository - for SDG only",
+    hidden=True,
 )
 @click.option(
     "--taxonomy-repo-branch",
     type=str,
     help="Branch of the taxonomy repository - for SDG only",
+    hidden=True,
 )
 @click.option(
     "--taxonomy-repo-pr",
     type=str,
     help="Pull request number of the taxonomy repository - for SDG only",
+    hidden=True,
 )
 @click.option(
     "--storage-class",
@@ -267,11 +425,13 @@ def cli():
     "--serving-endpoint",
     type=str,
     help="Serving endpoint for SDG - for SDG only",
+    hidden=True,
 )
 @click.option(
     "--serving-model",
     type=str,
     help="Serving model for SDG - for SDG only",
+    hidden=True,
 )
 @click.option(
     "--nproc-per-node",
@@ -283,6 +443,7 @@ def cli():
     "--eval-type",
     help="Type of evaluation to run",
     type=click.Choice(["mmlu", "mt-bench"]),
+    hidden=True,
 )
 @click.option(
     "--training-phase",
@@ -343,6 +504,7 @@ def cli():
     "--sdg-object-store-verify-tls",
     envvar="SDG_OBJECT_STORE_VERIFY_TLS",
     help="Verify TLS for the object store. (SDG_OBJECT_STORE_VERIFY_TLS env var).",
+    default=True,
     type=bool,
 )
 @click.option(
@@ -664,7 +826,11 @@ def create_sdg_data_fetch_job(
         name="fetch-sdg-files-from-object-store",
         image=PYTHON_IMAGE,
         command=["/bin/sh", "-c"],
-        args=[SDG_DATA_DOWNLOAD_SCRIPT],
+        args=[
+            SDG_DATA_SCRIPT.format(
+                strategy="download", SDG_PVC_MOUNT_PATH=SDG_PVC_MOUNT_PATH
+            )
+        ],
         volume_mounts=get_sdg_vol_mount(),
         env=[
             kubernetes.client.V1EnvVar(
