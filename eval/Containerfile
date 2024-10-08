@@ -4,9 +4,13 @@ RUN dnf install -y python3.11 python3.11-devel git python3-pip make automake gcc
     && dnf clean all \
     && rm -rf /var/cache/*dnf*
 
-# TODO update to instructlab/eval after https://github.com/instructlab/eval/pull/128 or equivalent merges
+# TODO update to main/ilab-on-ocp utils/helpers
+# helpers package includes start_vllm, stop_vllm
 RUN python3.11 -m ensurepip \
-    && python3.11 -m pip install --no-cache-dir git+https://github.com/instructlab/eval@main \
+    && python3.11 -m pip install --no-cache-dir git+https://github.com/instructlab/eval@v0.3.1 \
+    && python3.11 -m pip install --no-cache-dir git+https://github.com/instructlab/instructlab@v0.19.2 \
+    && python3.11 -m pip install --no-cache-dir git+https://github.com/sallyom/ilab-on-ocp.git@final-eval-mtbench#subdirectory=utils/helpers \
+    && python3.11 -m pip install --no-cache-dir tenacity lm-eval[api] \
     && rm -rf /usr/bin/python3 && ln -s /usr/bin/python3.11 /usr/bin/python3
 
 ENV HF_HOME=/tmp
