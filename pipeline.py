@@ -442,145 +442,11 @@ def gen_standalone():
 
     # The list of executor names to extract details from to generate the standalone script
     executors = {
-        "exec-data-processing-op": {
-            "inputs": {
-                "parameterValues": {
-                    "max_seq_len": 4096,
-                    "max_batch_len": 20000,
-                },
-                "artifacts": {
-                    "sdg": {
-                        "artifacts": [
-                            {
-                                "name": "sdg",
-                                "uri": "/input_data/generated",  # TODO: do not hardcode!!
-                            }
-                        ]
-                    },
-                    "model": {
-                        "artifacts": [
-                            {
-                                "name": "model",
-                                "uri": "/input_model",  # TODO: do not hardcode!!
-                            }
-                        ]
-                    },
-                },
-            },
-            "outputs": {
-                "outputFile": "/tmp/kfp_outputs/output_metadata.json",
-                "artifacts": {
-                    "processed_data": {
-                        "artifacts": [
-                            {
-                                "name": "processed_data",
-                                "uri": "/input_data/processed_data",  # TODO: do not hardcode!!
-                            }
-                        ]
-                    },
-                },
-            },
-        },
-        "exec-sdg-op": {
-            "inputs": {
-                "parameterValues": {
-                    "num_instructions_to_generate": 2,
-                    "repo_branch": "",
-                    "repo_pr": "",
-                },
-                "artifacts": {
-                    "taxonomy": {
-                        "artifacts": [
-                            {
-                                "name": "taxonomy",
-                                "uri": "/input_data/taxonomy",  # TODO: do not hardcode!!
-                            }
-                        ]
-                    }
-                },
-            },
-            "outputs": {
-                "outputFile": "/tmp/kfp_outputs/output_metadata.json",
-                "artifacts": {
-                    "sdg": {
-                        "artifacts": [
-                            {
-                                "name": "sdg",
-                                "uri": "/input_data/generated",  # TODO: do not hardcode!!
-                            }
-                        ]
-                    },
-                },
-            },
-        },
+        "exec-data-processing-op": 'data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/input_data/generated", model="/input_model", processed_data="/input_data/processed_data")',
+        "exec-sdg-op": 'sdg_op(num_instructions_to_generate=2, repo_branch="", repo_pr="", taxonomy="/input_data/taxonomy", sdg="/input_data/generated")',
         "exec-git-clone-op": {},
-        "exec-huggingface-importer-op": {
-            "inputs": {
-                "parameterValues": {
-                    "repo_name": BASE_MODE,
-                },
-            },
-            "outputs": {
-                "outputFile": "/tmp/kfp_outputs/output_metadata.json",
-                "artifacts": {
-                    "model": {
-                        "artifacts": [
-                            {
-                                "name": "model",
-                                "uri": "/input_model",  # TODO: do not hardcode!!
-                            }
-                        ]
-                    },
-                },
-            },
-        },
-        "exec-run-mmlu-op": {
-            "inputs": {
-                "parameterValues": {
-                    "models_path_prefix": "/output/model/hf_format",
-                    "mmlu_tasks_list": MMLU_TASKS_LIST,
-                    "model_dtype": MODEL_DTYPE,
-                    "few_shots": FEW_SHOTS,
-                    "batch_size": BATCH_SIZE,
-                    "models_folder": "/output/model/hf_format",
-                },
-            },
-            "outputs": {
-                "outputFile": "/tmp/kfp_outputs/output_metadata.json",
-                "artifacts": {
-                    "mmlu_output": {
-                        "artifacts": [
-                            {
-                                "name": "mmlu_output",
-                                "uri": "/output/mmlu-results.txt",  # TODO: do not hardcode!!
-                            }
-                        ]
-                    },
-                },
-            },
-        },
-        "exec-run-mt-bench-op": {
-            "inputs": {
-                "parameterValues": {
-                    "models_path_prefix": "/output/model/hf_format",
-                    "merge_system_user_message": MERGE_SYSTEM_USER_MESSAGE,
-                    "max_workers": MAX_WORKERS,
-                },
-            },
-            "outputs": {
-                "outputFile": "/tmp/kfp_outputs/output_metadata.json",
-                "artifacts": {
-                    "mt_bench_output": {
-                        "artifacts": [
-                            {
-                                "name": "mt_bench_output",
-                                "uri": "/output/mt-bench-results.txt",  # TODO: do not hardcode!!
-                            }
-                        ]
-                    },
-                },
-            },
-        },
+        "exec-huggingface-importer-op": 'huggingface_importer_op(repo_name="ibm-granite/granite-7b-base", model="/input_model")',
+        "exec-run-mt-bench-op": 'run_mt_bench_op(mt_bench_output="/output/mt-bench-results.txt", models_list="/output/model/model/hf_format", models_path_prefix="/output/model/hf_format", max_workers="auto", merge_system_user_message=False)',
     }
 
     details = {}
@@ -591,14 +457,18 @@ def gen_standalone():
             executor_details = get_executor_details(documents, executor_name)
             if executor_details is not None:
                 details[executor_name_camelize + "_image"] = executor_details["image"]
-                details[executor_name_camelize + "_command"] = executor_details[
-                    "command"
-                ]
-                details[executor_name_camelize + "_args"] = remove_template_markers(
-                    executor_details["args"],
-                    executor_name_camelize,
-                    executor_input_param,
+                details[executor_name_camelize + "_command"] = (
+                    change_dsl_function_to_normal_function(executor_details["command"])
                 )
+                if executor_name == "exec-git-clone-op":
+                    details[executor_name_camelize + "_args"] = remove_template_markers(
+                        executor_details["args"],
+                        executor_name_camelize,
+                        executor_input_param,
+                    )
+                else:
+                    details[executor_name_camelize + "_args"] = executor_input_param
+
         except ValueError as e:
             click.echo(f"Error: {e}", err=True)
             raise click.exceptions.Exit(1)
@@ -739,6 +609,24 @@ def remove_template_markers(
     ]
 
     return rendered_code
+
+
+def change_dsl_function_to_normal_function(rendered_code: list):
+    replacements = {
+        "dsl.Input[dsl.Dataset]": "str",
+        "dsl.Input[dsl.Model]": "str",
+        "dsl.Input[dsl.Artifact]": "str",
+        "dsl.Output[dsl.Dataset]": "str",
+        "dsl.Output[dsl.Model]": "str",
+        "import kfp": "",
+        "from kfp import dsl": "",
+        "from kfp.dsl import *": "",
+        ".path": "",  # super hacky, but works for now, the idea is that "taxonomy.path" is a string so we just remove the ".path" part
+    }
+
+    for old, new in replacements.items():
+        rendered_code = [line.replace(old, new) for line in rendered_code]
+    return rendered_code[-1].strip()
 
 
 if __name__ == "__main__":

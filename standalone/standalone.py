@@ -303,6 +303,22 @@ spec:
           name: {script_configmap}
 """
 
+PYTHON_EXECUTOR = """
+set -e
+
+tmp=$(mktemp -d)
+cat <<EOF > "$tmp"/exec.py
+
+{python_code}
+
+if __name__ == "__main__":
+    {python_main}
+
+EOF
+
+python3 "$tmp"/exec.py
+"""
+
 
 @click.group()
 def cli():
@@ -696,34 +712,153 @@ def create_sdg_job(
         kubernetes.client.V1Job: A Kubernetes Job object configured with the specified parameters.
     """
     # Configureate Pod template container
+    exec_sdg_op_command = """
+from typing import *
+
+def sdg_op(
+    num_instructions_to_generate: int,
+    taxonomy: str,
+    sdg: str,
+    repo_branch: Optional[str],
+    repo_pr: Optional[int],
+):
+    from os import getenv
+
+    import openai
+    from instructlab.sdg import generate_data
+    from instructlab.sdg.utils.taxonomy import read_taxonomy
+
+    api_key = getenv("api_key")
+    model = getenv("model")
+    endpoint = getenv("endpoint")
+    client = openai.OpenAI(base_url=endpoint, api_key=api_key)
+
+    taxonomy_base = "main" if repo_branch or (repo_pr and int(repo_pr) > 0) else "empty"
+
+    print("Generating syntetic dataset for:")
+    print()
+    print(read_taxonomy(taxonomy, taxonomy_base))
+
+    # generate_data has a magic word for its taxonomy_base argument - `empty`
+    # it allows generating from the whole repo, see:
+    # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230
+    generate_data(
+        client=client,
+        num_instructions_to_generate=num_instructions_to_generate,
+        output_dir=sdg,
+        taxonomy=taxonomy,
+        taxonomy_base=taxonomy_base,
+        model_name=model,
+        chunk_word_count=1000,
+        server_ctx_size=4096,
+    )
+"""
+    exec_sdg_op_args = """
+sdg_op(num_instructions_to_generate=2, repo_branch="", repo_pr="", taxonomy="/input_data/taxonomy", sdg="/input_data/generated")
+"""
+
+    exec_huggingface_importer_op_command = """
+from typing import *
+
+def huggingface_importer_op(model: str, repo_name: str):
+    from huggingface_hub import snapshot_download
+
+    snapshot_download(repo_id=repo_name, cache_dir="/tmp", local_dir=model)
+"""
+    exec_huggingface_importer_op_args = """
+huggingface_importer_op(repo_name="ibm-granite/granite-7b-base", model="/input_model")
+"""
+
+    exec_data_processing_op_command = """
+from typing import *
+
+def data_processing_op(
+    sdg: str,
+    processed_data: str,
+    model: str,
+    max_seq_len: Optional[int] = 4096,
+    max_batch_len: Optional[int] = 20000,
+):
+    import os
+
+    import instructlab.training.data_process as dp
+    from instructlab.training import (
+        DataProcessArgs,
+        TrainingArgs,
+    )
+
+    # define training-specific arguments
+    training_args = TrainingArgs(
+        # define data-specific arguments
+        model_path=model,
+        data_path=f"{sdg}/*_train_msgs*.jsonl",
+        data_output_dir=processed_data,
+        # define model-trianing parameters
+        max_seq_len=max_seq_len,
+        max_batch_len=max_batch_len,
+        # XXX(shanand): We don't need the following arguments
+        # for data processing. Added them for now to avoid
+        # Pydantic validation errors for TrainingArgs
+        ckpt_output_dir="data/saved_checkpoints",
+        num_epochs=2,
+        effective_batch_size=3840,
+        save_samples=0,
+        learning_rate=2e-6,
+        warmup_steps=800,
+        is_padding_free=True,
+    )
+
+    def data_processing(train_args: TrainingArgs) -> None:
+        # early validation logic here
+        if train_args.max_batch_len < train_args.max_seq_len:
+            raise ValueError(
+                f"the `max_batch_len` cannot be less than `max_seq_len`: {train_args.max_batch_len=} < {train_args.max_seq_len=}"
+            )
+
+            # process the training data
+        if not os.exists(train_args.data_output_dir):
+            os.makedirs(train_args.data_output_dir, exist_ok=True)
+        dp.main(
+            DataProcessArgs(
+                # XXX(osilkin): make a decision here, either:
+                #   1. the CLI is fully responsible for managing where the data is written
+                #   2. we never cache it and simply write it to a tmp file every time.
+                #
+                # An important reason for why #1 would be preferable is in the case of OpenShift/SELinux
+                # where the user has a defined place for new temporary data to be written.
+                data_output_path=train_args.data_output_dir,
+                model_path=train_args.model_path,
+                data_path=train_args.data_path,
+                max_seq_len=train_args.max_seq_len,
+                chat_tmpl_path=train_args.chat_tmpl_path,
+            )
+        )
+
+    data_processing(train_args=training_args)
+"""
+    exec_data_processing_op_args = """
+data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/input_data/generated", model="/input_model", processed_data="/input_data/processed_data")
+"""
+
     init_containers = [
         kubernetes.client.V1Container(
             name="sdg-op-fetch-taxonomy-data",
             image="registry.access.redhat.com/ubi9/toolbox",
             command=["/bin/sh", "-c"],
-            args=[
-                'git clone {exec_git_clone_op_repo_url} {TAXONOMY_PATH} && cd {TAXONOMY_PATH} && if [ -n "{exec_git_clone_op_repo_branch}" ]; then git fetch origin {exec_git_clone_op_repo_branch} && git checkout {exec_git_clone_op_repo_branch}; elif [ -n "{exec_git_clone_op_repo_pr}" ] && [ {exec_git_clone_op_repo_pr} -gt 0 ]; then git fetch origin pull/{exec_git_clone_op_repo_pr}/head:{exec_git_clone_op_repo_pr} && git checkout {exec_git_clone_op_repo_pr}; fi '
-            ],
+            args=['git clone {exec_git_clone_op_repo_url} {TAXONOMY_PATH} && cd {TAXONOMY_PATH} && if [ -n "{exec_git_clone_op_repo_branch}" ]; then git fetch origin {exec_git_clone_op_repo_branch} && git checkout {exec_git_clone_op_repo_branch}; elif [ -n "{exec_git_clone_op_repo_pr}" ] && [ {exec_git_clone_op_repo_pr} -gt 0 ]; then git fetch origin pull/{exec_git_clone_op_repo_pr}/head:{exec_git_clone_op_repo_pr} && git checkout {exec_git_clone_op_repo_pr}; fi '],
             volume_mounts=get_sdg_vol_mount(),
             security_context=get_security_context(),
         ),
         kubernetes.client.V1Container(
             name="sdg-op-generate-synthetic-data",
-            image="quay.io/tcoufal/ilab-sdg:latest",
-            command=[
-                "sh",
-                "-c",
-                '\nif ! [ -x "$(command -v pip)" ]; then\n    python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location \'kfp==2.9.0\' \'--no-deps\' \'typing-extensions>=3.7.4,<5; python_version<"3.9"\' && "$0" "$@"\n',
-                "sh",
-                "-ec",
-                'program_path=$(mktemp -d)\n\nprintf "%s" "$0" > "$program_path/ephemeral_component.py"\n_KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"\n',
-                '\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import *\n\ndef sdg_op(\n    num_instructions_to_generate: int,\n    taxonomy: dsl.Input[dsl.Dataset],\n    sdg: dsl.Output[dsl.Dataset],\n    repo_branch: Optional[str],\n    repo_pr: Optional[int],\n):\n    from os import getenv\n\n    import openai\n    from instructlab.sdg import generate_data\n    from instructlab.sdg.utils.taxonomy import read_taxonomy\n\n    api_key = getenv("api_key")\n    model = getenv("model")\n    endpoint = getenv("endpoint")\n    client = openai.OpenAI(base_url=endpoint, api_key=api_key)\n\n    taxonomy_base = "main" if repo_branch or (repo_pr and int(repo_pr) > 0) else "empty"\n\n    print("Generating syntetic dataset for:")\n    print()\n    print(read_taxonomy(taxonomy.path, taxonomy_base))\n\n    # generate_data has a magic word for its taxonomy_base argument - `empty`\n    # it allows generating from the whole repo, see:\n    # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230\n    generate_data(\n        client=client,\n        num_instructions_to_generate=num_instructions_to_generate,\n        output_dir=sdg.path,\n        taxonomy=taxonomy.path,\n        taxonomy_base=taxonomy_base,\n        model_name=model,\n        chunk_word_count=1000,\n        server_ctx_size=4096,\n    )\n\n',
-            ],
+            # image="quay.io/tcoufal/ilab-sdg:latest",
+            image="registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.1-1724960989",
+            command=["/bin/sh", "-ce"],
             args=[
-                "--executor_input",
-                '{"inputs": {"parameterValues": {"num_instructions_to_generate": 2, "repo_branch": "", "repo_pr": ""}, "artifacts": {"taxonomy": {"artifacts": [{"name": "taxonomy", "uri": "/input_data/taxonomy"}]}}}, "outputs": {"outputFile": "/tmp/kfp_outputs/output_metadata.json", "artifacts": {"sdg": {"artifacts": [{"name": "sdg", "uri": "/input_data/generated"}]}}}}',
-                "--function_to_execute",
-                "sdg_op",
+                PYTHON_EXECUTOR.format(
+                    python_code=exec_sdg_op_command,
+                    python_main=exec_sdg_op_args.strip(),
+                ),
             ],
             volume_mounts=get_sdg_vol_mount(),
             security_context=get_security_context(),
@@ -739,20 +874,12 @@ def create_sdg_job(
         kubernetes.client.V1Container(
             name="huggingface-importer-op",
             image="registry.access.redhat.com/ubi9/python-311:latest",
-            command=[
-                "sh",
-                "-c",
-                "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&  python3 -m pip install --quiet --no-warn-script-location 'huggingface_hub' && \"$0\" \"$@\"\n",
-                "sh",
-                "-ec",
-                'program_path=$(mktemp -d)\n\nprintf "%s" "$0" > "$program_path/ephemeral_component.py"\n_KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"\n',
-                '\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import *\n\ndef huggingface_importer_op(model: dsl.Output[dsl.Model], repo_name: str):\n    from huggingface_hub import snapshot_download\n\n    snapshot_download(repo_id=repo_name, cache_dir="/tmp", local_dir=model.path)\n\n',
-            ],
+            command=["/bin/sh", "-ce"],
             args=[
-                "--executor_input",
-                '{"inputs": {"parameterValues": {"repo_name": "ibm-granite/granite-7b-base"}}, "outputs": {"outputFile": "/tmp/kfp_outputs/output_metadata.json", "artifacts": {"model": {"artifacts": [{"name": "model", "uri": "/input_model"}]}}}}',
-                "--function_to_execute",
-                "huggingface_importer_op",
+                PYTHON_EXECUTOR.format(
+                    python_code=exec_huggingface_importer_op_command,
+                    python_main=exec_huggingface_importer_op_args.strip(),
+                ),
             ],
             volume_mounts=get_sdg_vol_mount(),
             security_context=get_security_context(),
@@ -768,20 +895,12 @@ def create_sdg_job(
         kubernetes.client.V1Container(
             name="sdg-preprocess",
             image="registry.access.redhat.com/ubi9/python-311:latest",
-            command=[
-                "sh",
-                "-c",
-                "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&  python3 -m pip install --quiet --no-warn-script-location 'instructlab-training@git+https://github.com/instructlab/training.git' && \"$0\" \"$@\"\n",
-                "sh",
-                "-ec",
-                'program_path=$(mktemp -d)\n\nprintf "%s" "$0" > "$program_path/ephemeral_component.py"\n_KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"\n',
-                '\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import *\n\ndef data_processing_op(\n    sdg: dsl.Input[dsl.Dataset],\n    processed_data: dsl.Output[dsl.Dataset],\n    model: dsl.Input[dsl.Artifact],\n    max_seq_len: Optional[int] = 4096,\n    max_batch_len: Optional[int] = 20000,\n):\n    import os\n\n    import instructlab.training.data_process as dp\n    from instructlab.training import (\n        DataProcessArgs,\n        TrainingArgs,\n    )\n\n    # define training-specific arguments\n    training_args = TrainingArgs(\n        # define data-specific arguments\n        model_path=model.path,\n        data_path=f"{sdg.path}/*_train_msgs*.jsonl",\n        data_output_dir=processed_data.path,\n        # define model-trianing parameters\n        max_seq_len=max_seq_len,\n        max_batch_len=max_batch_len,\n        # XXX(shanand): We don\'t need the following arguments\n        # for data processing. Added them for now to avoid\n        # Pydantic validation errors for TrainingArgs\n        ckpt_output_dir="data/saved_checkpoints",\n        num_epochs=2,\n        effective_batch_size=3840,\n        save_samples=0,\n        learning_rate=2e-6,\n        warmup_steps=800,\n        is_padding_free=True,\n    )\n\n    def data_processing(train_args: TrainingArgs) -> None:\n        # early validation logic here\n        if train_args.max_batch_len < train_args.max_seq_len:\n            raise ValueError(\n                f"the `max_batch_len` cannot be less than `max_seq_len`: {train_args.max_batch_len=} < {train_args.max_seq_len=}"\n            )\n\n            # process the training data\n        if not os.path.exists(train_args.data_output_dir):\n            os.makedirs(train_args.data_output_dir, exist_ok=True)\n        dp.main(\n            DataProcessArgs(\n                # XXX(osilkin): make a decision here, either:\n                #   1. the CLI is fully responsible for managing where the data is written\n                #   2. we never cache it and simply write it to a tmp file every time.\n                #\n                # An important reason for why #1 would be preferable is in the case of OpenShift/SELinux\n                # where the user has a defined place for new temporary data to be written.\n                data_output_path=train_args.data_output_dir,\n                model_path=train_args.model_path,\n                data_path=train_args.data_path,\n                max_seq_len=train_args.max_seq_len,\n                chat_tmpl_path=train_args.chat_tmpl_path,\n            )\n        )\n\n    data_processing(train_args=training_args)\n\n',
-            ],
+            command=["/bin/sh", "-ce"],
             args=[
-                "--executor_input",
-                '{"inputs": {"parameterValues": {"max_seq_len": 4096, "max_batch_len": 20000}, "artifacts": {"sdg": {"artifacts": [{"name": "sdg", "uri": "/input_data/generated"}]}, "model": {"artifacts": [{"name": "model", "uri": "/input_model"}]}}}, "outputs": {"outputFile": "/tmp/kfp_outputs/output_metadata.json", "artifacts": {"processed_data": {"artifacts": [{"name": "processed_data", "uri": "/input_data/processed_data"}]}}}}',
-                "--function_to_execute",
-                "data_processing_op",
+                PYTHON_EXECUTOR.format(
+                    python_code=exec_data_processing_op_command,
+                    python_main=exec_data_processing_op_args.strip(),
+                ),
             ],
             volume_mounts=get_sdg_vol_mount(),
             security_context=get_security_context(),
@@ -1036,11 +1155,125 @@ def create_eval_job(
     #             ),
     #         ],
     #     )
+
+    exec_run_mt_bench_op_command = """
+from typing import *
+
+def run_mt_bench_op(
+    models_path_prefix: str,
+    mt_bench_output: Output[Artifact],
+    merge_system_user_message: bool,
+    # generate_answers,judgment uses a magic word for its mt_bench evaluator  - `auto`
+    # with `auto`, number of gpus allocated for serving is calculated based on environment
+    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
+    max_workers: str,
+    models_list: List[str] = None,
+    models_folder: Optional[str] = None,
+    device: str = None,
+) -> NamedTuple("outputs", best_model=str, best_score=float):
+    import json
+    import os
+
+    import torch
+    from helpers import (
+        VLLM_SERVER,
+        launch_vllm,
+        stop_vllm,
+    )
+    from instructlab.eval.mt_bench import MTBenchEvaluator
+
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
+    gpu_available = torch.cuda.is_available()
+    gpu_name = (
+        torch.cuda.get_device_name(torch.cuda.current_device())
+        if gpu_available
+        else "No GPU available"
+    )
+    gpu_count = torch.cuda.device_count() if gpu_available else 0
+
+    print(f"GPU Available: {gpu_available}, {gpu_name}")
+
+    if models_list is None and models_folder:
+        models_list = os.listdir(models_folder)
+
+    judge_api_key = os.getenv("JUDGE_API_KEY", "")
+    judge_model_name = os.getenv("JUDGE_NAME")
+    judge_endpoint = os.getenv("JUDGE_ENDPOINT")
+
+    scores = {}
+    all_mt_bench_data = []
+
+    # generate_answers,judgment uses a magic word for its mt_bench evaluator  - `auto`
+    # with `auto`, number of gpus allocated for serving is calculated based on environment
+    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
+    if max_workers == "auto":
+        try:
+            usable_cpu_count = len(os.sched_getaffinity(0)) // 2
+        except AttributeError:
+            usable_cpu_count = multiprocessing.cpu_count() // 2
+        max_workers = usable_cpu_count
+
+    for model_name in models_list:
+        print(f"Serving candidate model: {model_name}")
+        model_path = f"{models_path_prefix}/{model_name}"
+
+        launch_vllm(model_path, gpu_count)
+
+        # model ID is the model_path value in vLLM
+        evaluator = MTBenchEvaluator(
+            model_name=model_path,
+            judge_model_name=judge_model_name,
+            output_dir="/tmp/eval_output",
+            merge_system_user_message=merge_system_user_message,
+        )
+
+        evaluator.gen_answers(
+            server_url=VLLM_SERVER,
+            serving_gpus=gpu_count,
+            max_workers=max_workers,
+        )
+
+        stop_vllm()
+
+        overall_score, qa_pairs, turn_scores, error_rate = evaluator.judge_answers(
+            server_url=judge_endpoint,
+            api_key=judge_api_key,
+            serving_gpus=gpu_count,
+            max_workers=max_workers,
+        )
+
+        mt_bench_data = {
+            "report_title": "SKILLS EVALUATION REPORT",
+            "model": model_path,
+            "judge_model": judge_model_name,
+            "overall_score": overall_score,
+            "turn_scores": turn_scores,
+            "qa_scores": qa_pairs,
+            "error_rate": error_rate,
+        }
+
+        all_mt_bench_data.append(mt_bench_data)
+        scores[model_path] = overall_score
+
+    with open(mt_bench_output, "w") as f:
+        json.dump(all_mt_bench_data, f, indent=4)
+
+    outputs = NamedTuple("outputs", best_model=str, best_score=float)
+    best_model = max(scores, key=scores.get)
+    best_score = scores[best_model]
+    return outputs(best_model=best_model, best_score=best_score)
+"""
+    exec_run_mt_bench_op_args = """
+run_mt_bench_op(mt_bench_output="/output/mt-bench-results.txt", models_list="/output/model/model/hf_format", models_path_prefix="/output/model/hf_format", max_workers="auto", merge_system_user_message=False)
+"""
+
     if eval_type == "mt-bench":
         init_containers = [
             kubernetes.client.V1Container(
                 name=f"run-eval-{eval_type}",
                 image="quay.io/sallyom/instructlab-ocp:eval-10-8",
+<<<<<<< HEAD
                 command=[
                     "sh",
                     "-c",
@@ -1055,6 +1288,14 @@ def create_eval_job(
                     '{"inputs": {"parameterValues": {"models_path_prefix": "/output/model/hf_format", "merge_system_user_message": false, "max_workers": "auto"}}, "outputs": {"outputFile": "/tmp/kfp_outputs/output_metadata.json", "artifacts": {"mt_bench_output": {"artifacts": [{"name": "mt_bench_output", "uri": "/output/mt-bench-results.txt"}]}}}}',
                     "--function_to_execute",
                     "run_mt_bench_op",
+=======
+                command=["/bin/sh", "-ce"],
+                args=[
+                    PYTHON_EXECUTOR.format(
+                        python_code=exec_run_mt_bench_op_command,
+                        python_main=exec_run_mt_bench_op_args.strip(),
+                    ),
+>>>>>>> 4e7a294 (feat: remove dependency on KFP lib)
                 ],
                 volume_mounts=[
                     kubernetes.client.V1VolumeMount(

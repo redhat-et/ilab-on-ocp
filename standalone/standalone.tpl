@@ -288,6 +288,22 @@ spec:
           name: {script_configmap}
 """
 
+PYTHON_EXECUTOR = """
+set -e
+
+tmp=$(mktemp -d)
+cat <<EOF > "$tmp"/exec.py
+
+{python_code}
+
+if __name__ == "__main__":
+    {python_main}
+
+EOF
+
+python3 "$tmp"/exec.py
+"""
+
 
 @click.group()
 def cli():
@@ -681,6 +697,27 @@ def create_sdg_job(
         kubernetes.client.V1Job: A Kubernetes Job object configured with the specified parameters.
     """
     # Configureate Pod template container
+    exec_sdg_op_command = """
+{{exec_sdg_op_command}}
+"""
+    exec_sdg_op_args = """
+{{exec_sdg_op_args}}
+"""
+
+    exec_huggingface_importer_op_command = """
+{{exec_huggingface_importer_op_command}}
+"""
+    exec_huggingface_importer_op_args = """
+{{exec_huggingface_importer_op_args}}
+"""
+
+    exec_data_processing_op_command = """
+{{exec_data_processing_op_command}}
+"""
+    exec_data_processing_op_args = """
+{{exec_data_processing_op_args}}
+"""
+
     init_containers = [
         kubernetes.client.V1Container(
             name="sdg-op-fetch-taxonomy-data",
@@ -692,9 +729,15 @@ def create_sdg_job(
         ),
         kubernetes.client.V1Container(
             name="sdg-op-generate-synthetic-data",
-            image="{{exec_sdg_op_image}}",
-            command={{exec_sdg_op_command}},
-            args={{exec_sdg_op_args}},
+            # image="{{exec_sdg_op_image}}",
+            image="registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.1-1724960989",
+            command=["/bin/sh", "-ce"],
+            args=[
+                PYTHON_EXECUTOR.format(
+                    python_code=exec_sdg_op_command,
+                    python_main=exec_sdg_op_args.strip(),
+                ),
+            ],
             volume_mounts=get_sdg_vol_mount(),
             security_context=get_security_context(),
             env_from=[
@@ -709,8 +752,13 @@ def create_sdg_job(
         kubernetes.client.V1Container(
             name="huggingface-importer-op",
             image="{{exec_huggingface_importer_op_image}}",
-            command={{exec_huggingface_importer_op_command}},
-            args={{exec_huggingface_importer_op_args}},
+            command=["/bin/sh", "-ce"],
+            args=[
+                PYTHON_EXECUTOR.format(
+                    python_code=exec_huggingface_importer_op_command,
+                    python_main=exec_huggingface_importer_op_args.strip(),
+                ),
+            ],
             volume_mounts=get_sdg_vol_mount(),
             security_context=get_security_context(),
             env_from=[
@@ -725,8 +773,13 @@ def create_sdg_job(
         kubernetes.client.V1Container(
             name="sdg-preprocess",
             image="{{exec_data_processing_op_image}}",
-            command={{exec_data_processing_op_command}},
-            args={{exec_data_processing_op_args}},
+            command=["/bin/sh", "-ce"],
+            args=[
+                PYTHON_EXECUTOR.format(
+                    python_code=exec_data_processing_op_command,
+                    python_main=exec_data_processing_op_args.strip(),
+                ),
+            ],
             volume_mounts=get_sdg_vol_mount(),
             security_context=get_security_context(),
         ),
@@ -980,13 +1033,26 @@ def create_eval_job(
     #             ),
     #         ],
     #     )
+
+    exec_run_mt_bench_op_command = """
+{{exec_run_mt_bench_op_command}}
+"""
+    exec_run_mt_bench_op_args = """
+{{exec_run_mt_bench_op_args}}
+"""
+
     if eval_type == "mt-bench":
         init_containers = [
             kubernetes.client.V1Container(
                 name=f"run-eval-{eval_type}",
                 image="{{exec_run_mt_bench_op_image}}",
-                command={{exec_run_mt_bench_op_command}},
-                args={{exec_run_mt_bench_op_args}},
+                command=["/bin/sh", "-ce"],
+                args=[
+                    PYTHON_EXECUTOR.format(
+                        python_code=exec_run_mt_bench_op_command,
+                        python_main=exec_run_mt_bench_op_args.strip(),
+                    ),
+                ],
                 volume_mounts=[
                     kubernetes.client.V1VolumeMount(
                         name=TRAINING_VOLUME_NAME, mount_path=TRAINING_PVC_MOUNT_PATH
