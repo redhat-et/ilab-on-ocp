@@ -109,7 +109,7 @@ def run_mt_bench_op(
     import os
 
     import torch
-    from instructlab.eval import mt_bench_answers, mt_bench_judgment
+    from instructlab.eval.mt_bench import MTBenchEvaluator
 
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     vllm_server = "http://localhost:8000/v1"

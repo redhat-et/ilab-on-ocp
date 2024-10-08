@@ -592,33 +592,34 @@ deploymentSpec:
           \ *\n\ndef data_processing_op(\n    sdg: dsl.Input[dsl.Dataset],\n    processed_data:\
           \ dsl.Output[dsl.Dataset],\n    model: dsl.Input[dsl.Artifact],\n    max_seq_len:\
           \ Optional[int] = 4096,\n    max_batch_len: Optional[int] = 20000,\n):\n\
-          \    import instructlab.training.data_process as dp\n    import os\n   \
-          \ from instructlab.training import (\n        TrainingArgs,\n        DataProcessArgs,\n\
-          \    )\n\n    # define training-specific arguments\n    training_args =\
-          \ TrainingArgs(\n        # define data-specific arguments\n        model_path=model.path,\n\
-          \        data_path=f\"{sdg.path}/*_train_msgs*.jsonl\",\n        data_output_dir=processed_data.path,\n\
-          \        # define model-trianing parameters\n        max_seq_len=max_seq_len,\n\
-          \        max_batch_len=max_batch_len,\n        # XXX(shanand): We don't\
-          \ need the following arguments\n        # for data processing. Added them\
-          \ for now to avoid\n        # Pydantic validation errors for TrainingArgs\n\
-          \        ckpt_output_dir=\"data/saved_checkpoints\",\n        num_epochs=2,\n\
-          \        effective_batch_size=3840,\n        save_samples=0,\n        learning_rate=2e-6,\n\
-          \        warmup_steps=800,\n        is_padding_free=True,\n    )\n\n   \
-          \ def data_processing(train_args: TrainingArgs) -> None:\n        # early\
-          \ validation logic here\n        if train_args.max_batch_len < train_args.max_seq_len:\n\
-          \            raise ValueError(\n                f\"the `max_batch_len` cannot\
-          \ be less than `max_seq_len`: {train_args.max_batch_len=} < {train_args.max_seq_len=}\"\
-          \n            )\n\n            # process the training data\n        if not\
-          \ os.path.exists(train_args.data_output_dir):\n            os.makedirs(train_args.data_output_dir,\
-          \ exist_ok=True)\n        dp.main(\n            DataProcessArgs(\n     \
-          \           # XXX(osilkin): make a decision here, either:\n            \
-          \    #   1. the CLI is fully responsible for managing where the data is\
-          \ written\n                #   2. we never cache it and simply write it\
-          \ to a tmp file every time.\n                #\n                # An important\
-          \ reason for why #1 would be preferable is in the case of OpenShift/SELinux\n\
-          \                # where the user has a defined place for new temporary\
-          \ data to be written.\n                data_output_path=train_args.data_output_dir,\n\
-          \                model_path=train_args.model_path,\n                data_path=train_args.data_path,\n\
+          \    import os\n\n    import instructlab.training.data_process as dp\n \
+          \   from instructlab.training import (\n        DataProcessArgs,\n     \
+          \   TrainingArgs,\n    )\n\n    # define training-specific arguments\n \
+          \   training_args = TrainingArgs(\n        # define data-specific arguments\n\
+          \        model_path=model.path,\n        data_path=f\"{sdg.path}/*_train_msgs*.jsonl\"\
+          ,\n        data_output_dir=processed_data.path,\n        # define model-trianing\
+          \ parameters\n        max_seq_len=max_seq_len,\n        max_batch_len=max_batch_len,\n\
+          \        # XXX(shanand): We don't need the following arguments\n       \
+          \ # for data processing. Added them for now to avoid\n        # Pydantic\
+          \ validation errors for TrainingArgs\n        ckpt_output_dir=\"data/saved_checkpoints\"\
+          ,\n        num_epochs=2,\n        effective_batch_size=3840,\n        save_samples=0,\n\
+          \        learning_rate=2e-6,\n        warmup_steps=800,\n        is_padding_free=True,\n\
+          \    )\n\n    def data_processing(train_args: TrainingArgs) -> None:\n \
+          \       # early validation logic here\n        if train_args.max_batch_len\
+          \ < train_args.max_seq_len:\n            raise ValueError(\n           \
+          \     f\"the `max_batch_len` cannot be less than `max_seq_len`: {train_args.max_batch_len=}\
+          \ < {train_args.max_seq_len=}\"\n            )\n\n            # process\
+          \ the training data\n        if not os.path.exists(train_args.data_output_dir):\n\
+          \            os.makedirs(train_args.data_output_dir, exist_ok=True)\n  \
+          \      dp.main(\n            DataProcessArgs(\n                # XXX(osilkin):\
+          \ make a decision here, either:\n                #   1. the CLI is fully\
+          \ responsible for managing where the data is written\n                #\
+          \   2. we never cache it and simply write it to a tmp file every time.\n\
+          \                #\n                # An important reason for why #1 would\
+          \ be preferable is in the case of OpenShift/SELinux\n                # where\
+          \ the user has a defined place for new temporary data to be written.\n \
+          \               data_output_path=train_args.data_output_dir,\n         \
+          \       model_path=train_args.model_path,\n                data_path=train_args.data_path,\n\
           \                max_seq_len=train_args.max_seq_len,\n                chat_tmpl_path=train_args.chat_tmpl_path,\n\
           \            )\n        )\n\n    data_processing(train_args=training_args)\n\
           \n"
@@ -1044,8 +1045,8 @@ deploymentSpec:
           \ int,\n    batch_size: int,\n    device: str = None,\n    models_list:\
           \ List[str] = None,\n    models_folder: Optional[str] = None,\n) -> NamedTuple(\"\
           outputs\", best_model=str, best_score=float):\n    import json\n    import\
-          \ os\n    import torch\n    from instructlab.eval.mmlu import MMLUEvaluator,\
-          \ MMLU_TASKS\n\n    mmlu_tasks = mmlu_tasks_list.split(\",\") if mmlu_tasks_list\
+          \ os\n\n    import torch\n    from instructlab.eval.mmlu import MMLU_TASKS,\
+          \ MMLUEvaluator\n\n    mmlu_tasks = mmlu_tasks_list.split(\",\") if mmlu_tasks_list\
           \ else MMLU_TASKS\n\n    if models_list is None and models_folder:\n   \
           \     models_list = os.listdir(models_folder)\n\n    # Device setup and\
           \ debug\n    gpu_available = torch.cuda.is_available()\n    gpu_name = (\n\
@@ -1114,28 +1115,27 @@ deploymentSpec:
           \    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36\n\
           \    max_workers: str,\n    models_list: List[str] = None,\n    models_folder:\
           \ Optional[str] = None,\n    device: str = None,\n) -> NamedTuple(\"outputs\"\
-          , best_model=str, best_score=float):\n    def launch_vllm(\n        model_path:\
-          \ str, gpu_count: int, retries: int = 60, delay: int = 5\n    ):\n     \
-          \   import subprocess\n        import sys\n        import time\n       \
-          \ import requests\n\n        if gpu_count > 0:\n            command = [\n\
-          \                sys.executable,\n                \"-m\",\n            \
-          \    \"vllm.entrypoints.openai.api_server\",\n                \"--model\"\
-          ,\n                model_path,\n                \"--tensor-parallel-size\"\
-          ,\n                str(gpu_count),\n            ]\n        else:\n     \
-          \       command = [\n                sys.executable,\n                \"\
-          -m\",\n                \"vllm.entrypoints.openai.api_server\",\n       \
-          \         \"--model\",\n                model_path,\n            ]\n\n \
-          \       subprocess.Popen(args=command)\n\n        server_url = \"http://localhost:8000/v1\"\
-          \n        print(f\"Waiting for vLLM server to start at {server_url}...\"\
-          )\n\n        for attempt in range(retries):\n            try:\n        \
-          \        response = requests.get(f\"{server_url}/models\")\n           \
-          \     if response.status_code == 200:\n                    print(f\"vLLM\
-          \ server is up and running at {server_url}.\")\n                    return\n\
-          \            except requests.ConnectionError:\n                pass\n\n\
-          \            print(\n                f\"Server not available yet, retrying\
-          \ in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\n          \
-          \  )\n            time.sleep(delay)\n\n        raise RuntimeError(\n   \
-          \         f\"Failed to start vLLM server at {server_url} after {retries}\
+          , best_model=str, best_score=float):\n    def launch_vllm(model_path: str,\
+          \ gpu_count: int, retries: int = 60, delay: int = 5):\n        import subprocess\n\
+          \        import sys\n        import time\n\n        import requests\n\n\
+          \        if gpu_count > 0:\n            command = [\n                sys.executable,\n\
+          \                \"-m\",\n                \"vllm.entrypoints.openai.api_server\"\
+          ,\n                \"--model\",\n                model_path,\n         \
+          \       \"--tensor-parallel-size\",\n                str(gpu_count),\n \
+          \           ]\n        else:\n            command = [\n                sys.executable,\n\
+          \                \"-m\",\n                \"vllm.entrypoints.openai.api_server\"\
+          ,\n                \"--model\",\n                model_path,\n         \
+          \   ]\n\n        subprocess.Popen(args=command)\n\n        server_url =\
+          \ \"http://localhost:8000/v1\"\n        print(f\"Waiting for vLLM server\
+          \ to start at {server_url}...\")\n\n        for attempt in range(retries):\n\
+          \            try:\n                response = requests.get(f\"{server_url}/models\"\
+          )\n                if response.status_code == 200:\n                   \
+          \ print(f\"vLLM server is up and running at {server_url}.\")\n         \
+          \           return\n            except requests.ConnectionError:\n     \
+          \           pass\n\n            print(\n                f\"Server not available\
+          \ yet, retrying in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\
+          \n            )\n            time.sleep(delay)\n\n        raise RuntimeError(\n\
+          \            f\"Failed to start vLLM server at {server_url} after {retries}\
           \ retries.\"\n        )\n\n    # This seems like excessive effort to stop\
           \ the vllm process, but merely saving & killing the pid doesn't work\n \
           \   # Also, the base image does not include `pkill` cmd, so can't pkill\
@@ -1160,8 +1160,8 @@ deploymentSpec:
           \ to terminate process with PID {process.info['pid']}.\"\n             \
           \       )\n                except Exception as e:\n                    print(\n\
           \                        f\"Failed to terminate process with PID {process.info['pid']}.\
-          \ Error: {e}\"\n                    )\n\n    import json\n    import torch\n\
-          \    import os\n\n    from instructlab.eval.mt_bench import MTBenchEvaluator\n\
+          \ Error: {e}\"\n                    )\n\n    import json\n    import os\n\
+          \n    import torch\n    from instructlab.eval.mt_bench import MTBenchEvaluator\n\
           \n    os.environ[\"PYTORCH_CUDA_ALLOC_CONF\"] = \"expandable_segments:True\"\
           \n    vllm_server = \"http://localhost:8000/v1\"\n\n    gpu_available =\
           \ torch.cuda.is_available()\n    gpu_name = (\n        torch.cuda.get_device_name(torch.cuda.current_device())\n\
@@ -1235,12 +1235,12 @@ deploymentSpec:
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef sdg_op(\n    num_instructions_to_generate: int,\n    taxonomy:\
           \ dsl.Input[dsl.Dataset],\n    sdg: dsl.Output[dsl.Dataset],\n    repo_branch:\
-          \ Optional[str],\n    repo_pr: Optional[int],\n):\n    import openai\n \
-          \   from instructlab.sdg import generate_data\n    from instructlab.sdg.utils.taxonomy\
-          \ import read_taxonomy\n    from os import getenv\n\n    api_key = getenv(\"\
-          api_key\")\n    model = getenv(\"model\")\n    endpoint = getenv(\"endpoint\"\
-          )\n    client = openai.OpenAI(base_url=endpoint, api_key=api_key)\n\n  \
-          \  taxonomy_base = \"main\" if repo_branch or (repo_pr and int(repo_pr)\
+          \ Optional[str],\n    repo_pr: Optional[int],\n):\n    from os import getenv\n\
+          \n    import openai\n    from instructlab.sdg import generate_data\n   \
+          \ from instructlab.sdg.utils.taxonomy import read_taxonomy\n\n    api_key\
+          \ = getenv(\"api_key\")\n    model = getenv(\"model\")\n    endpoint = getenv(\"\
+          endpoint\")\n    client = openai.OpenAI(base_url=endpoint, api_key=api_key)\n\
+          \n    taxonomy_base = \"main\" if repo_branch or (repo_pr and int(repo_pr)\
           \ > 0) else \"empty\"\n\n    print(\"Generating syntetic dataset for:\"\
           )\n    print()\n    print(read_taxonomy(taxonomy.path, taxonomy_base))\n\
           \n    # generate_data has a magic word for its taxonomy_base argument -\
@@ -1248,7 +1248,7 @@ deploymentSpec:
           \    generate_data(\n        client=client,\n        num_instructions_to_generate=num_instructions_to_generate,\n\
           \        output_dir=sdg.path,\n        taxonomy=taxonomy.path,\n       \
           \ taxonomy_base=taxonomy_base,\n        model_name=model,\n        chunk_word_count=1000,\n\
-          \        server_ctx_size=4096\n    )\n\n"
+          \        server_ctx_size=4096,\n    )\n\n"
         image: quay.io/tcoufal/ilab-sdg:latest
 pipelineInfo:
   description: InstructLab pipeline
