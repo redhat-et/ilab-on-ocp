@@ -1394,8 +1394,10 @@ def sdg_data_fetch(
         def decode_base64(data):
             return base64.b64decode(data).decode("utf-8")
 
-        endpoint = decode_base64(secret.data.get("endpoint"))
-        validate_url(endpoint)
+        if secret.data.get("endpoint"):
+            endpoint = decode_base64(secret.data.get("endpoint"))
+            validate_url(endpoint)
+
         if not all(
             [
                 secret.data.get("bucket"),
