@@ -109,7 +109,7 @@ def pytorchjob_manifest_op(
         path_to_model = "/input_model/model"
     elif phase_name == "second":
         path_to_model = list_phase1_final_model()
-    image = "registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.1-1724960989"
+    image = "registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2"
 
     manifest = inspect.cleandoc(
         f"""
@@ -137,7 +137,7 @@ def pytorchjob_manifest_op(
                           export TRITON_CACHE_DIR=/tmp
                           export HF_HOME=/tmp
                           export TRANSFORMERS_CACHE=/tmp
-                          torchrun --nnodes {nnodes} --nproc_per_node {nproc_per_node} --node_rank \$(RANK) --rdzv_endpoint \$(MASTER_ADDR):\$(MASTER_PORT) -m instructlab.training.main_ds --model_name_or_path={path_to_model} --data_path=/input_data/processed_data/data.jsonl --output_dir=/output/model --num_epochs=2 --effective_batch_size=3840 --learning_rate=1e-4 --num_warmup_steps=800 --save_samples=0 --log_level=INFO --max_batch_len=20000 --seed=42 --cpu_offload_optimizer --sharding_strategy=FULL_SHARD --is_granite --checkpoint_at_epoch
+                          torchrun --nnodes {nnodes} --nproc_per_node {nproc_per_node} --node_rank \$(RANK) --rdzv_endpoint \$(MASTER_ADDR):\$(MASTER_PORT) -m instructlab.training.main_ds --model_name_or_path={path_to_model} --data_path=/input_data/processed_data/data.jsonl --output_dir=/output/model --num_epochs=2 --effective_batch_size=3840 --learning_rate=1e-4 --num_warmup_steps=800 --save_samples=0 --log_level=INFO --max_batch_len=20000 --seed=42 --cpu_offload_optimizer --distributed_training_framework fsdp --is_granite --checkpoint_at_epoch
                       command:
                         - /bin/bash
                         - '-c'
@@ -191,7 +191,7 @@ def pytorchjob_manifest_op(
                           export XDG_CACHE_HOME=/tmp
                           export HF_HOME=/tmp
                           export TRANSFORMERS_CACHE=/tmp
-                          torchrun --nnodes {nnodes} --nproc_per_node {nproc_per_node} --node_rank \$(RANK) --rdzv_endpoint \$(MASTER_ADDR):\$(MASTER_PORT) -m instructlab.training.main_ds --model_name_or_path={path_to_model}  --data_path=/input_data/processed_data/data.jsonl --output_dir=/tmp/model --num_epochs=2 --effective_batch_size=3840 --learning_rate=2e-6 --num_warmup_steps=800 --save_samples=0 --log_level=INFO --max_batch_len=20000 --seed=42 --cpu_offload_optimizer --sharding_strategy=FULL_SHARD --is_granite --checkpoint_at_epoch
+                          torchrun --nnodes {nnodes} --nproc_per_node {nproc_per_node} --node_rank \$(RANK) --rdzv_endpoint \$(MASTER_ADDR):\$(MASTER_PORT) -m instructlab.training.main_ds --model_name_or_path={path_to_model}  --data_path=/input_data/processed_data/data.jsonl --output_dir=/tmp/model --num_epochs=2 --effective_batch_size=3840 --learning_rate=1e-4 --num_warmup_steps=800 --save_samples=0 --log_level=INFO --max_batch_len=20000 --seed=42 --cpu_offload_optimizer --distributed_training_framework fsdp --is_granite --checkpoint_at_epoch
                       command:
                         - /bin/bash
                         - '-c'
