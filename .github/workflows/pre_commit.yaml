@@ -34,3 +34,9 @@ jobs:
       - name: Run pre-commit
         run: |
           pre-commit run --all-files
+
+      - name: Test if pipeline is up-to-date
+        run: |
+          pip install click kfp==2.9.0 kfp.kubernetes
+          make pipeline
+          git diff --exit-code || (echo "Pipeline is not up-to-date. Please run 'make pipeline' and commit the changes." && exit 1)
