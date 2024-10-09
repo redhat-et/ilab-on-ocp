@@ -242,7 +242,7 @@ def download_s3_file():
 
     bucket_name = os.getenv('SDG_OBJECT_STORE_BUCKET')
     s3_key = os.getenv('SDG_OBJECT_STORE_DATA_KEY')
-    output_file = '{SDG_PVC_MOUNT_PATH}/sdg.tar.gz'
+    output_file = '{MODEL_PVC_MOUNT_PATH}/data.tar.gz'
 
     s3.download_file(bucket_name, s3_key, output_file)
 
@@ -251,7 +251,7 @@ def upload_s3_file():
 
     bucket_name = os.getenv('SDG_OBJECT_STORE_BUCKET')
     s3_key = os.getenv('SDG_OBJECT_STORE_DATA_KEY') # TODO: change the name for the model name
-    input_file = '{SDG_PVC_MOUNT_PATH}/sdg.tar.gz' # TODO: change for model path
+    input_file = '{MODEL_PVC_MOUNT_PATH}/data.tar.gz' # TODO: change for model path
 
     s3.upload_file(input_file, bucket_name, s3_key)
 
@@ -268,9 +268,29 @@ EOF
 
 python "$tmp"/download_s3.py
 
-if [[ "$STRATEGY" == "download" ]]; then
+if [ "$STRATEGY" == "download" ]; then
+  # List top-level directories only (no nested directories)
+  top_level_dirs=$(tar --exclude='*/*' --list --file {MODEL_PVC_MOUNT_PATH}/data.tar.gz)
+
+  # List of directories we expect in the archive
+  expected_dirs=("data" "model")
+
+  # Loop through the expected directories and check if they exist in the archive
+  for dir in "${expected_dirs[@]}"; do
+    if ! echo "$top_level_dirs" | grep -q "^$dir/$"; then
+      echo "Archive does not contain a '$dir' directory"
+      exit 1
+    fi
+  done
+  echo "All expected directories are present."
+
+  # First extract SDG data in the SDG PVC
   mkdir -p {SDG_PVC_MOUNT_PATH}/generated
-  tar -xvf {SDG_PVC_MOUNT_PATH}/sdg.tar.gz -C {SDG_PVC_MOUNT_PATH}/generated
+  tar -C {SDG_PVC_MOUNT_PATH}/generated -xf data.tar.gz --strip-components=1 data/
+
+  # Then extract the model in the model PVC
+  mkdir -p {MODEL_PVC_MOUNT_PATH}/model
+  tar -C {MODEL_PVC_MOUNT_PATH} -xf {MODEL_PVC_MOUNT_PATH}/data.tar.gz --strip-components=1 model/
 fi
 """
 
@@ -551,9 +571,11 @@ def show(
     "--sdg-object-store-data-key",
     envvar="SDG_OBJECT_STORE_DATA_KEY",
     help=(
-        "Name of tarball that contains SDG data. (SDG_OBJECT_STORE_DATA_KEY env var)."
-        "The tarball MUST NOT contain a top-level directory. "
-        "To archive your SDG data, use the following command: cd /path/to/data && tar -czvf sdg.tar.gz *"
+        "Name of tarball that contains SDG data AND model files. (SDG_OBJECT_STORE_DATA_KEY env var)."
+        "The tarball MUST contain two directories: data and model."
+        "The data directory contains the SDG data."
+        "The model directory contains the model to train."
+        "To archive , use the following command: tar -czvf data.tar.gz /path/to/data /path/to/model ."
     ),
     type=str,
 )
@@ -715,6 +737,20 @@ def get_sdg_vol_mount() -> kubernetes.client.V1VolumeMount:
         ),
         kubernetes.client.V1VolumeMount(
             name=TRAINING_VOLUME_NAME, mount_path=TRAINING_PVC_MOUNT_PATH
+        ),
+    ]
+
+
+def get_fetch_sdg_vol_mount() -> kubernetes.client.V1VolumeMount:
+    """
+    Get the volume mount for the SDG job.
+    """
+    return [
+        kubernetes.client.V1VolumeMount(
+            name=SDG_VOLUME_NAME, mount_path=SDG_PVC_MOUNT_PATH
+        ),
+        kubernetes.client.V1VolumeMount(
+            name=MODEL_VOLUME_NAME, mount_path=MODEL_PVC_MOUNT_PATH
         ),
     ]
 
@@ -931,10 +967,11 @@ def create_sdg_data_fetch_job(
         command=["/bin/sh", "-c"],
         args=[
             SDG_DATA_SCRIPT.format(
-                strategy="download", SDG_PVC_MOUNT_PATH=SDG_PVC_MOUNT_PATH
+                strategy="download",
+                MODEL_PVC_MOUNT_PATH=MODEL_PVC_MOUNT_PATH,  # TODO: DOWNLOAD ON THE MODEL PVC!!
             )
         ],
-        volume_mounts=get_sdg_vol_mount(),
+        volume_mounts=get_fetch_sdg_vol_mount(),
         env=[
             kubernetes.client.V1EnvVar(
                 name="SDG_OBJECT_STORE_ENDPOINT",
@@ -985,6 +1022,14 @@ def create_sdg_data_fetch_job(
                 ),
             ),
             kubernetes.client.V1EnvVar(
+                name="SDG_OBJECT_STORE_MODEL_KEY",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                        name=sdg_object_store_secret, key="model_key", optional=False
+                    )
+                ),
+            ),
+            kubernetes.client.V1EnvVar(
                 name="SDG_OBJECT_STORE_VERIFY_TLS",
                 value_from=kubernetes.client.V1EnvVarSource(
                     secret_key_ref=kubernetes.client.V1SecretKeySelector(
@@ -1006,12 +1051,6 @@ def create_sdg_data_fetch_job(
             name=MODEL_VOLUME_NAME,
             persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
                 claim_name=MODEL_PVC_NAME
-            ),
-        ),
-        kubernetes.client.V1Volume(
-            name=TRAINING_VOLUME_NAME,
-            persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
-                claim_name=TRAINING_PVC_NAME
             ),
         ),
     ]
@@ -1585,15 +1624,8 @@ def sdg_data_fetch(
             "name": MODEL_PVC_NAME,
             "namespace": namespace,
             "storage_class": storage_class,
-            "access_modes": ["ReadWriteOnce"],
-            "size": "100Gi",  # Model can be big so let's go with a safe size
-        },
-        {
-            "name": TRAINING_PVC_NAME,
-            "namespace": namespace,
-            "storage_class": storage_class,
             "access_modes": ["ReadWriteMany"],
-            "size": "100Gi",  # Training data can be big so let's go with a safe size
+            "size": "100Gi",  # Model can be big so let's go with a safe size
         },
     ]
     for pvc in pvcs:

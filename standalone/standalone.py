@@ -257,7 +257,7 @@ def download_s3_file():
 
     bucket_name = os.getenv('SDG_OBJECT_STORE_BUCKET')
     s3_key = os.getenv('SDG_OBJECT_STORE_DATA_KEY')
-    output_file = '{SDG_PVC_MOUNT_PATH}/sdg.tar.gz'
+    output_file = '{MODEL_PVC_MOUNT_PATH}/data.tar.gz'
 
     s3.download_file(bucket_name, s3_key, output_file)
 
@@ -266,7 +266,7 @@ def upload_s3_file():
 
     bucket_name = os.getenv('SDG_OBJECT_STORE_BUCKET')
     s3_key = os.getenv('SDG_OBJECT_STORE_DATA_KEY') # TODO: change the name for the model name
-    input_file = '{SDG_PVC_MOUNT_PATH}/sdg.tar.gz' # TODO: change for model path
+    input_file = '{MODEL_PVC_MOUNT_PATH}/data.tar.gz' # TODO: change for model path
 
     s3.upload_file(input_file, bucket_name, s3_key)
 
@@ -283,9 +283,29 @@ EOF
 
 python "$tmp"/download_s3.py
 
-if [[ "$STRATEGY" == "download" ]]; then
+if [ "$STRATEGY" == "download" ]; then
+  # List top-level directories only (no nested directories)
+  top_level_dirs=$(tar --exclude='*/*' --list --file {MODEL_PVC_MOUNT_PATH}/data.tar.gz)
+
+  # List of directories we expect in the archive
+  expected_dirs=("data" "model")
+
+  # Loop through the expected directories and check if they exist in the archive
+  for dir in "${expected_dirs[@]}"; do
+    if ! echo "$top_level_dirs" | grep -q "^$dir/$"; then
+      echo "Archive does not contain a '$dir' directory"
+      exit 1
+    fi
+  done
+  echo "All expected directories are present."
+
+  # First extract SDG data in the SDG PVC
   mkdir -p {SDG_PVC_MOUNT_PATH}/generated
-  tar -xvf {SDG_PVC_MOUNT_PATH}/sdg.tar.gz -C {SDG_PVC_MOUNT_PATH}/generated
+  tar -C {SDG_PVC_MOUNT_PATH}/generated -xf data.tar.gz --strip-components=1 data/
+
+  # Then extract the model in the model PVC
+  mkdir -p {MODEL_PVC_MOUNT_PATH}/model
+  tar -C {MODEL_PVC_MOUNT_PATH} -xf {MODEL_PVC_MOUNT_PATH}/data.tar.gz --strip-components=1 model/
 fi
 """
 
@@ -566,9 +586,11 @@ def show(
     "--sdg-object-store-data-key",
     envvar="SDG_OBJECT_STORE_DATA_KEY",
     help=(
-        "Name of tarball that contains SDG data. (SDG_OBJECT_STORE_DATA_KEY env var)."
-        "The tarball MUST NOT contain a top-level directory. "
-        "To archive your SDG data, use the following command: cd /path/to/data && tar -czvf sdg.tar.gz *"
+        "Name of tarball that contains SDG data AND model files. (SDG_OBJECT_STORE_DATA_KEY env var)."
+        "The tarball MUST contain two directories: data and model."
+        "The data directory contains the SDG data."
+        "The model directory contains the model to train."
+        "To archive , use the following command: tar -czvf data.tar.gz /path/to/data /path/to/model ."
     ),
     type=str,
 )
@@ -730,6 +752,20 @@ def get_sdg_vol_mount() -> kubernetes.client.V1VolumeMount:
         ),
         kubernetes.client.V1VolumeMount(
             name=TRAINING_VOLUME_NAME, mount_path=TRAINING_PVC_MOUNT_PATH
+        ),
+    ]
+
+
+def get_fetch_sdg_vol_mount() -> kubernetes.client.V1VolumeMount:
+    """
+    Get the volume mount for the SDG job.
+    """
+    return [
+        kubernetes.client.V1VolumeMount(
+            name=SDG_VOLUME_NAME, mount_path=SDG_PVC_MOUNT_PATH
+        ),
+        kubernetes.client.V1VolumeMount(
+            name=MODEL_VOLUME_NAME, mount_path=MODEL_PVC_MOUNT_PATH
         ),
     ]
 
@@ -897,7 +933,9 @@ data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/input_data/gener
             name="sdg-op-fetch-taxonomy-data",
             image="registry.access.redhat.com/ubi9/toolbox",
             command=["/bin/sh", "-c"],
-            args=['git clone {exec_git_clone_op_repo_url} {TAXONOMY_PATH} && cd {TAXONOMY_PATH} && if [ -n "{exec_git_clone_op_repo_branch}" ]; then git fetch origin {exec_git_clone_op_repo_branch} && git checkout {exec_git_clone_op_repo_branch}; elif [ -n "{exec_git_clone_op_repo_pr}" ] && [ {exec_git_clone_op_repo_pr} -gt 0 ]; then git fetch origin pull/{exec_git_clone_op_repo_pr}/head:{exec_git_clone_op_repo_pr} && git checkout {exec_git_clone_op_repo_pr}; fi '],
+            args=[
+                'git clone {exec_git_clone_op_repo_url} {TAXONOMY_PATH} && cd {TAXONOMY_PATH} && if [ -n "{exec_git_clone_op_repo_branch}" ]; then git fetch origin {exec_git_clone_op_repo_branch} && git checkout {exec_git_clone_op_repo_branch}; elif [ -n "{exec_git_clone_op_repo_pr}" ] && [ {exec_git_clone_op_repo_pr} -gt 0 ]; then git fetch origin pull/{exec_git_clone_op_repo_pr}/head:{exec_git_clone_op_repo_pr} && git checkout {exec_git_clone_op_repo_pr}; fi '
+            ],
             volume_mounts=get_sdg_vol_mount(),
             security_context=get_security_context(),
         ),
@@ -1053,10 +1091,11 @@ def create_sdg_data_fetch_job(
         command=["/bin/sh", "-c"],
         args=[
             SDG_DATA_SCRIPT.format(
-                strategy="download", SDG_PVC_MOUNT_PATH=SDG_PVC_MOUNT_PATH
+                strategy="download",
+                MODEL_PVC_MOUNT_PATH=MODEL_PVC_MOUNT_PATH,  # TODO: DOWNLOAD ON THE MODEL PVC!!
             )
         ],
-        volume_mounts=get_sdg_vol_mount(),
+        volume_mounts=get_fetch_sdg_vol_mount(),
         env=[
             kubernetes.client.V1EnvVar(
                 name="SDG_OBJECT_STORE_ENDPOINT",
@@ -1107,6 +1146,14 @@ def create_sdg_data_fetch_job(
                 ),
             ),
             kubernetes.client.V1EnvVar(
+                name="SDG_OBJECT_STORE_MODEL_KEY",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                        name=sdg_object_store_secret, key="model_key", optional=False
+                    )
+                ),
+            ),
+            kubernetes.client.V1EnvVar(
                 name="SDG_OBJECT_STORE_VERIFY_TLS",
                 value_from=kubernetes.client.V1EnvVarSource(
                     secret_key_ref=kubernetes.client.V1SecretKeySelector(
@@ -1128,12 +1175,6 @@ def create_sdg_data_fetch_job(
             name=MODEL_VOLUME_NAME,
             persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
                 claim_name=MODEL_PVC_NAME
-            ),
-        ),
-        kubernetes.client.V1Volume(
-            name=TRAINING_VOLUME_NAME,
-            persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
-                claim_name=TRAINING_PVC_NAME
             ),
         ),
     ]
@@ -1325,29 +1366,12 @@ run_mt_bench_op(mt_bench_output="/output/mt-bench-results.txt", models_list="/ou
             kubernetes.client.V1Container(
                 name=f"run-eval-{eval_type}",
                 image="quay.io/sallyom/instructlab-ocp:eval-10-8",
-<<<<<<< HEAD
-                command=[
-                    "sh",
-                    "-c",
-                    "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&  python3 -m pip install --quiet --no-warn-script-location 'vllm' && \"$0\" \"$@\"\n",
-                    "sh",
-                    "-ec",
-                    'program_path=$(mktemp -d)\n\nprintf "%s" "$0" > "$program_path/ephemeral_component.py"\n_KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"\n',
-                    '\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import *\n\ndef run_mt_bench_op(\n    models_path_prefix: str,\n    mt_bench_output: Output[Artifact],\n    merge_system_user_message: bool,\n    # generate_answers,judgment uses a magic word for its mt_bench evaluator  - `auto`\n    # with `auto`, number of gpus allocated for serving is calculated based on environment\n    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36\n    max_workers: str,\n    models_list: List[str] = None,\n    models_folder: Optional[str] = None,\n    device: str = None,\n) -> NamedTuple("outputs", best_model=str, best_score=float):\n    import json\n    import os\n\n    import torch\n    from helpers import (\n        VLLM_SERVER,\n        launch_vllm,\n        stop_vllm,\n    )\n    from instructlab.eval.mt_bench import MTBenchEvaluator\n\n    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"\n\n    gpu_available = torch.cuda.is_available()\n    gpu_name = (\n        torch.cuda.get_device_name(torch.cuda.current_device())\n        if gpu_available\n        else "No GPU available"\n    )\n    gpu_count = torch.cuda.device_count() if gpu_available else 0\n\n    print(f"GPU Available: {gpu_available}, {gpu_name}")\n\n    if models_list is None and models_folder:\n        models_list = os.listdir(models_folder)\n\n    judge_api_key = os.getenv("JUDGE_API_KEY", "")\n    judge_model_name = os.getenv("JUDGE_NAME")\n    judge_endpoint = os.getenv("JUDGE_ENDPOINT")\n\n    scores = {}\n    all_mt_bench_data = []\n\n    # generate_answers,judgment uses a magic word for its mt_bench evaluator  - `auto`\n    # with `auto`, number of gpus allocated for serving is calculated based on environment\n    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36\n    if max_workers == "auto":\n        try:\n            usable_cpu_count = len(os.sched_getaffinity(0)) // 2\n        except AttributeError:\n            usable_cpu_count = multiprocessing.cpu_count() // 2\n        max_workers = usable_cpu_count\n\n    for model_name in models_list:\n        print(f"Serving candidate model: {model_name}")\n        model_path = f"{models_path_prefix}/{model_name}"\n\n        launch_vllm(model_path, gpu_count)\n\n        # model ID is the model_path value in vLLM\n        evaluator = MTBenchEvaluator(\n            model_name=model_path,\n            judge_model_name=judge_model_name,\n            output_dir="/tmp/eval_output",\n            merge_system_user_message=merge_system_user_message,\n        )\n\n        evaluator.gen_answers(\n            server_url=VLLM_SERVER,\n            serving_gpus=gpu_count,\n            max_workers=max_workers,\n        )\n\n        stop_vllm()\n\n        overall_score, qa_pairs, turn_scores, error_rate = evaluator.judge_answers(\n            server_url=judge_endpoint,\n            api_key=judge_api_key,\n            serving_gpus=gpu_count,\n            max_workers=max_workers,\n        )\n\n        mt_bench_data = {\n            "report_title": "SKILLS EVALUATION REPORT",\n            "model": model_path,\n            "judge_model": judge_model_name,\n            "overall_score": overall_score,\n            "turn_scores": turn_scores,\n            "qa_scores": qa_pairs,\n            "error_rate": error_rate,\n        }\n\n        all_mt_bench_data.append(mt_bench_data)\n        scores[model_path] = overall_score\n\n    with open(mt_bench_output.path, "w") as f:\n        json.dump(all_mt_bench_data, f, indent=4)\n\n    outputs = NamedTuple("outputs", best_model=str, best_score=float)\n    best_model = max(scores, key=scores.get)\n    best_score = scores[best_model]\n    return outputs(best_model=best_model, best_score=best_score)\n\n',
-                ],
-                args=[
-                    "--executor_input",
-                    '{"inputs": {"parameterValues": {"models_path_prefix": "/output/model/hf_format", "merge_system_user_message": false, "max_workers": "auto"}}, "outputs": {"outputFile": "/tmp/kfp_outputs/output_metadata.json", "artifacts": {"mt_bench_output": {"artifacts": [{"name": "mt_bench_output", "uri": "/output/mt-bench-results.txt"}]}}}}',
-                    "--function_to_execute",
-                    "run_mt_bench_op",
-=======
                 command=["/bin/sh", "-ce"],
                 args=[
                     PYTHON_EXECUTOR.format(
                         python_code=exec_run_mt_bench_op_command,
                         python_main=exec_run_mt_bench_op_args.strip(),
                     ),
->>>>>>> 4e7a294 (feat: remove dependency on KFP lib)
                 ],
                 volume_mounts=[
                     kubernetes.client.V1VolumeMount(
@@ -1829,15 +1853,8 @@ def sdg_data_fetch(
             "name": MODEL_PVC_NAME,
             "namespace": namespace,
             "storage_class": storage_class,
-            "access_modes": ["ReadWriteOnce"],
-            "size": "100Gi",  # Model can be big so let's go with a safe size
-        },
-        {
-            "name": TRAINING_PVC_NAME,
-            "namespace": namespace,
-            "storage_class": storage_class,
             "access_modes": ["ReadWriteMany"],
-            "size": "100Gi",  # Training data can be big so let's go with a safe size
+            "size": "100Gi",  # Model can be big so let's go with a safe size
         },
     ]
     for pvc in pvcs:
