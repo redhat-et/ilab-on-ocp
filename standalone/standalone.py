@@ -81,6 +81,25 @@ stringData:
 
 """
 
+EVAL_SERVING_NAME = "eval-serving-details"
+EVAL_SERVING_DETAILS = """
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: {EVAL_SERVING_NAME}
+data:
+  endpoint: {eval_serving_endpoint}
+  model: {eval_serving_model_name}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {EVAL_SERVING_NAME}
+type: Opaque
+stringData:
+  api_key: {eval_serving_model_api_key}
+"""
+
 PYTORCH_TRAINING_JOB = """
 apiVersion: kubeflow.org/v1
 kind: PyTorchJob
@@ -463,6 +482,30 @@ def show(
     hidden=True,
 )
 @click.option(
+    "--eval-serving-endpoint",
+    type=str,
+    help=(
+        "Serving endpoint for evaluation."
+        "e.g. http://serving.kubeflow.svc.cluster.local:8080/v1"
+    ),
+    required=True,
+)
+@click.option(
+    "--eval-serving-model-name",
+    type=str,
+    help="The name of the model to use for evaluation.",
+    required=True,
+)
+@click.option(
+    "--eval-serving-model-api-key",
+    type=str,
+    help=(
+        "Serving model API key for evaluation. " "(EVAL_SERVING_MODEL_API_KEY env var)"
+    ),
+    envvar="EVAL_SERVING_MODEL_API_KEY",
+    required=True,
+)
+@click.option(
     "--nproc-per-node",
     type=int,
     help="Number of processes per node - for training only",
@@ -559,6 +602,9 @@ def run(
     storage_class: typing.Optional[str] = None,
     serving_endpoint: typing.Optional[str] = None,
     serving_model: typing.Optional[str] = None,
+    eval_serving_endpoint: typing.Optional[str] = None,
+    eval_serving_model_name: typing.Optional[str] = None,
+    eval_serving_model_api_key: typing.Optional[str] = None,
     nproc_per_node: typing.Optional[int] = 1,
     eval_type: typing.Optional[str] = None,
     training_phase: typing.Optional[str] = None,
@@ -583,6 +629,9 @@ def run(
         storage_class (str): The storage class to use for the PersistentVolumeClaim. For SDG only.
         serving_endpoint (str): The serving endpoint for SDG. For SDG only.
         serving_model (str): The serving model for SDG. For SDG only.
+        eval_serving_endpoint (str): The serving endpoint for evaluation. For Evaluation only.
+        eval_serving_model_name (str): The serving model name for evaluation. For Evaluation only.
+        eval_serving_model_api_key (str): The serving model API key for evaluation. For Evaluation only.
         nproc_per_node (int): The number of processes per node. For training only.
         eval_type (str): The type of evaluation to run.
         training_phase (str): The type of training phase to run.
@@ -607,6 +656,9 @@ def run(
     ctx.obj["storage_class"] = storage_class
     ctx.obj["serving_endpoint"] = serving_endpoint
     ctx.obj["serving_model"] = serving_model
+    ctx.obj["eval_serving_endpoint"] = eval_serving_endpoint
+    ctx.obj["eval_serving_model_name"] = eval_serving_model_name
+    ctx.obj["eval_serving_model_api_key"] = eval_serving_model_api_key
     ctx.obj["nproc_per_node"] = nproc_per_node
     ctx.obj["eval_type"] = eval_type
     ctx.obj["training_phase"] = training_phase
@@ -1302,6 +1354,18 @@ run_mt_bench_op(mt_bench_output="/output/mt-bench-results.txt", models_list="/ou
                         name=TRAINING_VOLUME_NAME, mount_path=TRAINING_PVC_MOUNT_PATH
                     ),
                 ],
+                env_from=[
+                    kubernetes.client.V1EnvFromSource(
+                        config_map_ref=kubernetes.client.V1ConfigMapEnvSource(
+                            name=EVAL_SERVING_NAME
+                        )
+                    ),
+                    kubernetes.client.V1EnvFromSource(
+                        secret_ref=kubernetes.client.V1SecretEnvSource(
+                            name=EVAL_SERVING_NAME
+                        )
+                    ),
+                ],
             )
         ]
         container = kubernetes.client.V1Container(
@@ -1615,6 +1679,9 @@ def sdg_data_fetch(
     # Populate variables from context
     namespace = ctx.obj["namespace"]
     storage_class = ctx.obj["storage_class"]
+    eval_serving_endpoint = ctx.obj["eval_serving_endpoint"]
+    eval_serving_model_name = ctx.obj["eval_serving_model_name"]
+    eval_serving_model_api_key = ctx.obj["eval_serving_model_api_key"]
     sdg_object_store_endpoint = ctx.obj["sdg_object_store_endpoint"]
     sdg_object_store_bucket = ctx.obj["sdg_object_store_bucket"]
     sdg_object_store_access_key = ctx.obj["sdg_object_store_access_key"]
@@ -1623,6 +1690,9 @@ def sdg_data_fetch(
     sdg_object_store_data_key = ctx.obj["sdg_object_store_data_key"]
     sdg_object_store_verify_tls = ctx.obj["sdg_object_store_verify_tls"]
     sdg_object_store_secret = ctx.obj["sdg_object_store_secret"]
+
+    # Make sure the endpoint is a valid URL
+    validate_url(eval_serving_endpoint)
 
     # Check if all required arguments are provided
     if not sdg_object_store_secret:
@@ -1719,6 +1789,33 @@ def sdg_data_fetch(
                 "'bucket', 'access_key', 'secret_key', 'data_key'.",
             )
 
+    # Create config map/secret with api_key, serving endpoint for evaluation
+    cms = list(
+        yaml.safe_load_all(
+            EVAL_SERVING_DETAILS.format(
+                eval_serving_endpoint=eval_serving_endpoint,
+                eval_serving_model_name=eval_serving_model_name,
+                eval_serving_model_api_key=eval_serving_model_api_key,
+            )
+        )
+    )
+    for cm in cms:
+        try:
+            # if this is a ConfigMap
+            kind = cm["kind"]
+            if kind == "ConfigMap":
+                v1.create_namespaced_config_map(namespace=namespace, body=cm)
+                logger.info("Successfully created %s '%s' created.", kind, cm)
+            elif kind == "Secret":
+                # if this is a Secret
+                v1.create_namespaced_secret(namespace=namespace, body=cm)
+                logger.info("Successfully created %s '%s' created.", kind, cm)
+        except kubernetes.client.rest.ApiException as exc:
+            if exc.status == 409:
+                logger.info("%s '%s' already exists.", kind, cm["metadata"]["name"])
+            else:
+                raise
+
     # list of PVCs to create and their details
     pvcs = [
         {
@@ -1726,21 +1823,21 @@ def sdg_data_fetch(
             "namespace": namespace,
             "storage_class": storage_class,
             "access_modes": ["ReadWriteOnce"],
-            "size": "1Gi",
+            "size": "10Gi",  # SDG Data set can be big so let's go with a safe size
         },
         {
             "name": MODEL_PVC_NAME,
             "namespace": namespace,
             "storage_class": storage_class,
             "access_modes": ["ReadWriteOnce"],
-            "size": "50Gi",
+            "size": "100Gi",  # Model can be big so let's go with a safe size
         },
         {
             "name": TRAINING_PVC_NAME,
             "namespace": namespace,
             "storage_class": storage_class,
             "access_modes": ["ReadWriteMany"],
-            "size": "50Gi",
+            "size": "100Gi",  # Training data can be big so let's go with a safe size
         },
     ]
     for pvc in pvcs:
