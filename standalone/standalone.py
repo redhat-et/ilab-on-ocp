@@ -360,7 +360,6 @@ def cli():
 @click.option(
     "--storage-class",
     type=str,
-    default="standard",
     help="Storage class to use for the PersistentVolumeClaim - for SDG only",
 )
 @click.option(
@@ -433,7 +432,6 @@ def show(
 @click.option(
     "--storage-class",
     type=str,
-    default="standard",
     help="Storage class to use for the PersistentVolumeClaim - for SDG only",
 )
 @click.option(
@@ -542,7 +540,7 @@ def run(
     taxonomy_repo_url: str = "",
     taxonomy_repo_branch: typing.Optional[str] = "",
     taxonomy_repo_pr: typing.Optional[str] = "",
-    storage_class: typing.Optional[str] = "standard",
+    storage_class: typing.Optional[str] = None,
     serving_endpoint: typing.Optional[str] = None,
     serving_model: typing.Optional[str] = None,
     nproc_per_node: typing.Optional[int] = 1,
