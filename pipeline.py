@@ -348,7 +348,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         final_eval_task.set_accelerator_type("nvidia.com/gpu")
         final_eval_task.set_accelerator_limit(1)
 
-        # Technically `output_model_task` and `output_data_task` can happen before evaluation,
+        # Technically 'output_model_task' and 'output_data_task' can happen before evaluation,
         # however the PVC can only be mounted once, so, setting these to _after_ so the eval proceeds.
         output_model_task = pvc_to_artifact_op(
             pvc_path="/output/data",
@@ -417,7 +417,7 @@ def gen_standalone():
     This function should be used when Kubeflow Pipelines are not available. It will generate a
     script that replicates the pipeline's functionality.
 
-    Example usage: ``` $ python pipeline.py gen-standalone ```
+    Example usage: ''' $ python pipeline.py gen-standalone '''
     """
     from os import path
 
@@ -442,11 +442,11 @@ def gen_standalone():
 
     # The list of executor names to extract details from to generate the standalone script
     executors = {
-        "exec-data-processing-op": 'data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/input_data/generated", model="/input_model", processed_data="/input_data/processed_data")',
-        "exec-sdg-op": 'sdg_op(num_instructions_to_generate=2, repo_branch="", repo_pr="", taxonomy="/input_data/taxonomy", sdg="/input_data/generated")',
+        "exec-data-processing-op": 'data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/data/data", model="/data/model", processed_data="/data/processed_data")',
+        "exec-sdg-op": 'sdg_op(num_instructions_to_generate=2, repo_branch="", repo_pr="", taxonomy="/data/taxonomy", sdg="/data/generated")',
         "exec-git-clone-op": {},
-        "exec-huggingface-importer-op": 'huggingface_importer_op(repo_name="ibm-granite/granite-7b-base", model="/input_model")',
-        "exec-run-mt-bench-op": 'run_mt_bench_op(mt_bench_output="/output/mt-bench-results.txt", models_list="/output/model/model/hf_format", models_path_prefix="/output/model/hf_format", max_workers="auto", merge_system_user_message=False)',
+        "exec-huggingface-importer-op": 'huggingface_importer_op(repo_name="ibm-granite/granite-7b-base", model="/data/model")',
+        "exec-run-mt-bench-op": 'run_mt_bench_op(mt_bench_output="/data/mt-bench-results.txt", models_folder="/data/model/output/hf_format", models_path_prefix="/data/model/output/hf_format", max_workers="auto", merge_system_user_message=False)',
     }
 
     details = {}
@@ -621,8 +621,17 @@ def change_dsl_function_to_normal_function(rendered_code: list):
         "import kfp": "",
         "from kfp import dsl": "",
         "from kfp.dsl import *": "",
-        ".path": "",  # super hacky, but works for now, the idea is that "taxonomy.path" is a string so we just remove the ".path" part
     }
+
+    import re
+
+    # Regular expression to match ".path" but not "os.path"
+    path_pattern = re.compile(r"(?<!os)\.path")
+
+    def remove_path_not_os_path(line):
+        return path_pattern.sub("", line)
+
+    rendered_code = [remove_path_not_os_path(line) for line in rendered_code]
 
     for old, new in replacements.items():
         rendered_code = [line.replace(old, new) for line in rendered_code]

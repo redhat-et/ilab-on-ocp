@@ -12,8 +12,8 @@ def run_mt_bench_op(
     models_path_prefix: str,
     mt_bench_output: Output[Artifact],
     merge_system_user_message: bool,
-    # generate_answers,judgment uses a magic word for its mt_bench evaluator  - `auto`
-    # with `auto`, number of gpus allocated for serving is calculated based on environment
+    # generate_answers,judgment uses a magic word for its mt_bench evaluator  - 'auto'
+    # with 'auto', number of gpus allocated for serving is calculated based on environment
     # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
     max_workers: str,
     models_list: List[str] = None,
@@ -53,8 +53,8 @@ def run_mt_bench_op(
     scores = {}
     all_mt_bench_data = []
 
-    # generate_answers,judgment uses a magic word for its mt_bench evaluator  - `auto`
-    # with `auto`, number of gpus allocated for serving is calculated based on environment
+    # generate_answers,judgment uses a magic word for its mt_bench evaluator  - 'auto'
+    # with 'auto', number of gpus allocated for serving is calculated based on environment
     # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
     if max_workers == "auto":
         try:

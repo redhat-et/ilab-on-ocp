@@ -93,11 +93,15 @@ The script requires information regarding the location and method for accessing 
   true). `SDG_OBJECT_STORE_VERIFY_TLS` environment variable can be used as well. **Optional**
 * `--sdg-object-store-region`: The region of the object store. `SDG_OBJECT_STORE_REGION` environment
   variable can be used as well. **Optional**
-* `--eval-serving-endpoint`: Serving endpoint for evaluation. e.g:
+* `--judge-serving-endpoint`: Serving endpoint for evaluation. e.g:
   http://serving.kubeflow.svc.cluster.local:8080/v1 - **Required**
-* `--eval-serving-model-name`: The name of the model to use for evaluation. **Required**
-* `--eval-serving-model-api-key`: The API key for the model to evaluate. `EVAL_SERVING_MODEL_API_KEY`
+* `--judge-serving-model-name`: The name of the model to use for evaluation. **Required**
+* `--judge-serving-model-api-key`: The API key for the model to evaluate. `JUDGE_SERVING_MODEL_API_KEY`
   environment variable can be used as well. **Required**
+* `--force-pull`: Force pull the data (sdg data and model) from the object store even if it already
+  exists in the PVC. **Optional** - Default: false.
+* `--training-1-epoch-num`: The number of epochs to train the model for phase 1. **Optional** - Default: 7.
+* `--training-2-epoch-num`: The number of epochs to train the model for phase 2. **Optional** - Default: 10.
 
 
 ## Example End-To-End Workflow
@@ -164,9 +168,9 @@ EOF
 
 ./standalone run \
   --namespace my-namespace \
-  --eval-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
-  --eval-serving-model-name my-model \
-  --eval-serving-model-api-key ***** \
+  --judge-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
+  --judge-serving-model-name my-model \
+  --judge-serving-model-api-key ***** \
   --sdg-object-store-secret sdg-data
 ```
 
@@ -185,10 +189,10 @@ The list of all supported keys:
 * `region`: The region of the object store - **Optional**
 
 > [!NOTE]
-> The `--eval-serving-endpoint` and `--eval-serving-model-name` values will be stored in a ConfigMap
-> named `eval-serving-details` in the same namespace as the resources that the script interacts
+> The `--judge-serving-endpoint` and `--judge-serving-model-name` values will be stored in a ConfigMap
+> named `judge-serving-details` in the same namespace as the resources that the script interacts
 > with. (in this case, `my-namespace`)
-> The `--eval-serving-model-api-key` value will be stored in a secret named `eval-serving-details`
+> The `--judge-serving-model-api-key` value will be stored in a secret named `judge-serving-details`
 > in the same namespace as the resources that the script interacts with. (in this case, `my-namespace`)
 
 #### Running the Script Without Kubernetes Secret
@@ -201,9 +205,9 @@ Secret named `sdg-object-store-credentials` in the same namespace as the resourc
 ```bash
 ./standalone run \
   --namespace my-namespace \
-  --eval-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
-  --eval-serving-model-name my-model \
-  --eval-serving-model-api-key ***** \
+  --judge-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
+  --judge-serving-model-name my-model \
+  --judge-serving-model-api-key ***** \
   --sdg-object-store-access-key key \
   --sdg-object-store-secret-key key \
   --sdg-object-store-bucket sdg-data \
@@ -217,9 +221,9 @@ If you don't use the official AWS S3 endpoint, you can provide additional inform
 ```bash
 ./standalone run \
   --namespace my-namespace \
-  --eval-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
-  --eval-serving-model-name my-model \
-  --eval-serving-model-api-key ***** \
+  --judge-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
+  --judge-serving-model-name my-model \
+  --judge-serving-model-api-key ***** \
   --sdg-object-store-access-key key \
   --sdg-object-store-secret-key key \
   --sdg-object-store-bucket sdg-data \
