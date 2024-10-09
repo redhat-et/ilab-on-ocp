@@ -105,12 +105,11 @@ def pytorchjob_manifest_op(
 
     Outputs = NamedTuple("outputs", manifest=str, name=str)
     name = f"train-{phase_name}-{name_suffix.rstrip('-sdg')}"
-
-    image = "quay.io/shanand/test-train:0.0.4"
     if phase_name == "first":
         path_to_model = "/input_model/model"
     elif phase_name == "second":
         path_to_model = list_phase1_final_model()
+    image = "registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.1-1724960989"
 
     manifest = inspect.cleandoc(
         f"""
@@ -134,7 +133,11 @@ def pytorchjob_manifest_op(
                         - |
                           mkdir -p /output/model;
                           mkdir -p /output/data;
-                          python3.11 -u run_main_ds.py --model_path {path_to_model} --ckpt_output_dir /output/model --data_output_dir /input_data/processed_data
+                          export XDG_CACHE_HOME=/tmp
+                          export TRITON_CACHE_DIR=/tmp
+                          export HF_HOME=/tmp
+                          export TRANSFORMERS_CACHE=/tmp
+                          torchrun --nnodes {nnodes} --nproc_per_node {nproc_per_node} --node_rank \$(RANK) --rdzv_endpoint \$(MASTER_ADDR):\$(MASTER_PORT) -m instructlab.training.main_ds --model_name_or_path={path_to_model} --data_path=/input_data/processed_data/data.jsonl --output_dir=/output/model --num_epochs=2 --effective_batch_size=3840 --learning_rate=1e-4 --num_warmup_steps=800 --save_samples=0 --log_level=INFO --max_batch_len=20000 --seed=42 --cpu_offload_optimizer --sharding_strategy=FULL_SHARD --is_granite --checkpoint_at_epoch
                       command:
                         - /bin/bash
                         - '-c'
@@ -184,7 +187,11 @@ def pytorchjob_manifest_op(
                     - args:
                         - |
                           mkdir -p /tmp/model;
-                          python3.11 -u run_main_ds.py --model_path {path_to_model} --ckpt_output_dir /tmp/model --data_output_dir /input_data/processed_data
+                          export TRITON_CACHE_DIR=/tmp
+                          export XDG_CACHE_HOME=/tmp
+                          export HF_HOME=/tmp
+                          export TRANSFORMERS_CACHE=/tmp
+                          torchrun --nnodes {nnodes} --nproc_per_node {nproc_per_node} --node_rank \$(RANK) --rdzv_endpoint \$(MASTER_ADDR):\$(MASTER_PORT) -m instructlab.training.main_ds --model_name_or_path={path_to_model}  --data_path=/input_data/processed_data/data.jsonl --output_dir=/tmp/model --num_epochs=2 --effective_batch_size=3840 --learning_rate=2e-6 --num_warmup_steps=800 --save_samples=0 --log_level=INFO --max_batch_len=20000 --seed=42 --cpu_offload_optimizer --sharding_strategy=FULL_SHARD --is_granite --checkpoint_at_epoch
                       command:
                         - /bin/bash
                         - '-c'
