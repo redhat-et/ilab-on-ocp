@@ -651,7 +651,7 @@ def get_security_context() -> kubernetes.client.V1SecurityContext:
     )
 
 
-def get_sdg_vol_mount() -> kubernetes.client.V1VolumeMount:
+def get_sdg_vol_mount() -> list[kubernetes.client.V1VolumeMount]:
     """
     Get the volume mount for the SDG job.
     """
@@ -661,9 +661,6 @@ def get_sdg_vol_mount() -> kubernetes.client.V1VolumeMount:
         ),
         kubernetes.client.V1VolumeMount(
             name=MODEL_VOLUME_NAME, mount_path=MODEL_PVC_MOUNT_PATH
-        ),
-        kubernetes.client.V1VolumeMount(
-            name=TRAINING_VOLUME_NAME, mount_path=TRAINING_PVC_MOUNT_PATH
         ),
     ]
 
@@ -959,12 +956,6 @@ def create_sdg_data_fetch_job(
             name=MODEL_VOLUME_NAME,
             persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
                 claim_name=MODEL_PVC_NAME
-            ),
-        ),
-        kubernetes.client.V1Volume(
-            name=TRAINING_VOLUME_NAME,
-            persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
-                claim_name=TRAINING_PVC_NAME
             ),
         ),
     ]
@@ -1530,13 +1521,6 @@ def sdg_data_fetch(
             "namespace": namespace,
             "storage_class": storage_class,
             "access_modes": ["ReadWriteOnce"],
-            "size": "50Gi",
-        },
-        {
-            "name": TRAINING_PVC_NAME,
-            "namespace": namespace,
-            "storage_class": storage_class,
-            "access_modes": ["ReadWriteMany"],
             "size": "50Gi",
         },
     ]
