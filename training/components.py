@@ -97,7 +97,8 @@ def pytorchjob_manifest_op(
         model_dir = "/output/model/hf_format"
         models = os.listdir(model_dir)
         newest_idx = max(
-            (os.path.getmtime(model), i) for i, model in enumerate(models)
+            (os.path.getmtime(f"{model_dir}/{model}"), i)
+            for i, model in enumerate(models)
         )[-1]
         newest_model = models[newest_idx]
         return f"{model_dir}/{newest_model}"
