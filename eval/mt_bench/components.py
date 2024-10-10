@@ -112,8 +112,6 @@ def run_mt_bench_op(
                         f"Failed to terminate process with PID {process.info['pid']}. Error: {e}"
                     )
 
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-
     gpu_available = torch.cuda.is_available()
     gpu_name = (
         torch.cuda.get_device_name(torch.cuda.current_device())
