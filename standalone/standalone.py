@@ -46,7 +46,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
 K8S_NAME = "kfp-model-server"
 TOOLBOX_IMAGE = "registry.access.redhat.com/ubi9/toolbox"
-PYTHON_IMAGE = "registry.access.redhat.com/ubi9/python-311:latest"
+DS_IMAGE = "quay.io/opendatahub/workbench-images:jupyter-datascience-ubi9-python-3.11-20241004-609ffb8"
+RHELAI_IMAGE = "registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2"
 DATA_PVC_NAME = "data"
 DATA_PVC_MOUNT_PATH = "/data"
 DATA_PVC_MODEL_PATH = path.join(DATA_PVC_MOUNT_PATH, "model")
@@ -55,7 +56,6 @@ TAXONOMY_PATH = path.join(DATA_PVC_MOUNT_PATH, "taxonomy")
 DATA_PVC_OUTPUT_PATH = path.join(DATA_PVC_MOUNT_PATH, "output")
 DATA_PVC_OUTPUT_DATA_PATH = path.join(DATA_PVC_OUTPUT_PATH, "data")
 PYTORCH_NNODES = 2
-PYTORCH_IMAGE = "registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.1-1724960989"
 # MMLU_SCORES_PATH = "/output/mmlu-results.txt"
 MT_BENCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-results.txt")
 SDG_OBJECT_STORE_SECRET_NAME = "sdg-object-store-credentials"
@@ -136,7 +136,7 @@ spec:
                 - /bin/bash
                 - '-c'
                 - '--'
-              image: {PYTORCH_IMAGE}
+              image: {image}
               name: pytorch
               volumeMounts:
                 - mountPath: /data
@@ -202,7 +202,7 @@ spec:
                 - /bin/bash
                 - '-c'
                 - '--'
-              image: {PYTORCH_IMAGE}
+              image: {image}
               name: pytorch
               volumeMounts:
                 - mountPath: /data
@@ -1189,8 +1189,7 @@ data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/data/data", mode
     init_containers = [
         kubernetes.client.V1Container(
             name="fetch-sdg-files-from-object-store",
-            # image=PYTHON_IMAGE,
-            image="quay.io/opendatahub/workbench-images:jupyter-datascience-ubi9-python-3.11-20241004-609ffb8",
+            image=DS_IMAGE,
             command=["/bin/sh", "-c"],
             args=[
                 DATA_SCRIPT.format(
@@ -1268,9 +1267,9 @@ data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/data/data", mode
     ]
 
     container = kubernetes.client.V1Container(
-        name="sdg-op-generate-synthetic-data",
+        name="sdg-preprocess",
         # image="quay.io/tcoufal/ilab-sdg:latest",
-        image="registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.1-1724960989",
+        image=RHELAI_IMAGE,
         command=["/bin/sh", "-ce"],
         args=[
             PYTHON_EXECUTOR.format(
@@ -1557,7 +1556,7 @@ run_mt_bench_op(mt_bench_output="/data/mt-bench-results.txt", models_folder="/da
         init_containers = [
             kubernetes.client.V1Container(
                 name=f"run-eval-{eval_type}",
-                image="registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2",
+                image=RHELAI_IMAGE,
                 command=["/bin/sh", "-ce"],
                 args=[
                     PYTHON_EXECUTOR.format(
@@ -1566,6 +1565,7 @@ run_mt_bench_op(mt_bench_output="/data/mt-bench-results.txt", models_folder="/da
                     ),
                 ],
                 volume_mounts=get_vol_mount(),
+                security_context=get_security_context(),
                 env_from=[
                     kubernetes.client.V1EnvFromSource(
                         secret_ref=kubernetes.client.V1SecretEnvSource(
@@ -1577,9 +1577,10 @@ run_mt_bench_op(mt_bench_output="/data/mt-bench-results.txt", models_folder="/da
         ]
         container = kubernetes.client.V1Container(
             name=f"output-eval-{eval_type}-scores",
-            image="registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2",
+            image=RHELAI_IMAGE,
             command=["/bin/sh", "-c"],
             args=[f"cat {MT_BENCH_SCORES_PATH}"],
+            security_context=get_security_context(),
             volume_mounts=get_vol_mount(),
         )
     else:
@@ -1587,7 +1588,7 @@ run_mt_bench_op(mt_bench_output="/data/mt-bench-results.txt", models_folder="/da
 
     # Create and configure a spec section
     template = kubernetes.client.V1PodTemplateSpec(
-        metadata=kubernetes.client.V1ObjectMeta(labels={"app": "eval"}),
+        metadata=kubernetes.client.V1ObjectMeta(labels={"app": f"eval-{eval_type}"}),
         spec=kubernetes.client.V1PodSpec(
             restart_policy="Never",
             init_containers=init_containers,
@@ -2066,7 +2067,7 @@ def train(
             path_to_model=path_to_model,
             nproc_per_node=nproc_per_node,
             nnodes=PYTORCH_NNODES,
-            PYTORCH_IMAGE=PYTORCH_IMAGE,
+            image=RHELAI_IMAGE,
             worker_replicas=worker_replicas,
             epoch_num=epoch_num,
             phase_num=training_phase,
