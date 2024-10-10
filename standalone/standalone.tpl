@@ -543,7 +543,7 @@ def show(
 @click.option(
     "--eval-type",
     help="Type of evaluation to run",
-    type=click.Choice(["mt-bench"]),
+    type=click.Choice(["mt-bench", "mt-bench-branch"]),
     hidden=True,
 )
 @click.option(
@@ -769,6 +769,13 @@ def run(
         ctx.obj["candidate_model"] = scores.get("best_model")
 
         # Final evaluation
+        ctx.obj["eval_type"] = "mt-bench-branch"
+        scores = ctx.invoke(evaluation)
+        scores = json.loads(scores)
+        logger.info("Best model: %s", scores.get("best_model"))
+        ctx.obj["candidate_model"] = scores.get("best_model")
+
+        # Push the best model to S3
         # TODO
 
 
@@ -1184,6 +1191,12 @@ def create_eval_job(
     exec_run_mt_bench_op_args = """
 {{exec_run_mt_bench_op_args}}
 """
+    exec_run_mt_bench_branch_op_command = """
+{{exec_run_mt_bench_op_command}}
+"""
+    exec_run_mt_bench_branch_op_args = """
+{{exec_run_mt_bench_op_args}}
+"""
 
     if eval_type == "mt-bench":
         init_containers = [
@@ -1217,6 +1230,41 @@ def create_eval_job(
             image=RHELAI_IMAGE,
             command=["/bin/sh", "-c"],
             args=[f"cat {MT_BENCH_SCORES_PATH}"],
+            security_context=get_security_context(),
+            volume_mounts=get_vol_mount(),
+        )
+    elif eval_type == "mt-bench-branch":
+        init_containers = [
+            kubernetes.client.V1Container(
+                name=f"run-eval-{eval_type}",
+                image=RHELAI_IMAGE,
+                command=["/bin/sh", "-ce"],
+                args=[
+                    PYTHON_EXECUTOR.format(
+                        python_code=exec_run_mt_bench_branch_op_command,
+                        python_main=exec_run_mt_bench_branch_op_args.strip(),
+                    ),
+                ],
+                volume_mounts=get_vol_mount(),
+                security_context=get_security_context(),
+                env_from=[
+                    kubernetes.client.V1EnvFromSource(
+                        secret_ref=kubernetes.client.V1SecretEnvSource(
+                            name=JUDGE_SERVING_NAME
+                        )
+                    ),
+                ],
+                resources=kubernetes.client.V1ResourceRequirements(
+                    requests={"cpu": "1", "nvidia.com/gpu": nproc_per_node},
+                    limits={"cpu": "1", "nvidia.com/gpu": nproc_per_node},
+                ),
+            )
+        ]
+        container = kubernetes.client.V1Container(
+            name=f"output-eval-{eval_type}-scores",
+            image=RHELAI_IMAGE,
+            command=["/bin/sh", "-c"],
+            args=[f"cat {MT_BENCH_BRANCH_SCORES_PATH}"],
             security_context=get_security_context(),
             volume_mounts=get_vol_mount(),
         )

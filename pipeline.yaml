@@ -1017,13 +1017,57 @@ deploymentSpec:
           \ str,\n    candidate_branch: str,\n    max_workers: str,\n    device: str,\n\
           \    model_dtype: str,\n    few_shots: int,\n    batch_size: int,\n    merge_system_user_message:\
           \ bool,\n    candidate_model: str = None,\n):\n    import json\n    import\
-          \ os\n\n    import torch\n    from helpers import (\n        VLLM_SERVER,\n\
-          \        launch_vllm,\n        stop_vllm,\n    )\n    from instructlab.eval.mmlu\
-          \ import MMLU_TASKS, MMLUBranchEvaluator\n    from instructlab.eval.mt_bench\
-          \ import MTBenchBranchEvaluator\n    from instructlab.model.evaluate import\
-          \ qa_pairs_to_qna_to_avg_scores, sort_score\n\n    # For standalone mode\n\
-          \    if candidate_model is None:\n        # logic to get the best model\
-          \ from the models folder and results\n        pass\n\n    ######################################################################\n\
+          \ os\n    import torch\n    from instructlab.eval.mmlu import MMLU_TASKS,\
+          \ MMLUBranchEvaluator\n    from instructlab.eval.mt_bench import MTBenchBranchEvaluator\n\
+          \    from instructlab.model.evaluate import qa_pairs_to_qna_to_avg_scores,\
+          \ sort_score\n\n    VLLM_SERVER = \"http://localhost:8000/v1\"\n\n    def\
+          \ launch_vllm(model_path: str, gpu_count: int, retries: int = 60, delay:\
+          \ int = 5):\n        import subprocess\n        import sys\n        import\
+          \ time\n\n        import requests\n\n        if gpu_count > 0:\n       \
+          \     command = [\n                sys.executable,\n                \"-m\"\
+          ,\n                \"vllm.entrypoints.openai.api_server\",\n           \
+          \     \"--model\",\n                model_path,\n                \"--tensor-parallel-size\"\
+          ,\n                str(gpu_count),\n            ]\n        else:\n     \
+          \       command = [\n                sys.executable,\n                \"\
+          -m\",\n                \"vllm.entrypoints.openai.api_server\",\n       \
+          \         \"--model\",\n                model_path,\n            ]\n\n \
+          \       subprocess.Popen(args=command)\n\n        print(f\"Waiting for vLLM\
+          \ server to start at {VLLM_SERVER}...\")\n\n        for attempt in range(retries):\n\
+          \            try:\n                response = requests.get(f\"{VLLM_SERVER}/models\"\
+          )\n                if response.status_code == 200:\n                   \
+          \ print(f\"vLLM server is up and running at {VLLM_SERVER}.\")\n        \
+          \            return\n            except requests.ConnectionError:\n    \
+          \            pass\n\n            print(\n                f\"Server not available\
+          \ yet, retrying in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\
+          \n            )\n            time.sleep(delay)\n\n        raise RuntimeError(\n\
+          \            f\"Failed to start vLLM server at {VLLM_SERVER} after {retries}\
+          \ retries.\"\n        )\n\n    # This seems like excessive effort to stop\
+          \ the vllm process, but merely saving & killing the pid doesn't work\n \
+          \   # Also, the base image does not include 'pkill' cmd, so can't pkill\
+          \ -f vllm.entrypoints.openai.api_server either\n    def stop_vllm():\n \
+          \       import psutil\n\n        for process in psutil.process_iter(attrs=[\"\
+          pid\", \"name\", \"cmdline\"]):\n            cmdline = process.info.get(\"\
+          cmdline\")\n            if cmdline and \"vllm.entrypoints.openai.api_server\"\
+          \ in cmdline:\n                print(\n                    f\"Found vLLM\
+          \ server process with PID: {process.info['pid']}, terminating...\"\n   \
+          \             )\n                try:\n                    process.terminate()\
+          \  # Try graceful termination\n                    process.wait(timeout=5)\
+          \  # Wait a bit for it to terminate\n                    if process.is_running():\n\
+          \                        print(\n                            f\"Forcefully\
+          \ killing vLLM server process with PID: {process.info['pid']}\"\n      \
+          \                  )\n                        process.kill()  # Force kill\
+          \ if it's still running\n                    print(\n                  \
+          \      f\"Successfully stopped vLLM server with PID: {process.info['pid']}\"\
+          \n                    )\n                except psutil.NoSuchProcess:\n\
+          \                    print(f\"Process with PID {process.info['pid']} no\
+          \ longer exists.\")\n                except psutil.AccessDenied:\n     \
+          \               print(\n                        f\"Access denied when trying\
+          \ to terminate process with PID {process.info['pid']}.\"\n             \
+          \       )\n                except Exception as e:\n                    print(\n\
+          \                        f\"Failed to terminate process with PID {process.info['pid']}.\
+          \ Error: {e}\"\n                    )\n\n    # For standalone mode\n   \
+          \ if candidate_model is None:\n        # logic to get the best model from\
+          \ the models folder and results\n        pass\n\n    ######################################################################\n\
           \    # branch_eval_summary_to_json creates a json object from output of\
           \ instructlab/eval\n    # TODO: Add this to the instructlab/eval or instructlab/instructlab\
           \ repository\n    def branch_eval_summary_to_json(\n        improvements:\
@@ -1295,7 +1339,11 @@ deploymentSpec:
           \ best_score=float)\n    best_model = max(scores, key=scores.get)\n    best_score\
           \ = scores[best_model]\n    if best_score_file:\n        with open(best_score_file,\
           \ \"w\", encoding=\"utf-8\") as f:\n            json.dump({\"best_model\"\
-          : best_model, \"best_score\": best_score}, f, indent=4)\n\n    return outputs(best_model=best_model,\
+          : best_model, \"best_score\": best_score}, f, indent=4)\n\n    # Rename\
+          \ the best model directory to \"candidate_model\" for the next step\n  \
+          \  # So we know which model to use for the final evaluation\n    os.rename(\n\
+          \        os.path.join(models_path_prefix, best_model),\n        os.path.join(models_path_prefix,\
+          \ \"candidate_model\"),\n    )\n\n    return outputs(best_model=best_model,\
           \ best_score=best_score)\n\n"
         image: quay.io/sallyom/instructlab-ocp:eval-10-8
         resources:

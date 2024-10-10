@@ -196,6 +196,13 @@ def run_mt_bench_op(
         with open(best_score_file, "w", encoding="utf-8") as f:
             json.dump({"best_model": best_model, "best_score": best_score}, f, indent=4)
 
+    # Rename the best model directory to "candidate_model" for the next step
+    # So we know which model to use for the final evaluation
+    os.rename(
+        os.path.join(models_path_prefix, best_model),
+        os.path.join(models_path_prefix, "candidate_model"),
+    )
+
     return outputs(best_model=best_model, best_score=best_score)
 
 
