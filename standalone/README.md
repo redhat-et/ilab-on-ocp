@@ -116,13 +116,15 @@ In this scenario the name of the bucket is `sdg-data` and the tarball file is `d
 ```bash
 ilab data generate
 mv generated data
-tar -czvf data.tar.gz data model
+tar -czvf data.tar.gz data model taxonomy
 aws cp data.tar.gz s3://sdg-data/data.tar.gz
 ```
 
 > [!CAUTION]
-> Ensures SDG data are in a directory called "data" and the model is in a directory called "model".
-> The tarball must contain two top-level directories: `data` and `model`.
+> Ensures SDG data are in a directory called "data".
+> Ensures the model to train is in a directory called "model".
+> Ensures that the taxonomy tree used to generate the SDG data is in a directory called "taxonomy".
+> The tarball must contain three top-level directories: `data`, `model` and `taxonomy`.
 
 > [!CAUTION]
 > Make sure the tarball format is .tar.gz.

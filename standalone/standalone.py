@@ -313,7 +313,7 @@ if [ "$STRATEGY" == "download" ]; then
   top_level_dirs=$(tar --exclude='*/*' --list --file {data_pvc_mount_path}/data.tar.gz)
 
   # Loop through the expected directories and check if they exist in the archive
-  for dir in data model; do
+  for dir in data model taxonomy; do
     if ! echo "$top_level_dirs" | grep -q "^$dir/$"; then
       echo "Archive does not contain a '$dir' directory"
       exit 1
@@ -1268,7 +1268,6 @@ data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/data/data", mode
 
     container = kubernetes.client.V1Container(
         name="sdg-preprocess",
-        # image="quay.io/tcoufal/ilab-sdg:latest",
         image=RHELAI_IMAGE,
         command=["/bin/sh", "-ce"],
         args=[
