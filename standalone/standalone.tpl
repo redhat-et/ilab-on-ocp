@@ -114,7 +114,7 @@ spec:
                     --max_batch_len=20000 \
                     --seed=42 \
                     --cpu_offload_optimizer \
-                    --sharding_strategy=FULL_SHARD \
+                    --distributed_training_framework fsdp \
                     --is_granite \
                     --checkpoint_at_epoch
               command:
@@ -173,14 +173,14 @@ spec:
                     --output_dir=/tmp/model \
                     --num_epochs={epoch_num} \
                     --effective_batch_size=3840 \
-                    --learning_rate=2e-6 \
+                    --learning_rate=1e-4 \
                     --num_warmup_steps=800 \
                     --save_samples=0 \
                     --log_level=INFO \
                     --max_batch_len=20000 \
                     --seed=42 \
                     --cpu_offload_optimizer \
-                    --sharding_strategy=FULL_SHARD \
+                    --distributed_training_framework fsdp \
                     --is_granite \
                     --checkpoint_at_epoch
               command:
