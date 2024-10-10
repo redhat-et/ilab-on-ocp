@@ -445,6 +445,7 @@ components:
         candidate_branch:
           parameterType: STRING
         candidate_model:
+          isOptional: true
           parameterType: STRING
         device:
           parameterType: STRING
@@ -589,7 +590,7 @@ deploymentSpec:
           \    )\n\n    def data_processing(train_args: TrainingArgs) -> None:\n \
           \       # early validation logic here\n        if train_args.max_batch_len\
           \ < train_args.max_seq_len:\n            raise ValueError(\n           \
-          \     f\"the `max_batch_len` cannot be less than `max_seq_len`: {train_args.max_batch_len=}\
+          \     f\"the 'max_batch_len' cannot be less than 'max_seq_len': {train_args.max_batch_len=}\
           \ < {train_args.max_seq_len=}\"\n            )\n\n            # process\
           \ the training data\n        if not os.path.exists(train_args.data_output_dir):\n\
           \            os.makedirs(train_args.data_output_dir, exist_ok=True)\n  \
@@ -1008,16 +1009,18 @@ deploymentSpec:
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef run_final_eval_op(\n    mmlu_branch_output: Output[Artifact],\n\
-          \    mt_bench_branch_output: Output[Artifact],\n    candidate_model: str,\n\
-          \    base_model_dir: str,\n    tasks: Input[Dataset],\n    taxonomy: Input[Dataset],\n\
-          \    base_branch: str,\n    candidate_branch: str,\n    max_workers: str,\n\
-          \    device: str,\n    model_dtype: str,\n    few_shots: int,\n    batch_size:\
-          \ int,\n    merge_system_user_message: bool,\n):\n    import json\n    import\
+          \    mt_bench_branch_output: Output[Artifact],\n    base_model_dir: str,\n\
+          \    tasks: Input[Dataset],\n    taxonomy: Input[Dataset],\n    base_branch:\
+          \ str,\n    candidate_branch: str,\n    max_workers: str,\n    device: str,\n\
+          \    model_dtype: str,\n    few_shots: int,\n    batch_size: int,\n    merge_system_user_message:\
+          \ bool,\n    candidate_model: str = None,\n):\n    import json\n    import\
           \ os\n\n    import torch\n    from helpers import (\n        VLLM_SERVER,\n\
           \        launch_vllm,\n        stop_vllm,\n    )\n    from instructlab.eval.mmlu\
           \ import MMLU_TASKS, MMLUBranchEvaluator\n    from instructlab.eval.mt_bench\
           \ import MTBenchBranchEvaluator\n    from instructlab.model.evaluate import\
-          \ qa_pairs_to_qna_to_avg_scores, sort_score\n\n    ######################################################################\n\
+          \ qa_pairs_to_qna_to_avg_scores, sort_score\n\n    # For standalone mode\n\
+          \    if candidate_model is None:\n        # logic to get the best model\
+          \ from the models folder and results\n        pass\n\n    ######################################################################\n\
           \    # branch_eval_summary_to_json creates a json object from output of\
           \ instructlab/eval\n    # TODO: Add this to the instructlab/eval or instructlab/instructlab\
           \ repository\n    def branch_eval_summary_to_json(\n        improvements:\
@@ -1107,7 +1110,7 @@ deploymentSpec:
           main\"\n\n    ######################################################################\n\
           \    # TODO: Update ilab/model/evaluate evaluate def logic to allow for\
           \ external judge model\n    # and when that happens, much of this logic\
-          \ can be imported from the `evaluate` definition:\n    # https://github.com/instructlab/instructlab/blob/83ca501ecdd858677380046e2a56da5b2f3f14e7/src/instructlab/model/evaluate.py#L504\n\
+          \ can be imported from the 'evaluate' definition:\n    # https://github.com/instructlab/instructlab/blob/83ca501ecdd858677380046e2a56da5b2f3f14e7/src/instructlab/model/evaluate.py#L504\n\
           \    #\n    # With instructlab, model_name is synonomous with model_path\n\
           \    mt_bench_evaluators = [\n        MTBenchBranchEvaluator(\n        \
           \    model_name=candidate_model,\n            judge_model_name=judge_model_name,\n\
@@ -1118,7 +1121,7 @@ deploymentSpec:
           \            branch=base_branch,\n            output_dir=output_dir,\n \
           \           merge_system_user_message=merge_system_user_message,\n     \
           \   ),\n    ]\n\n    # ilab/evaluate uses a magic word for its mt_bench\
-          \ evaluator  - `auto`\n    # with `auto`, number of gpus allocated for serving\
+          \ evaluator  - 'auto'\n    # with 'auto', number of gpus allocated for serving\
           \ is calculated based on environment\n    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36\n\
           \    if max_workers == \"auto\":\n        try:\n            usable_cpu_count\
           \ = len(os.sched_getaffinity(0)) // 2\n        except AttributeError:\n\
@@ -1197,15 +1200,59 @@ deploymentSpec:
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef run_mt_bench_op(\n    models_path_prefix: str,\n    mt_bench_output:\
           \ Output[Artifact],\n    merge_system_user_message: bool,\n    # generate_answers,judgment\
-          \ uses a magic word for its mt_bench evaluator  - `auto`\n    # with `auto`,\
+          \ uses a magic word for its mt_bench evaluator  - 'auto'\n    # with 'auto',\
           \ number of gpus allocated for serving is calculated based on environment\n\
           \    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36\n\
           \    max_workers: str,\n    models_list: List[str] = None,\n    models_folder:\
           \ Optional[str] = None,\n    device: str = None,\n) -> NamedTuple(\"outputs\"\
           , best_model=str, best_score=float):\n    import json\n    import os\n\n\
-          \    import torch\n    from helpers import (\n        VLLM_SERVER,\n   \
-          \     launch_vllm,\n        stop_vllm,\n    )\n    from instructlab.eval.mt_bench\
-          \ import MTBenchEvaluator\n\n    os.environ[\"PYTORCH_CUDA_ALLOC_CONF\"\
+          \    import torch\n    from instructlab.eval.mt_bench import MTBenchEvaluator\n\
+          \n    VLLM_SERVER = \"http://localhost:8000/v1\"\n\n    def launch_vllm(\n\
+          \        model_path: str, gpu_count: int, retries: int = 120, delay: int\
+          \ = 5\n    ):\n        import subprocess\n        import sys\n        import\
+          \ time\n\n        import requests\n\n        if gpu_count > 0:\n       \
+          \     command = [\n                sys.executable,\n                \"-m\"\
+          ,\n                \"vllm.entrypoints.openai.api_server\",\n           \
+          \     \"--model\",\n                model_path,\n                \"--tensor-parallel-size\"\
+          ,\n                str(gpu_count),\n            ]\n        else:\n     \
+          \       command = [\n                sys.executable,\n                \"\
+          -m\",\n                \"vllm.entrypoints.openai.api_server\",\n       \
+          \         \"--model\",\n                model_path,\n            ]\n\n \
+          \       subprocess.Popen(args=command)\n\n        print(f\"Waiting for vLLM\
+          \ server to start at {VLLM_SERVER}...\")\n\n        for attempt in range(retries):\n\
+          \            try:\n                response = requests.get(f\"{VLLM_SERVER}/models\"\
+          )\n                if response.status_code == 200:\n                   \
+          \ print(f\"vLLM server is up and running at {VLLM_SERVER}.\")\n        \
+          \            return\n            except requests.ConnectionError:\n    \
+          \            pass\n\n            print(\n                f\"Server not available\
+          \ yet, retrying in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\
+          \n            )\n            time.sleep(delay)\n\n        raise RuntimeError(\n\
+          \            f\"Failed to start vLLM server at {VLLM_SERVER} after {retries}\
+          \ retries.\"\n        )\n\n    # This seems like excessive effort to stop\
+          \ the vllm process, but merely saving & killing the pid doesn't work\n \
+          \   # Also, the base image does not include 'pkill' cmd, so can't pkill\
+          \ -f vllm.entrypoints.openai.api_server either\n    def stop_vllm():\n \
+          \       import psutil\n\n        for process in psutil.process_iter(attrs=[\"\
+          pid\", \"name\", \"cmdline\"]):\n            cmdline = process.info.get(\"\
+          cmdline\")\n            if cmdline and \"vllm.entrypoints.openai.api_server\"\
+          \ in cmdline:\n                print(\n                    f\"Found vLLM\
+          \ server process with PID: {process.info['pid']}, terminating...\"\n   \
+          \             )\n                try:\n                    process.terminate()\
+          \  # Try graceful termination\n                    process.wait(timeout=5)\
+          \  # Wait a bit for it to terminate\n                    if process.is_running():\n\
+          \                        print(\n                            f\"Forcefully\
+          \ killing vLLM server process with PID: {process.info['pid']}\"\n      \
+          \                  )\n                        process.kill()  # Force kill\
+          \ if it's still running\n                    print(\n                  \
+          \      f\"Successfully stopped vLLM server with PID: {process.info['pid']}\"\
+          \n                    )\n                except psutil.NoSuchProcess:\n\
+          \                    print(f\"Process with PID {process.info['pid']} no\
+          \ longer exists.\")\n                except psutil.AccessDenied:\n     \
+          \               print(\n                        f\"Access denied when trying\
+          \ to terminate process with PID {process.info['pid']}.\"\n             \
+          \       )\n                except Exception as e:\n                    print(\n\
+          \                        f\"Failed to terminate process with PID {process.info['pid']}.\
+          \ Error: {e}\"\n                    )\n\n    os.environ[\"PYTORCH_CUDA_ALLOC_CONF\"\
           ] = \"expandable_segments:True\"\n\n    gpu_available = torch.cuda.is_available()\n\
           \    gpu_name = (\n        torch.cuda.get_device_name(torch.cuda.current_device())\n\
           \        if gpu_available\n        else \"No GPU available\"\n    )\n  \
@@ -1215,7 +1262,7 @@ deploymentSpec:
           \n    judge_api_key = os.getenv(\"JUDGE_API_KEY\", \"\")\n    judge_model_name\
           \ = os.getenv(\"JUDGE_NAME\")\n    judge_endpoint = os.getenv(\"JUDGE_ENDPOINT\"\
           )\n\n    scores = {}\n    all_mt_bench_data = []\n\n    # generate_answers,judgment\
-          \ uses a magic word for its mt_bench evaluator  - `auto`\n    # with `auto`,\
+          \ uses a magic word for its mt_bench evaluator  - 'auto'\n    # with 'auto',\
           \ number of gpus allocated for serving is calculated based on environment\n\
           \    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36\n\
           \    if max_workers == \"auto\":\n        try:\n            usable_cpu_count\
@@ -1286,7 +1333,7 @@ deploymentSpec:
           \ > 0) else \"empty\"\n\n    print(\"Generating syntetic dataset for:\"\
           )\n    print()\n    print(read_taxonomy(taxonomy.path, taxonomy_base))\n\
           \n    # generate_data has a magic word for its taxonomy_base argument -\
-          \ `empty`\n    # it allows generating from the whole repo, see:\n    # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230\n\
+          \ 'empty'\n    # it allows generating from the whole repo, see:\n    # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230\n\
           \    generate_data(\n        client=client,\n        num_instructions_to_generate=num_instructions_to_generate,\n\
           \        output_dir=sdg.path,\n        taxonomy=taxonomy.path,\n       \
           \ taxonomy_base=taxonomy_base,\n        model_name=model,\n        chunk_word_count=1000,\n\

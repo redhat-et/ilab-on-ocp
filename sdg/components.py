@@ -52,7 +52,7 @@ def sdg_op(
     print()
     print(read_taxonomy(taxonomy.path, taxonomy_base))
 
-    # generate_data has a magic word for its taxonomy_base argument - `empty`
+    # generate_data has a magic word for its taxonomy_base argument - 'empty'
     # it allows generating from the whole repo, see:
     # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230
     generate_data(

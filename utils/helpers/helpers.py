@@ -51,7 +51,7 @@ def launch_vllm(model_path: str, gpu_count: int, retries: int = 60, delay: int =
 
 
 # This seems like excessive effort to stop the vllm process, but merely saving & killing the pid doesn't work
-# Also, the base image does not include `pkill` cmd, so can't pkill -f vllm.entrypoints.openai.api_server either
+# Also, the base image does not include 'pkill' cmd, so can't pkill -f vllm.entrypoints.openai.api_server either
 def stop_vllm():
     import psutil
 

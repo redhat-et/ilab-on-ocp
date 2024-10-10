@@ -17,7 +17,6 @@ from utils.consts import EVAL_IMAGE, PYTHON_IMAGE
 def run_final_eval_op(
     mmlu_branch_output: Output[Artifact],
     mt_bench_branch_output: Output[Artifact],
-    candidate_model: str,
     base_model_dir: str,
     tasks: Input[Dataset],
     taxonomy: Input[Dataset],
@@ -29,6 +28,7 @@ def run_final_eval_op(
     few_shots: int,
     batch_size: int,
     merge_system_user_message: bool,
+    candidate_model: str = None,
 ):
     import json
     import os
@@ -42,6 +42,11 @@ def run_final_eval_op(
     from instructlab.eval.mmlu import MMLU_TASKS, MMLUBranchEvaluator
     from instructlab.eval.mt_bench import MTBenchBranchEvaluator
     from instructlab.model.evaluate import qa_pairs_to_qna_to_avg_scores, sort_score
+
+    # For standalone mode
+    if candidate_model is None:
+        # logic to get the best model from the models folder and results
+        pass
 
     ######################################################################
     # branch_eval_summary_to_json creates a json object from output of instructlab/eval
@@ -221,7 +226,7 @@ def run_final_eval_op(
 
     ######################################################################
     # TODO: Update ilab/model/evaluate evaluate def logic to allow for external judge model
-    # and when that happens, much of this logic can be imported from the `evaluate` definition:
+    # and when that happens, much of this logic can be imported from the 'evaluate' definition:
     # https://github.com/instructlab/instructlab/blob/83ca501ecdd858677380046e2a56da5b2f3f14e7/src/instructlab/model/evaluate.py#L504
     #
     # With instructlab, model_name is synonomous with model_path
@@ -244,8 +249,8 @@ def run_final_eval_op(
         ),
     ]
 
-    # ilab/evaluate uses a magic word for its mt_bench evaluator  - `auto`
-    # with `auto`, number of gpus allocated for serving is calculated based on environment
+    # ilab/evaluate uses a magic word for its mt_bench evaluator  - 'auto'
+    # with 'auto', number of gpus allocated for serving is calculated based on environment
     # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
     if max_workers == "auto":
         try:

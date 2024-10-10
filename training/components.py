@@ -54,7 +54,7 @@ def data_processing_op(
         # early validation logic here
         if train_args.max_batch_len < train_args.max_seq_len:
             raise ValueError(
-                f"the `max_batch_len` cannot be less than `max_seq_len`: {train_args.max_batch_len=} < {train_args.max_seq_len=}"
+                f"the 'max_batch_len' cannot be less than 'max_seq_len': {train_args.max_batch_len=} < {train_args.max_seq_len=}"
             )
 
             # process the training data

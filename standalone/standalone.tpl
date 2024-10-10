@@ -25,6 +25,7 @@ import base64
 import json
 import logging
 import typing
+from os import path
 from urllib.parse import urlparse
 
 import click
@@ -45,26 +46,25 @@ logger = logging.getLogger(__name__)
 DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
 K8S_NAME = "kfp-model-server"
 TOOLBOX_IMAGE = "registry.access.redhat.com/ubi9/toolbox"
-PYTHON_IMAGE = "registry.access.redhat.com/ubi9/python-311:latest"
-SDG_PVC_NAME = "sdg-data"
-SDG_PVC_MOUNT_PATH = "/input_data"
-SDG_VOLUME_NAME = "input-data"
-MODEL_PVC_NAME = "model"
-MODEL_PVC_MOUNT_PATH = "/input_model"
-MODEL_VOLUME_NAME = "model"
-TAXONOMY_PATH = SDG_PVC_MOUNT_PATH + "/taxonomy"
-TRAINING_PVC_NAME = "training-data"
-TRAINING_PVC_MOUNT_PATH = "/output"
-TRAINING_VOLUME_NAME = "output"
+DS_IMAGE = "quay.io/opendatahub/workbench-images:jupyter-datascience-ubi9-python-3.11-20241004-609ffb8"
+RHELAI_IMAGE = "registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2"
+DATA_PVC_NAME = "data"
+DATA_PVC_MOUNT_PATH = "/data"
+DATA_PVC_MODEL_PATH = path.join(DATA_PVC_MOUNT_PATH, "model")
+DATA_VOLUME_NAME = "data"
+TAXONOMY_PATH = path.join(DATA_PVC_MOUNT_PATH, "taxonomy")
+DATA_PVC_OUTPUT_PATH = path.join(DATA_PVC_MOUNT_PATH, "output")
+DATA_PVC_OUTPUT_DATA_PATH = path.join(DATA_PVC_OUTPUT_PATH, "data")
 PYTORCH_NNODES = 2
-PYTORCH_IMAGE = "quay.io/shanand/test-train:0.0.4"
 # MMLU_SCORES_PATH = "/output/mmlu-results.txt"
-MT_BENCH_SCORES_PATH = "/output/mt-bench-results.txt"
+MT_BENCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-results.txt")
 SDG_OBJECT_STORE_SECRET_NAME = "sdg-object-store-credentials"
 KFP_MODEL_SERVER_CM = """
 # TODO: remove the following line and replace it with the actual ConfigMap/Secret
 {{kfp_model_server_cm}}
 """
+
+JUDGE_SERVING_NAME = "judge-serving-details"
 
 PYTORCH_TRAINING_JOB = """
 apiVersion: kubeflow.org/v1
@@ -85,27 +85,50 @@ spec:
           containers:
             - args:
                 - |
-                  mkdir -p /output/model;
-                  mkdir -p /output/data;
-                  python3.11 -u run_main_ds.py --model_path {path_to_model} --ckpt_output_dir /output/model --data_output_dir /input_data/processed_data
+                  phase_num={phase_num}
+                  echo "Running phase $phase_num"
+                  PATH_TO_MODEL={path_to_model}
+                  if [ "$phase_num" -eq 2 ]; then PATH_TO_MODEL="{path_to_model}/output/hf_format/$(ls --sort=time {path_to_model}/output/hf_format|head -n 1)"; fi
+                  echo "Using $PATH_TO_MODEL model for training"
+                  mkdir -p /data/model;
+                  mkdir -p /data/data;
+                  mkdir -p {path_to_model}/output
+                  export XDG_CACHE_HOME=/tmp
+                  export TRITON_CACHE_DIR=/tmp
+                  export HF_HOME=/tmp
+                  export TRANSFORMERS_CACHE=/tmp
+                  torchrun --nnodes {nnodes} \
+                    --nproc_per_node {nproc_per_node} \
+                    --node_rank $(RANK) \
+                    --rdzv_endpoint $(MASTER_ADDR):$(MASTER_PORT) \
+                    -m instructlab.training.main_ds \
+                    --model_name_or_path="$PATH_TO_MODEL" \
+                    --data_path=/data/processed_data/data.jsonl \
+                    --output_dir={path_to_model}/output \
+                    --num_epochs={epoch_num} \
+                    --effective_batch_size=3840 \
+                    --learning_rate=1e-4 \
+                    --num_warmup_steps=800 \
+                    --save_samples=0 \
+                    --log_level=INFO \
+                    --max_batch_len=20000 \
+                    --seed=42 \
+                    --cpu_offload_optimizer \
+                    --sharding_strategy=FULL_SHARD \
+                    --is_granite \
+                    --checkpoint_at_epoch
               command:
                 - /bin/bash
                 - '-c'
                 - '--'
-              image: {PYTORCH_IMAGE}
+              image: {image}
               name: pytorch
               volumeMounts:
-                - mountPath: /input_data
-                  name: input-data
-                  readOnly: true
-                - mountPath: /input_model
-                  name: model
-                  readOnly: true
-                - mountPath: /output
-                  name: output
+                - mountPath: /data
+                  name: data
               env:
                 - name: NNODES
-                  value: \"{PYTORCH_NNODES}\"
+                  value: \"{nnodes}\"
                 - name: NPROC_PER_NODE
                   value: \"{nproc_per_node}\"
               resources:
@@ -116,15 +139,9 @@ spec:
                   cpu: 2
                   "nvidia.com/gpu": {nproc_per_node}
           volumes:
-            - name: input-data
+            - name: data
               persistentVolumeClaim:
-                claimName: {input_pvc_name}
-            - name: model
-              persistentVolumeClaim:
-                claimName: {model_pvc_name}
-            - name: output
-              persistentVolumeClaim:
-                claimName: {output_pvc_name}
+                claimName: {data_pvc_name}
     Worker:
       replicas: {worker_replicas}
       restartPolicy: OnFailure
@@ -136,27 +153,48 @@ spec:
           containers:
             - args:
                 - |
+                  phase_num={phase_num}
+                  echo "Running phase $phase_num"
+                  PATH_TO_MODEL={path_to_model}
+                  if [ "$phase_num" -eq 2 ]; then PATH_TO_MODEL="{path_to_model}/output/hf_format/$(ls --sort=time {path_to_model}/output/hf_format|head -n 1)"; fi
+                  echo "Using $PATH_TO_MODEL model for training"
                   mkdir -p /tmp/model;
-                  python3.11 -u run_main_ds.py --model_path {path_to_model} --ckpt_output_dir /tmp/model --data_output_dir /input_data/processed_data
+                  export TRITON_CACHE_DIR=/tmp
+                  export XDG_CACHE_HOME=/tmp
+                  export HF_HOME=/tmp
+                  export TRANSFORMERS_CACHE=/tmp
+                  torchrun --nnodes {nnodes} \
+                    --nproc_per_node {nproc_per_node} \
+                    --node_rank $(RANK) \
+                    --rdzv_endpoint $(MASTER_ADDR):$(MASTER_PORT) \
+                    -m instructlab.training.main_ds \
+                    --model_name_or_path="$PATH_TO_MODEL" \
+                    --data_path=/data/processed_data/data.jsonl \
+                    --output_dir=/tmp/model \
+                    --num_epochs={epoch_num} \
+                    --effective_batch_size=3840 \
+                    --learning_rate=2e-6 \
+                    --num_warmup_steps=800 \
+                    --save_samples=0 \
+                    --log_level=INFO \
+                    --max_batch_len=20000 \
+                    --seed=42 \
+                    --cpu_offload_optimizer \
+                    --sharding_strategy=FULL_SHARD \
+                    --is_granite \
+                    --checkpoint_at_epoch
               command:
                 - /bin/bash
                 - '-c'
                 - '--'
-              image: {PYTORCH_IMAGE}
+              image: {image}
               name: pytorch
               volumeMounts:
-                - mountPath: /input_data
-                  name: input-data
-                  readOnly: true
-                - mountPath: /input_model
-                  name: model
-                  readOnly: true
-                - mountPath: /output
-                  name: output
-                  readOnly: true
+                - mountPath: /data
+                  name: data
               env:
                 - name: NNODES
-                  value: \"{PYTORCH_NNODES}\"
+                  value: \"{nnodes}\"
                 - name: NPROC_PER_NODE
                   value: \"{nproc_per_node}\"
               resources:
@@ -167,19 +205,25 @@ spec:
                   cpu: 2
                   "nvidia.com/gpu": {nproc_per_node}
           volumes:
-            - name: input-data
+            - name: data
               persistentVolumeClaim:
-                claimName: {input_pvc_name}
-            - name: model
-              persistentVolumeClaim:
-                claimName: {model_pvc_name}
-            - name: output
-              persistentVolumeClaim:
-                claimName: {output_pvc_name}
+                claimName: {data_pvc_name}
 """
 # TODO: support signature version?
-SDG_DATA_SCRIPT = """
+DATA_SCRIPT = """
 set -e
+
+FORCE_PULL={force_pull}
+if [ -s {data_pvc_mount_path}/data.tar.gz ] && [ -d {data_pvc_mount_path}/data ] && [ -d {data_pvc_mount_path}/model ] ; then
+  echo "Data tarball and sdg/model directories already exist in the PVC. Skipping download."
+  if [ "$FORCE_PULL" == "None" ] || [ "$FORCE_PULL" == "False" ]; then
+    echo "'--force-pull' is not set - will not force pull the data from the object store"
+    ls -laR {data_pvc_mount_path}
+    exit 0
+  else
+    echo "'--force-pull' is set to true - will force pull the data from the object store"
+  fi
+fi
 
 export STRATEGY={strategy}
 
@@ -223,7 +267,7 @@ def download_s3_file():
 
     bucket_name = os.getenv('SDG_OBJECT_STORE_BUCKET')
     s3_key = os.getenv('SDG_OBJECT_STORE_DATA_KEY')
-    output_file = '{SDG_PVC_MOUNT_PATH}/sdg.tar.gz'
+    output_file = '{data_pvc_mount_path}/data.tar.gz'
 
     s3.download_file(bucket_name, s3_key, output_file)
 
@@ -232,7 +276,7 @@ def upload_s3_file():
 
     bucket_name = os.getenv('SDG_OBJECT_STORE_BUCKET')
     s3_key = os.getenv('SDG_OBJECT_STORE_DATA_KEY') # TODO: change the name for the model name
-    input_file = '{SDG_PVC_MOUNT_PATH}/sdg.tar.gz' # TODO: change for model path
+    input_file = '{data_pvc_mount_path}/data.tar.gz' # TODO: change for model path
 
     s3.upload_file(input_file, bucket_name, s3_key)
 
@@ -249,9 +293,22 @@ EOF
 
 python "$tmp"/download_s3.py
 
-if [[ "$STRATEGY" == "download" ]]; then
-  mkdir -p {SDG_PVC_MOUNT_PATH}/generated
-  tar -xvf {SDG_PVC_MOUNT_PATH}/sdg.tar.gz -C {SDG_PVC_MOUNT_PATH}/generated
+if [ "$STRATEGY" == "download" ]; then
+  # List top-level directories only (no nested directories)
+  top_level_dirs=$(tar --exclude='*/*' --list --file {data_pvc_mount_path}/data.tar.gz)
+
+  # Loop through the expected directories and check if they exist in the archive
+  for dir in data model; do
+    if ! echo "$top_level_dirs" | grep -q "^$dir/$"; then
+      echo "Archive does not contain a '$dir' directory"
+      exit 1
+    fi
+  done
+  echo "All expected directories are present."
+
+  echo "Extracting data from the archive"
+  tar -C {data_pvc_mount_path} -xvf {data_pvc_mount_path}/data.tar.gz
+  ls -laR {data_pvc_mount_path}
 fi
 """
 
@@ -286,6 +343,23 @@ spec:
       - name: script-config
         configMap:
           name: {script_configmap}
+"""
+
+PYTHON_EXECUTOR = """
+set -e
+export XDG_CACHE_HOME=/tmp
+
+tmp=$(mktemp -d)
+cat <<EOF > "$tmp"/exec.py
+
+{python_code}
+
+if __name__ == "__main__":
+    {python_main}
+
+EOF
+
+python3 "$tmp"/exec.py
 """
 
 
@@ -392,9 +466,7 @@ def show(
 
 
 @cli.group(invoke_without_command=True)
-@click.option(
-    "--namespace", type=str, default="default", help="Kubernetes namespace to use"
-)
+@click.option("--namespace", type=str, help="Kubernetes namespace to use")
 @click.option(
     "--taxonomy-repo-url",
     type=str,
@@ -432,6 +504,30 @@ def show(
     hidden=True,
 )
 @click.option(
+    "--judge-serving-endpoint",
+    type=str,
+    help=(
+        "Serving endpoint for evaluation."
+        "e.g. http://serving.kubeflow.svc.cluster.local:8080/v1"
+    ),
+    required=True,
+)
+@click.option(
+    "--judge-serving-model-name",
+    type=str,
+    help="The name of the model to use for evaluation.",
+    required=True,
+)
+@click.option(
+    "--judge-serving-model-api-key",
+    type=str,
+    help=(
+        "Serving model API key for evaluation. " "(JUDGE_SERVING_MODEL_API_KEY env var)"
+    ),
+    envvar="JUDGE_SERVING_MODEL_API_KEY",
+    required=True,
+)
+@click.option(
     "--nproc-per-node",
     type=int,
     help="Number of processes per node - for training only",
@@ -450,7 +546,11 @@ def show(
 )
 @click.option(
     "--model-to-train",
-    help="Path to model to train (PVC filesystem path)",
+    help=(
+        "Path to model to train (PVC filesystem path). "
+        "Useful when calling training phases independently and users wants to point to the epoch directory. "
+        "Very advanced usage, not recommended for general use."
+    ),
     type=str,
 )
 @click.option(
@@ -492,9 +592,11 @@ def show(
     "--sdg-object-store-data-key",
     envvar="SDG_OBJECT_STORE_DATA_KEY",
     help=(
-        "Name of tarball that contains SDG data. (SDG_OBJECT_STORE_DATA_KEY env var)."
-        "The tarball MUST NOT contain a top-level directory. "
-        "To archive your SDG data, use the following command: cd /path/to/data && tar -czvf sdg.tar.gz *"
+        "Name of tarball that contains SDG data AND model files. (SDG_OBJECT_STORE_DATA_KEY env var)."
+        "The tarball MUST contain two directories: data and model."
+        "The data directory contains the SDG data."
+        "The model directory contains the model to train."
+        "To archive , use the following command: tar -czvf data.tar.gz /path/to/data /path/to/model ."
     ),
     type=str,
 )
@@ -518,16 +620,33 @@ def show(
     ),
     type=str,
 )
+@click.option(
+    "--force-pull",
+    help="Force pull the data (sdg data and model) from the object store even if it already exists in the PVC.",
+    is_flag=True,
+    default=False,
+)
+@click.option(
+    "--training-1-epoch-num", help="Number of epochs to train the model for.", default=7
+)
+@click.option(
+    "--training-2-epoch-num",
+    help="Number of epochs to train the model for.",
+    default=10,
+)
 @click.pass_context
 def run(
     ctx: click.Context,
-    namespace: typing.Optional[str] = "default",
+    namespace: typing.Optional[str] = None,
     taxonomy_repo_url: str = "",
     taxonomy_repo_branch: typing.Optional[str] = "",
     taxonomy_repo_pr: typing.Optional[str] = "",
     storage_class: typing.Optional[str] = None,
     serving_endpoint: typing.Optional[str] = None,
     serving_model: typing.Optional[str] = None,
+    judge_serving_endpoint: typing.Optional[str] = None,
+    judge_serving_model_name: typing.Optional[str] = None,
+    judge_serving_model_api_key: typing.Optional[str] = None,
     nproc_per_node: typing.Optional[int] = 1,
     eval_type: typing.Optional[str] = None,
     training_phase: typing.Optional[str] = None,
@@ -540,6 +659,9 @@ def run(
     sdg_object_store_data_key: typing.Optional[str] = None,
     sdg_object_store_verify_tls: typing.Optional[bool] = None,
     sdg_object_store_secret: typing.Optional[str] = None,
+    force_pull: typing.Optional[bool] = False,
+    training_1_epoch_num: int = 7,
+    training_2_epoch_num: int = 10,
 ):
     """
     Execute the distributed training on Kubernetes.
@@ -552,6 +674,9 @@ def run(
         storage_class (str): The storage class to use for the PersistentVolumeClaim. For SDG only.
         serving_endpoint (str): The serving endpoint for SDG. For SDG only.
         serving_model (str): The serving model for SDG. For SDG only.
+        judge_serving_endpoint (str): The serving endpoint for evaluation. For Evaluation only.
+        judge_serving_model_name (str): The serving model name for evaluation. For Evaluation only.
+        judge_serving_model_api_key (str): The serving model API key for evaluation. For Evaluation only.
         nproc_per_node (int): The number of processes per node. For training only.
         eval_type (str): The type of evaluation to run.
         training_phase (str): The type of training phase to run.
@@ -564,6 +689,9 @@ def run(
         sdg_object_store_data_key (str): The name of the tarball that contains SDG data.
         sdg_object_store_verify_tls (bool): Verify TLS for the object store.
         sdg_object_store_secret (str): The name of the Kubernetes Secret containing the SDG object store credentials. The namespace is inferred from the namespace option.
+        force_pull (bool): Force pull the data (sdg data and model) from the object store even if it already exists in the PVC.
+        training_1_epoch_num (int): Number of epochs to train the model for during phase 1.
+        training_2_epoch_num (int): Number of epochs to train the model for during phase 2.
 
     Returns:
         None
@@ -576,6 +704,9 @@ def run(
     ctx.obj["storage_class"] = storage_class
     ctx.obj["serving_endpoint"] = serving_endpoint
     ctx.obj["serving_model"] = serving_model
+    ctx.obj["judge_serving_endpoint"] = judge_serving_endpoint
+    ctx.obj["judge_serving_model_name"] = judge_serving_model_name
+    ctx.obj["judge_serving_model_api_key"] = judge_serving_model_api_key
     ctx.obj["nproc_per_node"] = nproc_per_node
     ctx.obj["eval_type"] = eval_type
     ctx.obj["training_phase"] = training_phase
@@ -588,6 +719,9 @@ def run(
     ctx.obj["sdg_object_store_data_key"] = sdg_object_store_data_key
     ctx.obj["sdg_object_store_verify_tls"] = sdg_object_store_verify_tls
     ctx.obj["sdg_object_store_secret"] = sdg_object_store_secret
+    ctx.obj["force_pull"] = force_pull
+    ctx.obj["training_1_epoch_num"] = training_1_epoch_num
+    ctx.obj["training_2_epoch_num"] = training_2_epoch_num
 
     ##########################
     # MAIN WORKFLOW SEQUENCE #
@@ -617,11 +751,19 @@ def run(
         # ctx.obj["model_to_train"] = best_model.get("model")
 
         # Training Phase 2
-        # ctx.invoke(train)
+        ctx.obj["training_phase"] = "2"
+        ctx.invoke(train)
 
         # Evaluation of phase 2 with MT-Bench
-        # ctx.obj["eval_type"] = "mt-bench"
-        # _ = ctx.invoke(evaluation)
+        ctx.obj["eval_type"] = "mt-bench"
+        scores = ctx.invoke(evaluation)
+        scores = json.loads(scores)
+        best_model = max(scores, key=lambda x: x["average_score"])
+        logger.info("Best model: %s", best_model.get("model"))
+        ctx.obj["candidate_model"] = best_model.get("model")
+
+        # Final evaluation
+        # TODO
 
 
 def get_security_context() -> kubernetes.client.V1SecurityContext:
@@ -634,19 +776,27 @@ def get_security_context() -> kubernetes.client.V1SecurityContext:
     )
 
 
-def get_sdg_vol_mount() -> kubernetes.client.V1VolumeMount:
+def get_vol_mount() -> list[kubernetes.client.V1VolumeMount]:
     """
     Get the volume mount for the SDG job.
     """
     return [
         kubernetes.client.V1VolumeMount(
-            name=SDG_VOLUME_NAME, mount_path=SDG_PVC_MOUNT_PATH
+            name=DATA_VOLUME_NAME, mount_path=DATA_PVC_MOUNT_PATH
         ),
-        kubernetes.client.V1VolumeMount(
-            name=MODEL_VOLUME_NAME, mount_path=MODEL_PVC_MOUNT_PATH
-        ),
-        kubernetes.client.V1VolumeMount(
-            name=TRAINING_VOLUME_NAME, mount_path=TRAINING_PVC_MOUNT_PATH
+    ]
+
+
+def get_vol() -> list[kubernetes.client.V1Volume]:
+    """
+    Get the volume for the SDG job.
+    """
+    return [
+        kubernetes.client.V1Volume(
+            name=DATA_VOLUME_NAME,
+            persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
+                claim_name=DATA_PVC_NAME
+            ),
         ),
     ]
 
@@ -681,21 +831,48 @@ def create_sdg_job(
         kubernetes.client.V1Job: A Kubernetes Job object configured with the specified parameters.
     """
     # Configureate Pod template container
+    exec_sdg_op_command = """
+{{exec_sdg_op_command}}
+"""
+    exec_sdg_op_args = """
+{{exec_sdg_op_args}}
+"""
+
+    exec_huggingface_importer_op_command = """
+{{exec_huggingface_importer_op_command}}
+"""
+    exec_huggingface_importer_op_args = """
+{{exec_huggingface_importer_op_args}}
+"""
+
+    exec_data_processing_op_command = """
+{{exec_data_processing_op_command}}
+"""
+    exec_data_processing_op_args = """
+{{exec_data_processing_op_args}}
+"""
+
     init_containers = [
         kubernetes.client.V1Container(
             name="sdg-op-fetch-taxonomy-data",
             image="{{exec_git_clone_op_image}}",
             command=["/bin/sh", "-c"],
             args={{exec_git_clone_op_args}},
-            volume_mounts=get_sdg_vol_mount(),
+            volume_mounts=get_vol_mount(),
             security_context=get_security_context(),
         ),
         kubernetes.client.V1Container(
             name="sdg-op-generate-synthetic-data",
-            image="{{exec_sdg_op_image}}",
-            command={{exec_sdg_op_command}},
-            args={{exec_sdg_op_args}},
-            volume_mounts=get_sdg_vol_mount(),
+            # image="{{exec_sdg_op_image}}",
+            image="registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.1-1724960989",
+            command=["/bin/sh", "-ce"],
+            args=[
+                PYTHON_EXECUTOR.format(
+                    python_code=exec_sdg_op_command,
+                    python_main=exec_sdg_op_args.strip(),
+                ),
+            ],
+            volume_mounts=get_vol_mount(),
             security_context=get_security_context(),
             env_from=[
                 kubernetes.client.V1EnvFromSource(
@@ -709,9 +886,14 @@ def create_sdg_job(
         kubernetes.client.V1Container(
             name="huggingface-importer-op",
             image="{{exec_huggingface_importer_op_image}}",
-            command={{exec_huggingface_importer_op_command}},
-            args={{exec_huggingface_importer_op_args}},
-            volume_mounts=get_sdg_vol_mount(),
+            command=["/bin/sh", "-ce"],
+            args=[
+                PYTHON_EXECUTOR.format(
+                    python_code=exec_huggingface_importer_op_command,
+                    python_main=exec_huggingface_importer_op_args.strip(),
+                ),
+            ],
+            volume_mounts=get_vol_mount(),
             security_context=get_security_context(),
             env_from=[
                 kubernetes.client.V1EnvFromSource(
@@ -725,9 +907,14 @@ def create_sdg_job(
         kubernetes.client.V1Container(
             name="sdg-preprocess",
             image="{{exec_data_processing_op_image}}",
-            command={{exec_data_processing_op_command}},
-            args={{exec_data_processing_op_args}},
-            volume_mounts=get_sdg_vol_mount(),
+            command=["/bin/sh", "-ce"],
+            args=[
+                PYTHON_EXECUTOR.format(
+                    python_code=exec_data_processing_op_command,
+                    python_main=exec_data_processing_op_args.strip(),
+                ),
+            ],
+            volume_mounts=get_vol_mount(),
             security_context=get_security_context(),
         ),
     ]
@@ -749,30 +936,13 @@ def create_sdg_job(
         name="copy-model-to-pvc",
         image=TOOLBOX_IMAGE,
         command=["/bin/sh", "-c"],
-        args=[f"cp -r -v {MODEL_PVC_MOUNT_PATH} {TRAINING_PVC_MOUNT_PATH}"],
-        volume_mounts=get_sdg_vol_mount(),
+        args=[
+            f"cp -r -v {DATA_PVC_MOUNT_PATH} {DATA_PVC_MOUNT_PATH}"
+        ],  # TODO: fix me, dumb line to pass linter, this feat is unused anyway
+        volume_mounts=get_vol_mount(),
     )
 
-    volumes = [
-        kubernetes.client.V1Volume(
-            name=SDG_VOLUME_NAME,
-            persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
-                claim_name=SDG_PVC_NAME
-            ),
-        ),
-        kubernetes.client.V1Volume(
-            name=MODEL_VOLUME_NAME,
-            persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
-                claim_name=MODEL_PVC_NAME
-            ),
-        ),
-        kubernetes.client.V1Volume(
-            name=TRAINING_VOLUME_NAME,
-            persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
-                claim_name=TRAINING_PVC_NAME
-            ),
-        ),
-    ]
+    volumes = get_vol()
 
     # Create and configure a spec section
     template = kubernetes.client.V1PodTemplateSpec(
@@ -805,6 +975,7 @@ def create_sdg_data_fetch_job(
     namespace: str,
     job_name: str,
     sdg_object_store_secret: str,
+    force_pull: bool = False,
 ) -> kubernetes.client.V1Job:
     """
     Create a Kubernetes Job object.
@@ -820,104 +991,123 @@ def create_sdg_data_fetch_job(
         kubernetes.client.V1Job: A Kubernetes Job object configured with the specified parameters.
     """
 
+    exec_data_processing_op_command = """
+{{exec_data_processing_op_command}}
+"""
+    exec_data_processing_op_args = """
+{{exec_data_processing_op_args}}
+"""
+
+    init_containers = [
+        kubernetes.client.V1Container(
+            name="fetch-sdg-files-from-object-store",
+            image=DS_IMAGE,
+            command=["/bin/sh", "-c"],
+            args=[
+                DATA_SCRIPT.format(
+                    strategy="download",
+                    force_pull=force_pull,
+                    data_pvc_mount_path=DATA_PVC_MOUNT_PATH,
+                )
+            ],
+            volume_mounts=get_vol_mount(),
+            env=[
+                kubernetes.client.V1EnvVar(
+                    name="SDG_OBJECT_STORE_ENDPOINT",
+                    value_from=kubernetes.client.V1EnvVarSource(
+                        secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                            name=sdg_object_store_secret, key="endpoint", optional=True
+                        )
+                    ),
+                ),
+                kubernetes.client.V1EnvVar(
+                    name="SDG_OBJECT_STORE_BUCKET",
+                    value_from=kubernetes.client.V1EnvVarSource(
+                        secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                            name=sdg_object_store_secret, key="bucket", optional=False
+                        )
+                    ),
+                ),
+                kubernetes.client.V1EnvVar(
+                    name="SDG_OBJECT_STORE_ACCESS_KEY",
+                    value_from=kubernetes.client.V1EnvVarSource(
+                        secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                            name=sdg_object_store_secret,
+                            key="access_key",
+                            optional=False,
+                        )
+                    ),
+                ),
+                kubernetes.client.V1EnvVar(
+                    name="SDG_OBJECT_STORE_SECRET_KEY",
+                    value_from=kubernetes.client.V1EnvVarSource(
+                        secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                            name=sdg_object_store_secret,
+                            key="secret_key",
+                            optional=False,
+                        )
+                    ),
+                ),
+                kubernetes.client.V1EnvVar(
+                    name="SDG_OBJECT_STORE_REGION",
+                    value_from=kubernetes.client.V1EnvVarSource(
+                        secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                            name=sdg_object_store_secret, key="region", optional=True
+                        )
+                    ),
+                ),
+                kubernetes.client.V1EnvVar(
+                    name="SDG_OBJECT_STORE_DATA_KEY",
+                    value_from=kubernetes.client.V1EnvVarSource(
+                        secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                            name=sdg_object_store_secret, key="data_key", optional=False
+                        )
+                    ),
+                ),
+                kubernetes.client.V1EnvVar(
+                    name="SDG_OBJECT_STORE_VERIFY_TLS",
+                    value_from=kubernetes.client.V1EnvVarSource(
+                        secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                            name=sdg_object_store_secret,
+                            key="verify_tls",
+                            optional=True,
+                        )
+                    ),
+                ),
+            ],
+        )
+    ]
+
     container = kubernetes.client.V1Container(
-        name="fetch-sdg-files-from-object-store",
-        image=PYTHON_IMAGE,
-        command=["/bin/sh", "-c"],
+        name="sdg-preprocess",
+        image=RHELAI_IMAGE,
+        command=["/bin/sh", "-ce"],
         args=[
-            SDG_DATA_SCRIPT.format(
-                strategy="download", SDG_PVC_MOUNT_PATH=SDG_PVC_MOUNT_PATH
-            )
+            PYTHON_EXECUTOR.format(
+                python_code=exec_data_processing_op_command,
+                python_main=exec_data_processing_op_args.strip(),
+            ),
         ],
-        volume_mounts=get_sdg_vol_mount(),
-        env=[
-            kubernetes.client.V1EnvVar(
-                name="SDG_OBJECT_STORE_ENDPOINT",
-                value_from=kubernetes.client.V1EnvVarSource(
-                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
-                        name=sdg_object_store_secret, key="endpoint", optional=True
-                    )
-                ),
+        volume_mounts=get_vol_mount(),
+        security_context=get_security_context(),
+        env_from=[
+            kubernetes.client.V1EnvFromSource(
+                config_map_ref=kubernetes.client.V1ConfigMapEnvSource(name=K8S_NAME)
             ),
-            kubernetes.client.V1EnvVar(
-                name="SDG_OBJECT_STORE_BUCKET",
-                value_from=kubernetes.client.V1EnvVarSource(
-                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
-                        name=sdg_object_store_secret, key="bucket", optional=False
-                    )
-                ),
-            ),
-            kubernetes.client.V1EnvVar(
-                name="SDG_OBJECT_STORE_ACCESS_KEY",
-                value_from=kubernetes.client.V1EnvVarSource(
-                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
-                        name=sdg_object_store_secret, key="access_key", optional=False
-                    )
-                ),
-            ),
-            kubernetes.client.V1EnvVar(
-                name="SDG_OBJECT_STORE_SECRET_KEY",
-                value_from=kubernetes.client.V1EnvVarSource(
-                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
-                        name=sdg_object_store_secret, key="secret_key", optional=False
-                    )
-                ),
-            ),
-            kubernetes.client.V1EnvVar(
-                name="SDG_OBJECT_STORE_REGION",
-                value_from=kubernetes.client.V1EnvVarSource(
-                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
-                        name=sdg_object_store_secret, key="region", optional=True
-                    )
-                ),
-            ),
-            kubernetes.client.V1EnvVar(
-                name="SDG_OBJECT_STORE_DATA_KEY",
-                value_from=kubernetes.client.V1EnvVarSource(
-                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
-                        name=sdg_object_store_secret, key="data_key", optional=False
-                    )
-                ),
-            ),
-            kubernetes.client.V1EnvVar(
-                name="SDG_OBJECT_STORE_VERIFY_TLS",
-                value_from=kubernetes.client.V1EnvVarSource(
-                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
-                        name=sdg_object_store_secret, key="verify_tls", optional=True
-                    )
-                ),
+            kubernetes.client.V1EnvFromSource(
+                secret_ref=kubernetes.client.V1SecretEnvSource(name=K8S_NAME)
             ),
         ],
     )
-
-    volumes = [
-        kubernetes.client.V1Volume(
-            name=SDG_VOLUME_NAME,
-            persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
-                claim_name=SDG_PVC_NAME
-            ),
-        ),
-        kubernetes.client.V1Volume(
-            name=MODEL_VOLUME_NAME,
-            persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
-                claim_name=MODEL_PVC_NAME
-            ),
-        ),
-        kubernetes.client.V1Volume(
-            name=TRAINING_VOLUME_NAME,
-            persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
-                claim_name=TRAINING_PVC_NAME
-            ),
-        ),
-    ]
 
     # Create and configure a spec section
     template = kubernetes.client.V1PodTemplateSpec(
         metadata=kubernetes.client.V1ObjectMeta(labels={"app": "sdg-data-fetch"}),
         spec=kubernetes.client.V1PodSpec(
             restart_policy="Never",
+            init_containers=init_containers,
             containers=[container],
-            volumes=volumes,
+            volumes=get_vol(),
         ),
     )
 
@@ -980,51 +1170,56 @@ def create_eval_job(
     #             ),
     #         ],
     #     )
+
+    exec_run_mt_bench_op_command = """
+{{exec_run_mt_bench_op_command}}
+"""
+    exec_run_mt_bench_op_args = """
+{{exec_run_mt_bench_op_args}}
+"""
+
     if eval_type == "mt-bench":
         init_containers = [
             kubernetes.client.V1Container(
                 name=f"run-eval-{eval_type}",
-                image="{{exec_run_mt_bench_op_image}}",
-                command={{exec_run_mt_bench_op_command}},
-                args={{exec_run_mt_bench_op_args}},
-                volume_mounts=[
-                    kubernetes.client.V1VolumeMount(
-                        name=TRAINING_VOLUME_NAME, mount_path=TRAINING_PVC_MOUNT_PATH
+                image=RHELAI_IMAGE,
+                command=["/bin/sh", "-ce"],
+                args=[
+                    PYTHON_EXECUTOR.format(
+                        python_code=exec_run_mt_bench_op_command,
+                        python_main=exec_run_mt_bench_op_args.strip(),
+                    ),
+                ],
+                volume_mounts=get_vol_mount(),
+                security_context=get_security_context(),
+                env_from=[
+                    kubernetes.client.V1EnvFromSource(
+                        secret_ref=kubernetes.client.V1SecretEnvSource(
+                            name=JUDGE_SERVING_NAME
+                        )
                     ),
                 ],
             )
         ]
         container = kubernetes.client.V1Container(
             name=f"output-eval-{eval_type}-scores",
-            image="{{exec_run_mt_bench_op_image}}",
+            image=RHELAI_IMAGE,
             command=["/bin/sh", "-c"],
             args=[f"cat {MT_BENCH_SCORES_PATH}"],
-            volume_mounts=[
-                kubernetes.client.V1VolumeMount(
-                    name=TRAINING_VOLUME_NAME, mount_path=TRAINING_PVC_MOUNT_PATH
-                ),
-            ],
+            security_context=get_security_context(),
+            volume_mounts=get_vol_mount(),
         )
     else:
         raise ValueError(f"Unknown evaluation type: {eval_type}")
 
-    volumes = [
-        kubernetes.client.V1Volume(
-            name=TRAINING_VOLUME_NAME,
-            persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
-                claim_name=TRAINING_PVC_NAME
-            ),
-        ),
-    ]
-
     # Create and configure a spec section
     template = kubernetes.client.V1PodTemplateSpec(
-        metadata=kubernetes.client.V1ObjectMeta(labels={"app": "eval"}),
+        metadata=kubernetes.client.V1ObjectMeta(labels={"app": f"eval-{eval_type}"}),
         spec=kubernetes.client.V1PodSpec(
             restart_policy="Never",
             init_containers=init_containers,
             containers=[container],
-            volumes=volumes,
+            volumes=get_vol(),
         ),
     )
 
@@ -1080,6 +1275,7 @@ def run_job(namespace: str, job: kubernetes.client.V1Job) -> str:
 
     # Wait for the job to complete
     w = kubernetes.watch.Watch()
+    pod_log = None
     for event in w.stream(batch_v1.list_namespaced_job, namespace=namespace):
         job_event = event["object"]
         if job_event.metadata.name != job.metadata.name:
@@ -1093,6 +1289,8 @@ def run_job(namespace: str, job: kubernetes.client.V1Job) -> str:
                     job.spec.template.metadata.labels["app"]
                 ),
             )
+            # On success return the logs of the last pod which contains the output
+            # (useful to get eval scores)
             pod_log = core_v1.read_namespaced_pod_log(
                 name=pods.items[0].metadata.name, namespace=namespace
             )
@@ -1205,25 +1403,11 @@ def sdg(
     # list of PVCs to create and their details
     pvcs = [
         {
-            "name": SDG_PVC_NAME,
+            "name": DATA_PVC_NAME,
             "namespace": namespace,
             "storage_class": storage_class,
             "access_modes": ["ReadWriteOnce"],
-            "size": "1Gi",
-        },
-        {
-            "name": MODEL_PVC_NAME,
-            "namespace": namespace,
-            "storage_class": storage_class,
-            "access_modes": ["ReadWriteOnce"],
-            "size": "50Gi",
-        },
-        {
-            "name": TRAINING_PVC_NAME,
-            "namespace": namespace,
-            "storage_class": storage_class,
-            "access_modes": ["ReadWriteMany"],
-            "size": "50Gi",
+            "size": "200Gi",
         },
     ]
     for pvc in pvcs:
@@ -1231,7 +1415,7 @@ def sdg(
             v1.create_namespaced_persistent_volume_claim(
                 namespace=namespace, body=create_pvc(**pvc)
             )
-            logger.info("Successfully creayed PVC '%s' created.", pvc.get("name"))
+            logger.info("Successfully created PVC '%s' created.", pvc.get("name"))
         except kubernetes.client.rest.ApiException as exc:
             if exc.status == 409:
                 logger.info("PVC '%s' already exists.", pvc["name"])
@@ -1305,6 +1489,9 @@ def sdg_data_fetch(
     # Populate variables from context
     namespace = ctx.obj["namespace"]
     storage_class = ctx.obj["storage_class"]
+    judge_serving_endpoint = ctx.obj["judge_serving_endpoint"]
+    judge_serving_model_name = ctx.obj["judge_serving_model_name"]
+    judge_serving_model_api_key = ctx.obj["judge_serving_model_api_key"]
     sdg_object_store_endpoint = ctx.obj["sdg_object_store_endpoint"]
     sdg_object_store_bucket = ctx.obj["sdg_object_store_bucket"]
     sdg_object_store_access_key = ctx.obj["sdg_object_store_access_key"]
@@ -1313,6 +1500,10 @@ def sdg_data_fetch(
     sdg_object_store_data_key = ctx.obj["sdg_object_store_data_key"]
     sdg_object_store_verify_tls = ctx.obj["sdg_object_store_verify_tls"]
     sdg_object_store_secret = ctx.obj["sdg_object_store_secret"]
+    force_pull = ctx.obj["force_pull"]
+
+    # Make sure the endpoint is a valid URL
+    validate_url(judge_serving_endpoint)
 
     # Check if all required arguments are provided
     if not sdg_object_store_secret:
@@ -1409,28 +1600,35 @@ def sdg_data_fetch(
                 "'bucket', 'access_key', 'secret_key', 'data_key'.",
             )
 
+    # Create Secret config details for evaluation
+    judge_serving_details_secret = JUDGE_SERVING_NAME
+    secret = kubernetes.client.V1Secret(
+        metadata=kubernetes.client.V1ObjectMeta(
+            name=judge_serving_details_secret, namespace=namespace
+        ),
+        string_data={
+            "JUDGE_NAME": judge_serving_model_name,
+            "JUDGE_API_KEY": judge_serving_model_api_key,
+            "JUDGE_ENDPOINT": judge_serving_endpoint,
+        },
+    )
+
+    try:
+        v1.create_namespaced_secret(namespace=namespace, body=secret)
+    except kubernetes.client.rest.ApiException as exc:
+        if exc.status == 409:
+            logger.info("Secret '%s' already exists.", secret.metadata.name)
+        else:
+            raise
+
     # list of PVCs to create and their details
     pvcs = [
         {
-            "name": SDG_PVC_NAME,
-            "namespace": namespace,
-            "storage_class": storage_class,
-            "access_modes": ["ReadWriteOnce"],
-            "size": "1Gi",
-        },
-        {
-            "name": MODEL_PVC_NAME,
-            "namespace": namespace,
-            "storage_class": storage_class,
-            "access_modes": ["ReadWriteOnce"],
-            "size": "50Gi",
-        },
-        {
-            "name": TRAINING_PVC_NAME,
+            "name": DATA_PVC_NAME,
             "namespace": namespace,
             "storage_class": storage_class,
             "access_modes": ["ReadWriteMany"],
-            "size": "50Gi",
+            "size": "200Gi",  # Allocate size for a few models and large SDG data sets
         },
     ]
     for pvc in pvcs:
@@ -1450,6 +1648,7 @@ def sdg_data_fetch(
         namespace=namespace,
         job_name="sdg-data-fetch",
         sdg_object_store_secret=sdg_object_store_secret,
+        force_pull=force_pull,
     )
 
     # Run the job
@@ -1469,27 +1668,35 @@ def train(
     training_phase = ctx.obj["training_phase"]
     path_to_model = ctx.obj["model_to_train"]
     nproc_per_node: int = ctx.obj["nproc_per_node"]
+    training_1_epoch_num: int = ctx.obj["training_1_epoch_num"]
+    training_2_epoch_num: int = ctx.obj["training_2_epoch_num"]
 
     if training_phase is None:
         raise ValueError("Training phase must be provided with --training-phase=[1|2]")
 
     # During the initial training
     if path_to_model is None:
-        path_to_model = "/input_model"
+        path_to_model = DATA_PVC_MODEL_PATH
+
+    epoch_num = None
+    if training_phase == "1":
+        epoch_num = training_1_epoch_num
+    elif training_phase == "2":
+        epoch_num = training_2_epoch_num
 
     logger.info("Running multi-phased distributed training phase %s", training_phase)
     worker_replicas = PYTORCH_NNODES - 1
     pytorch_training_job_yaml = yaml.safe_load(
         PYTORCH_TRAINING_JOB.format(
-            name="train-sdg",
-            model_pvc_name="model",
-            input_pvc_name="sdg-data",
-            output_pvc_name="training-data",
+            name=f"train-phase-{training_phase}",
+            data_pvc_name=DATA_PVC_NAME,
             path_to_model=path_to_model,
             nproc_per_node=nproc_per_node,
-            PYTORCH_NNODES=PYTORCH_NNODES,
-            PYTORCH_IMAGE=PYTORCH_IMAGE,
+            nnodes=PYTORCH_NNODES,
+            image=RHELAI_IMAGE,
             worker_replicas=worker_replicas,
+            epoch_num=epoch_num,
+            phase_num=training_phase,
         )
     )
 

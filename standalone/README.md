@@ -77,15 +77,32 @@ The script requires information regarding the location and method for accessing 
 * `--namespace`: The namespace in which the Kubernetes resources are located - **Required**
 * `--storage-class`: The storage class to use for the PVCs - **Optional** - Default: cluster default storage class.
 * `--nproc-per-node`: The number of processes to run per node - **Optional** - Default: 1.
-* `--sdg-object-store-secret`: The name of the Kubernetes secret containing the SDG object store credentials.
-* `--sdg-object-store-endpoint`: The endpoint of the object store. `SDG_OBJECT_STORE_ENDPOINT` environment variable can be used as well.
-* `--sdg-object-store-bucket`: The bucket name in the object store. `SDG_OBJECT_STORE_BUCKET` environment variable can be used as well.
-* `--sdg-object-store-access-key`: The access key for the object store. `SDG_OBJECT_STORE_ACCESS_KEY` environment variable can be used as well.
-* `--sdg-object-store-secret-key`: The secret key for the object store. `SDG_OBJECT_STORE_SECRET_KEY` environment variable can be used as well.
-* `--sdg-object-store-data-key`: The key for the SDG data in the object store. e.g., `sdg.tar.gz`. `SDG_OBJECT_STORE_DATA_KEY` environment variable can be used as well.
+* `--sdg-object-store-secret`: The name of the Kubernetes secret containing the SDG object store
+  credentials. **Optional** - If not provided, the script will expect the provided CLI options to fetch the SDG data.
+* `--sdg-object-store-endpoint`: The endpoint of the object store. `SDG_OBJECT_STORE_ENDPOINT`
+  environment variable can be used as well. **Optional**
+* `--sdg-object-store-bucket`: The bucket name in the object store. `SDG_OBJECT_STORE_BUCKET`
+  environment variable can be used as well. **Required** - If `--sdg-object-store-secret` is not provided.
+* `--sdg-object-store-access-key`: The access key for the object store.
+  `SDG_OBJECT_STORE_ACCESS_KEY` environment variable can be used as well. **Required** - If `--sdg-object-store-secret` is not provided.
+* `--sdg-object-store-secret-key`: The secret key for the object store.
+  `SDG_OBJECT_STORE_SECRET_KEY` environment variable can be used as well. **Required** - If `--sdg-object-store-secret` is not provided.
+* `--sdg-object-store-data-key`: The key for the SDG data in the object store. e.g.,
+  `data.tar.gz`.`SDG_OBJECT_STORE_DATA_KEY` environment variable can be used as well. **Required** - If `--sdg-object-store-secret` is not provided.
 * `--sdg-object-store-verify-tls`: Whether to verify TLS for the object store endpoint (default:
-  true). `SDG_OBJECT_STORE_VERIFY_TLS` environment variable can be used as well.
-* `--sdg-object-store-region`: The region of the object store. `SDG_OBJECT_STORE_REGION` environment variable can be used as well.
+  true). `SDG_OBJECT_STORE_VERIFY_TLS` environment variable can be used as well. **Optional**
+* `--sdg-object-store-region`: The region of the object store. `SDG_OBJECT_STORE_REGION` environment
+  variable can be used as well. **Optional**
+* `--judge-serving-endpoint`: Serving endpoint for evaluation. e.g:
+  http://serving.kubeflow.svc.cluster.local:8080/v1 - **Required**
+* `--judge-serving-model-name`: The name of the model to use for evaluation. **Required**
+* `--judge-serving-model-api-key`: The API key for the model to evaluate. `JUDGE_SERVING_MODEL_API_KEY`
+  environment variable can be used as well. **Required**
+* `--force-pull`: Force pull the data (sdg data and model) from the object store even if it already
+  exists in the PVC. **Optional** - Default: false.
+* `--training-1-epoch-num`: The number of epochs to train the model for phase 1. **Optional** - Default: 7.
+* `--training-2-epoch-num`: The number of epochs to train the model for phase 2. **Optional** - Default: 10.
+
 
 ## Example End-To-End Workflow
 
@@ -94,17 +111,21 @@ The script requires information regarding the location and method for accessing 
 The following example demonstrates how to generate SDG data, package it as a tarball, and upload it
 to an object store. This assumes that AWS CLI is installed and configured with the necessary
 credentials.
-In this scenario the name of the bucket is `sdg-data` and the tarball file is `sdg.tar.gz`.
+In this scenario the name of the bucket is `sdg-data` and the tarball file is `data.tar.gz`.
 
 ```bash
 ilab data generate
-cd generated
-tar -czvf sdg.tar.gz *
-aws cp sdg.tar.gz s3://sdg-data/sdg.tar.gz
+mv generated data
+tar -czvf data.tar.gz data model
+aws cp data.tar.gz s3://sdg-data/data.tar.gz
 ```
 
 > [!CAUTION]
-> Ensures SDG data is packaged as a tarball **without** top-level directories. So you must run `tar` inside the directory containing the SDG data.
+> Ensures SDG data are in a directory called "data" and the model is in a directory called "model".
+> The tarball must contain two top-level directories: `data` and `model`.
+
+> [!CAUTION]
+> Make sure the tarball format is .tar.gz.
 
 #### Alternative Method to AWS CLI
 
@@ -116,7 +137,7 @@ to upload the SDG data to the object store.
   --object-store-bucket sdg-data \
   --object-store-access-key $ACCESS_KEY \
   --object-store-secret-key $SECRET_KEY \
-  --sdg-data-archive-file-path sdg.tar.gz
+  --sdg-data-archive-file-path data.tar.gz
 ```
 
 Run `./sdg-data-on-s3.py upload --help` to see all available options.
@@ -127,7 +148,7 @@ The simplest method to supply the script with the required information for retri
 creating a Kubernetes secret. In the example below, we create a secret called `sdg-data` within the
 `my-namespace` namespace, containing the necessary credentials. Ensure that you update the access
 key and secret key as needed. The `data_key` field refers to the name of the tarball file in the
-object store that holds the SDG data. In this case, it's named `sdg.tar.gz`, as we previously
+object store that holds the SDG data. In this case, it's named `data.tar.gz`, as we previously
 uploaded the tarball to the object store using this name.
 
 ```bash
@@ -142,10 +163,15 @@ stringData:
   bucket: sdg-data
   access_key: *****
   secret_key: *****
-  data_key: sdg.tar.gz
+  data_key: data.tar.gz
 EOF
 
-./standalone run --namespace my-namespace --sdg-object-store-secret sdg-data
+./standalone run \
+  --namespace my-namespace \
+  --judge-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
+  --judge-serving-model-name my-model \
+  --judge-serving-model-api-key ***** \
+  --sdg-object-store-secret sdg-data
 ```
 
 > [!WARNING]
@@ -162,6 +188,13 @@ The list of all supported keys:
 * `endpoint`: The endpoint of the object store, e.g: https://s3.openshift-storage.svc:443 - **Optional**
 * `region`: The region of the object store - **Optional**
 
+> [!NOTE]
+> The `--judge-serving-endpoint` and `--judge-serving-model-name` values will be stored in a ConfigMap
+> named `judge-serving-details` in the same namespace as the resources that the script interacts
+> with. (in this case, `my-namespace`)
+> The `--judge-serving-model-api-key` value will be stored in a secret named `judge-serving-details`
+> in the same namespace as the resources that the script interacts with. (in this case, `my-namespace`)
+
 #### Running the Script Without Kubernetes Secret
 
 Alternatively, you can provide the necessary information directly via CLI options or environment,
@@ -172,10 +205,13 @@ Secret named `sdg-object-store-credentials` in the same namespace as the resourc
 ```bash
 ./standalone run \
   --namespace my-namespace \
+  --judge-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
+  --judge-serving-model-name my-model \
+  --judge-serving-model-api-key ***** \
   --sdg-object-store-access-key key \
   --sdg-object-store-secret-key key \
   --sdg-object-store-bucket sdg-data \
-  --sdg-object-store-data-key sdg.tar.gz
+  --sdg-object-store-data-key data.tar.gz
 ```
 
 #### Advanced Configuration Using an S3-Compatible Object Store
@@ -184,11 +220,14 @@ If you don't use the official AWS S3 endpoint, you can provide additional inform
 
 ```bash
 ./standalone run \
-  --namespace foo \
+  --namespace my-namespace \
+  --judge-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
+  --judge-serving-model-name my-model \
+  --judge-serving-model-api-key ***** \
   --sdg-object-store-access-key key \
   --sdg-object-store-secret-key key \
   --sdg-object-store-bucket sdg-data \
-  --sdg-object-store-data-key sdg.tar.gz \
+  --sdg-object-store-data-key data.tar.gz \
   --sdg-object-store-verify-tls false \
   --sdg-object-store-endpoint https://s3.openshift-storage.svc:443
 ```
