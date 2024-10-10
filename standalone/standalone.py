@@ -57,7 +57,8 @@ DATA_PVC_OUTPUT_PATH = path.join(DATA_PVC_MOUNT_PATH, "output")
 DATA_PVC_OUTPUT_DATA_PATH = path.join(DATA_PVC_OUTPUT_PATH, "data")
 PYTORCH_NNODES = 2
 # MMLU_SCORES_PATH = "/output/mmlu-results.txt"
-MT_BENCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-results.txt")
+MT_BENCH_OUTPUT_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-results.txt")
+MT_BENCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-best.txt")
 SDG_OBJECT_STORE_SECRET_NAME = "sdg-object-store-credentials"
 KFP_MODEL_SERVER_CM = """
 # TODO: remove the following line and replace it with the actual ConfigMap/Secret
@@ -363,6 +364,12 @@ spec:
 PYTHON_EXECUTOR = """
 set -e
 export XDG_CACHE_HOME=/tmp
+export OUTLINES_CACHE_DIR=/tmp
+export NUMBA_CACHE_DIR=/tmp
+export TRANSFORMERS_CACHE=/tmp
+export HF_HOME=/tmp
+export HOME=/tmp
+export TRITON_CACHE_DIR=/tmp
 
 tmp=$(mktemp -d)
 cat <<EOF > "$tmp"/exec.py
@@ -773,9 +780,8 @@ def run(
         ctx.obj["eval_type"] = "mt-bench"
         scores = ctx.invoke(evaluation)
         scores = json.loads(scores)
-        best_model = max(scores, key=lambda x: x["average_score"])
-        logger.info("Best model: %s", best_model.get("model"))
-        ctx.obj["candidate_model"] = best_model.get("model")
+        logger.info("Best model: %s", scores.get("best_model"))
+        ctx.obj["candidate_model"] = scores.get("best_model")
 
         # Final evaluation
         # TODO
@@ -1268,7 +1274,6 @@ data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/data/data", mode
 
     container = kubernetes.client.V1Container(
         name="sdg-preprocess",
-        # image="quay.io/tcoufal/ilab-sdg:latest",
         image=RHELAI_IMAGE,
         command=["/bin/sh", "-ce"],
         args=[
@@ -1320,6 +1325,7 @@ def create_eval_job(
     namespace: str,
     job_name: str,
     eval_type: str,
+    nproc_per_node: int = 1,
 ) -> kubernetes.client.V1Job:
     """
     Create a Kubernetes Job object.
@@ -1374,6 +1380,7 @@ def run_mt_bench_op(
     models_list: List[str] = None,
     models_folder: Optional[str] = None,
     device: str = None,
+    best_score_file: Optional[str] = None,
 ) -> NamedTuple("outputs", best_model=str, best_score=float):
     import json
     import os
@@ -1384,7 +1391,7 @@ def run_mt_bench_op(
     VLLM_SERVER = "http://localhost:8000/v1"
 
     def launch_vllm(
-        model_path: str, gpu_count: int, retries: int = 120, delay: int = 5
+        model_path: str, gpu_count: int, retries: int = 120, delay: int = 10
     ):
         import subprocess
         import sys
@@ -1540,16 +1547,20 @@ def run_mt_bench_op(
         all_mt_bench_data.append(mt_bench_data)
         scores[model_path] = overall_score
 
-    with open(mt_bench_output, "w") as f:
+    with open(mt_bench_output, "w", encoding="utf-8") as f:
         json.dump(all_mt_bench_data, f, indent=4)
 
     outputs = NamedTuple("outputs", best_model=str, best_score=float)
     best_model = max(scores, key=scores.get)
     best_score = scores[best_model]
+    if best_score_file:
+        with open(best_score_file, "w", encoding="utf-8") as f:
+            json.dump({"best_model": best_model, "best_score": best_score}, f, indent=4)
+
     return outputs(best_model=best_model, best_score=best_score)
 """
     exec_run_mt_bench_op_args = """
-run_mt_bench_op(mt_bench_output="/data/mt-bench-results.txt", models_folder="/data/model/output/hf_format", models_path_prefix="/data/model/output/hf_format", max_workers="auto", merge_system_user_message=False)
+run_mt_bench_op(best_score_file="/data/mt-bench-best.txt",mt_bench_output="/data/mt-bench-results.txt", models_folder="/data/model/output/hf_format", models_path_prefix="/data/model/output/hf_format", max_workers="auto", merge_system_user_message=False)
 """
 
     if eval_type == "mt-bench":
@@ -1573,6 +1584,10 @@ run_mt_bench_op(mt_bench_output="/data/mt-bench-results.txt", models_folder="/da
                         )
                     ),
                 ],
+                resources=kubernetes.client.V1ResourceRequirements(
+                    requests={"cpu": "1", "nvidia.com/gpu": nproc_per_node},
+                    limits={"cpu": "1", "nvidia.com/gpu": nproc_per_node},
+                ),
             )
         ]
         container = kubernetes.client.V1Container(
@@ -2163,7 +2178,7 @@ def evaluation(ctx: click.Context) -> str:
 
     try:
         scores_data = json.loads(scores)
-        if isinstance(scores_data, list):
+        if isinstance(scores_data, dict):
             scores = json.dumps(scores_data)
         else:
             raise ValueError("Unexpected format for scores data")

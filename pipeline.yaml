@@ -471,6 +471,9 @@ components:
     executorLabel: exec-run-mt-bench-op
     inputDefinitions:
       parameters:
+        best_score_file:
+          isOptional: true
+          parameterType: STRING
         device:
           isOptional: true
           parameterType: STRING
@@ -1204,28 +1207,28 @@ deploymentSpec:
           \ number of gpus allocated for serving is calculated based on environment\n\
           \    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36\n\
           \    max_workers: str,\n    models_list: List[str] = None,\n    models_folder:\
-          \ Optional[str] = None,\n    device: str = None,\n) -> NamedTuple(\"outputs\"\
-          , best_model=str, best_score=float):\n    import json\n    import os\n\n\
-          \    import torch\n    from instructlab.eval.mt_bench import MTBenchEvaluator\n\
-          \n    VLLM_SERVER = \"http://localhost:8000/v1\"\n\n    def launch_vllm(\n\
-          \        model_path: str, gpu_count: int, retries: int = 120, delay: int\
-          \ = 5\n    ):\n        import subprocess\n        import sys\n        import\
-          \ time\n\n        import requests\n\n        if gpu_count > 0:\n       \
-          \     command = [\n                sys.executable,\n                \"-m\"\
-          ,\n                \"vllm.entrypoints.openai.api_server\",\n           \
-          \     \"--model\",\n                model_path,\n                \"--tensor-parallel-size\"\
-          ,\n                str(gpu_count),\n            ]\n        else:\n     \
-          \       command = [\n                sys.executable,\n                \"\
-          -m\",\n                \"vllm.entrypoints.openai.api_server\",\n       \
-          \         \"--model\",\n                model_path,\n            ]\n\n \
-          \       subprocess.Popen(args=command)\n\n        print(f\"Waiting for vLLM\
-          \ server to start at {VLLM_SERVER}...\")\n\n        for attempt in range(retries):\n\
-          \            try:\n                response = requests.get(f\"{VLLM_SERVER}/models\"\
-          )\n                if response.status_code == 200:\n                   \
-          \ print(f\"vLLM server is up and running at {VLLM_SERVER}.\")\n        \
-          \            return\n            except requests.ConnectionError:\n    \
-          \            pass\n\n            print(\n                f\"Server not available\
-          \ yet, retrying in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\
+          \ Optional[str] = None,\n    device: str = None,\n    best_score_file: Optional[str]\
+          \ = None,\n) -> NamedTuple(\"outputs\", best_model=str, best_score=float):\n\
+          \    import json\n    import os\n\n    import torch\n    from instructlab.eval.mt_bench\
+          \ import MTBenchEvaluator\n\n    VLLM_SERVER = \"http://localhost:8000/v1\"\
+          \n\n    def launch_vllm(\n        model_path: str, gpu_count: int, retries:\
+          \ int = 120, delay: int = 10\n    ):\n        import subprocess\n      \
+          \  import sys\n        import time\n\n        import requests\n\n      \
+          \  if gpu_count > 0:\n            command = [\n                sys.executable,\n\
+          \                \"-m\",\n                \"vllm.entrypoints.openai.api_server\"\
+          ,\n                \"--model\",\n                model_path,\n         \
+          \       \"--tensor-parallel-size\",\n                str(gpu_count),\n \
+          \           ]\n        else:\n            command = [\n                sys.executable,\n\
+          \                \"-m\",\n                \"vllm.entrypoints.openai.api_server\"\
+          ,\n                \"--model\",\n                model_path,\n         \
+          \   ]\n\n        subprocess.Popen(args=command)\n\n        print(f\"Waiting\
+          \ for vLLM server to start at {VLLM_SERVER}...\")\n\n        for attempt\
+          \ in range(retries):\n            try:\n                response = requests.get(f\"\
+          {VLLM_SERVER}/models\")\n                if response.status_code == 200:\n\
+          \                    print(f\"vLLM server is up and running at {VLLM_SERVER}.\"\
+          )\n                    return\n            except requests.ConnectionError:\n\
+          \                pass\n\n            print(\n                f\"Server not\
+          \ available yet, retrying in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\
           \n            )\n            time.sleep(delay)\n\n        raise RuntimeError(\n\
           \            f\"Failed to start vLLM server at {VLLM_SERVER} after {retries}\
           \ retries.\"\n        )\n\n    # This seems like excessive effort to stop\
@@ -1287,10 +1290,13 @@ deploymentSpec:
           : turn_scores,\n            \"qa_scores\": qa_pairs,\n            \"error_rate\"\
           : error_rate,\n        }\n\n        all_mt_bench_data.append(mt_bench_data)\n\
           \        scores[model_path] = overall_score\n\n    with open(mt_bench_output.path,\
-          \ \"w\") as f:\n        json.dump(all_mt_bench_data, f, indent=4)\n\n  \
-          \  outputs = NamedTuple(\"outputs\", best_model=str, best_score=float)\n\
-          \    best_model = max(scores, key=scores.get)\n    best_score = scores[best_model]\n\
-          \    return outputs(best_model=best_model, best_score=best_score)\n\n"
+          \ \"w\", encoding=\"utf-8\") as f:\n        json.dump(all_mt_bench_data,\
+          \ f, indent=4)\n\n    outputs = NamedTuple(\"outputs\", best_model=str,\
+          \ best_score=float)\n    best_model = max(scores, key=scores.get)\n    best_score\
+          \ = scores[best_model]\n    if best_score_file:\n        with open(best_score_file,\
+          \ \"w\", encoding=\"utf-8\") as f:\n            json.dump({\"best_model\"\
+          : best_model, \"best_score\": best_score}, f, indent=4)\n\n    return outputs(best_model=best_model,\
+          \ best_score=best_score)\n\n"
         image: quay.io/sallyom/instructlab-ocp:eval-10-8
         resources:
           accelerator:

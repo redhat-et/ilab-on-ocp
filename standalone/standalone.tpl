@@ -57,7 +57,8 @@ DATA_PVC_OUTPUT_PATH = path.join(DATA_PVC_MOUNT_PATH, "output")
 DATA_PVC_OUTPUT_DATA_PATH = path.join(DATA_PVC_OUTPUT_PATH, "data")
 PYTORCH_NNODES = 2
 # MMLU_SCORES_PATH = "/output/mmlu-results.txt"
-MT_BENCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-results.txt")
+MT_BENCH_OUTPUT_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-results.txt")
+MT_BENCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-best.txt")
 SDG_OBJECT_STORE_SECRET_NAME = "sdg-object-store-credentials"
 KFP_MODEL_SERVER_CM = """
 # TODO: remove the following line and replace it with the actual ConfigMap/Secret
@@ -348,6 +349,12 @@ spec:
 PYTHON_EXECUTOR = """
 set -e
 export XDG_CACHE_HOME=/tmp
+export OUTLINES_CACHE_DIR=/tmp
+export NUMBA_CACHE_DIR=/tmp
+export TRANSFORMERS_CACHE=/tmp
+export HF_HOME=/tmp
+export HOME=/tmp
+export TRITON_CACHE_DIR=/tmp
 
 tmp=$(mktemp -d)
 cat <<EOF > "$tmp"/exec.py
@@ -758,9 +765,8 @@ def run(
         ctx.obj["eval_type"] = "mt-bench"
         scores = ctx.invoke(evaluation)
         scores = json.loads(scores)
-        best_model = max(scores, key=lambda x: x["average_score"])
-        logger.info("Best model: %s", best_model.get("model"))
-        ctx.obj["candidate_model"] = best_model.get("model")
+        logger.info("Best model: %s", scores.get("best_model"))
+        ctx.obj["candidate_model"] = scores.get("best_model")
 
         # Final evaluation
         # TODO
@@ -1131,6 +1137,7 @@ def create_eval_job(
     namespace: str,
     job_name: str,
     eval_type: str,
+    nproc_per_node: int = 1,
 ) -> kubernetes.client.V1Job:
     """
     Create a Kubernetes Job object.
@@ -1199,6 +1206,10 @@ def create_eval_job(
                         )
                     ),
                 ],
+                resources=kubernetes.client.V1ResourceRequirements(
+                    requests={"cpu": "1", "nvidia.com/gpu": nproc_per_node},
+                    limits={"cpu": "1", "nvidia.com/gpu": nproc_per_node},
+                ),
             )
         ]
         container = kubernetes.client.V1Container(
@@ -1789,7 +1800,7 @@ def evaluation(ctx: click.Context) -> str:
 
     try:
         scores_data = json.loads(scores)
-        if isinstance(scores_data, list):
+        if isinstance(scores_data, dict):
             scores = json.dumps(scores_data)
         else:
             raise ValueError("Unexpected format for scores data")
