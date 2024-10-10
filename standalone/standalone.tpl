@@ -298,7 +298,7 @@ if [ "$STRATEGY" == "download" ]; then
   top_level_dirs=$(tar --exclude='*/*' --list --file {data_pvc_mount_path}/data.tar.gz)
 
   # Loop through the expected directories and check if they exist in the archive
-  for dir in data model; do
+  for dir in data model taxonomy; do
     if ! echo "$top_level_dirs" | grep -q "^$dir/$"; then
       echo "Archive does not contain a '$dir' directory"
       exit 1
