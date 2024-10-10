@@ -1184,7 +1184,7 @@ def create_eval_job(
         init_containers = [
             kubernetes.client.V1Container(
                 name=f"run-eval-{eval_type}",
-                image="{{exec_run_mt_bench_op_image}}",
+                image="registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2",
                 command=["/bin/sh", "-ce"],
                 args=[
                     PYTHON_EXECUTOR.format(
@@ -1204,7 +1204,7 @@ def create_eval_job(
         ]
         container = kubernetes.client.V1Container(
             name=f"output-eval-{eval_type}-scores",
-            image="{{exec_run_mt_bench_op_image}}",
+            image="registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2",
             command=["/bin/sh", "-c"],
             args=[f"cat {MT_BENCH_SCORES_PATH}"],
             volume_mounts=get_vol_mount(),
@@ -1607,9 +1607,9 @@ def sdg_data_fetch(
             name=judge_serving_details_secret, namespace=namespace
         ),
         string_data={
-            "judge_name": judge_serving_model_name,
-            "judge_api_key": judge_serving_model_api_key,
-            "judge_endpoint": judge_serving_endpoint,
+            "JUDGE_NAME": judge_serving_model_name,
+            "JUDGE_API_KEY": judge_serving_model_api_key,
+            "JUDGE_ENDPOINT": judge_serving_endpoint,
         },
     )
 

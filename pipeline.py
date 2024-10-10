@@ -618,6 +618,7 @@ def change_dsl_function_to_normal_function(rendered_code: list):
         "dsl.Input[dsl.Artifact]": "str",
         "dsl.Output[dsl.Dataset]": "str",
         "dsl.Output[dsl.Model]": "str",
+        "Output[Artifact]": "str",
         "import kfp": "",
         "from kfp import dsl": "",
         "from kfp.dsl import *": "",
