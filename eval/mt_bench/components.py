@@ -19,6 +19,7 @@ def run_mt_bench_op(
     models_list: List[str] = None,
     models_folder: Optional[str] = None,
     device: str = None,
+    best_score_file: Optional[str] = None,
 ) -> NamedTuple("outputs", best_model=str, best_score=float):
     import json
     import os
@@ -29,7 +30,7 @@ def run_mt_bench_op(
     VLLM_SERVER = "http://localhost:8000/v1"
 
     def launch_vllm(
-        model_path: str, gpu_count: int, retries: int = 120, delay: int = 5
+        model_path: str, gpu_count: int, retries: int = 120, delay: int = 10
     ):
         import subprocess
         import sys
@@ -185,12 +186,16 @@ def run_mt_bench_op(
         all_mt_bench_data.append(mt_bench_data)
         scores[model_path] = overall_score
 
-    with open(mt_bench_output.path, "w") as f:
+    with open(mt_bench_output.path, "w", encoding="utf-8") as f:
         json.dump(all_mt_bench_data, f, indent=4)
 
     outputs = NamedTuple("outputs", best_model=str, best_score=float)
     best_model = max(scores, key=scores.get)
     best_score = scores[best_model]
+    if best_score_file:
+        with open(best_score_file, "w", encoding="utf-8") as f:
+            json.dump({"best_model": best_model, "best_score": best_score}, f, indent=4)
+
     return outputs(best_model=best_model, best_score=best_score)
 
 
