@@ -275,7 +275,7 @@ def build_boto3_client():
     aws_secret_access_key=os.getenv('SDG_OBJECT_STORE_SECRET_KEY'),
     endpoint_url=os.getenv('SDG_OBJECT_STORE_ENDPOINT', None),
     region_name=os.getenv('SDG_OBJECT_STORE_REGION', None),
-    verify=str_to_bool(os.getenv('SDG_OBJECT_STORE_VERIFY_TLS', None))
+    verify=str_to_bool(os.getenv('SDG_OBJECT_STORE_VERIFY_TLS', 'true'))
 )
 
 def download_s3_file():
@@ -1953,7 +1953,7 @@ def sdg_data_fetch(
             secret.string_data["region"] = sdg_object_store_region
 
         if not sdg_object_store_verify_tls:
-            secret.string_data["verify_tls"] = "false"
+            secret.string_data["verify_tls"] = "true"
 
         try:
             v1.create_namespaced_secret(namespace=namespace, body=secret)
