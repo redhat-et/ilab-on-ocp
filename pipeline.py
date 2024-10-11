@@ -446,7 +446,7 @@ def gen_standalone():
         "exec-sdg-op": 'sdg_op(num_instructions_to_generate=2, repo_branch="", repo_pr="", taxonomy="/data/taxonomy", sdg="/data/generated")',
         "exec-git-clone-op": {},
         "exec-huggingface-importer-op": 'huggingface_importer_op(repo_name="ibm-granite/granite-7b-base", model="/data/model")',
-        "exec-run-mt-bench-op": 'run_mt_bench_op(best_score_file="/data/mt-bench-best.txt",mt_bench_output="/data/mt-bench-results.txt", models_folder="/data/model/output/hf_format", models_path_prefix="/data/model/output/hf_format", max_workers="auto", merge_system_user_message=False)',
+        "exec-run-mt-bench-op": 'run_mt_bench_op(best_score_file="/data/mt-bench-best.txt",mt_bench_output="/data/mt-bench-results.txt", models_folder="/data/model/output/phase_2/hf_format", models_path_prefix="/data/model/output/phase_2/hf_format", max_workers="auto", merge_system_user_message=False)',
     }
 
     details = {}

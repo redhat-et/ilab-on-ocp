@@ -104,11 +104,11 @@ spec:
                   phase_num={phase_num}
                   echo "Running phase $phase_num"
                   PATH_TO_MODEL={path_to_model}
-                  if [ "$phase_num" -eq 2 ]; then PATH_TO_MODEL="{path_to_model}/output/hf_format/$(ls --sort=time {path_to_model}/output/hf_format|head -n 1)"; fi
+                  if [ "$phase_num" -eq 2 ]; then PATH_TO_MODEL="{path_to_model}/output/phase_1/hf_format/$(ls --sort=time {path_to_model}/output/phase_1/hf_format|head -n 1)"; fi
                   echo "Using $PATH_TO_MODEL model for training"
                   mkdir -p /data/model;
                   mkdir -p /data/data;
-                  mkdir -p {path_to_model}/output
+                  mkdir -p {path_to_model}/output/phase_{phase_num}
                   export XDG_CACHE_HOME=/tmp
                   export TRITON_CACHE_DIR=/tmp
                   export HF_HOME=/tmp
@@ -120,7 +120,7 @@ spec:
                     -m instructlab.training.main_ds \
                     --model_name_or_path="$PATH_TO_MODEL" \
                     --data_path=/data/processed_data/data.jsonl \
-                    --output_dir={path_to_model}/output \
+                    --output_dir={path_to_model}/output/phase_{phase_num} \
                     --num_epochs={epoch_num} \
                     --effective_batch_size=3840 \
                     --learning_rate=1e-4 \
@@ -172,7 +172,7 @@ spec:
                   phase_num={phase_num}
                   echo "Running phase $phase_num"
                   PATH_TO_MODEL={path_to_model}
-                  if [ "$phase_num" -eq 2 ]; then PATH_TO_MODEL="{path_to_model}/output/hf_format/$(ls --sort=time {path_to_model}/output/hf_format|head -n 1)"; fi
+                  if [ "$phase_num" -eq 2 ]; then PATH_TO_MODEL="{path_to_model}/output/phase_1/hf_format/$(ls --sort=time {path_to_model}/output/phase_1/hf_format|head -n 1)"; fi
                   echo "Using $PATH_TO_MODEL model for training"
                   mkdir -p /tmp/model;
                   export TRITON_CACHE_DIR=/tmp
@@ -1560,7 +1560,7 @@ def run_mt_bench_op(
     return outputs(best_model=best_model, best_score=best_score)
 """
     exec_run_mt_bench_op_args = """
-run_mt_bench_op(best_score_file="/data/mt-bench-best.txt",mt_bench_output="/data/mt-bench-results.txt", models_folder="/data/model/output/hf_format", models_path_prefix="/data/model/output/hf_format", max_workers="auto", merge_system_user_message=False)
+run_mt_bench_op(best_score_file="/data/mt-bench-best.txt",mt_bench_output="/data/mt-bench-results.txt", models_folder="/data/model/output/phase_2/hf_format", models_path_prefix="/data/model/output/phase_2/hf_format", max_workers="auto", merge_system_user_message=False)
 """
 
     if eval_type == "mt-bench":
