@@ -597,7 +597,7 @@ def show(
 @click.option(
     "--eval-type",
     help="Type of evaluation to run",
-    type=click.Choice(["mt-bench", "mt-bench-branch"]),
+    type=click.Choice(["mt-bench", "final-eval"]),
     hidden=True,
 )
 @click.option(
@@ -823,7 +823,7 @@ def run(
         ctx.obj["candidate_model"] = scores.get("best_model")
 
         # Final evaluation
-        ctx.obj["eval_type"] = "mt-bench-branch"
+        ctx.obj["eval_type"] = "final-eval"
         scores = ctx.invoke(evaluation)
         scores = json.loads(scores)
         logger.info("Best model: %s", scores.get("best_model"))
@@ -831,6 +831,8 @@ def run(
 
         # Push the best model to S3
         # TODO
+        logger.info("instructLab Training Finished!")
+        return 0
 
         # Push the best model to S3
         ctx.invoke(upload_trained_model)
@@ -1268,11 +1270,11 @@ def create_eval_job(
     exec_run_mt_bench_op_args = """
 {{exec_run_mt_bench_op_args}}
 """
-    exec_run_mt_bench_branch_op_command = """
-{{exec_run_mt_bench_op_command}}
+    exec_run_final_eval_op_command = """
+{{exec_run_final_eval_op_command}}
 """
-    exec_run_mt_bench_branch_op_args = """
-{{exec_run_mt_bench_op_args}}
+    exec_run_final_eval_op_args = """
+{{exec_run_final_eval_op_args}}
 """
 
     if eval_type == "mt-bench":
@@ -1310,7 +1312,7 @@ def create_eval_job(
             security_context=get_security_context(),
             volume_mounts=get_vol_mount(),
         )
-    elif eval_type == "mt-bench-branch":
+    elif eval_type == "final-eval":
         init_containers = [
             kubernetes.client.V1Container(
                 name=f"run-eval-{eval_type}",
@@ -1318,8 +1320,8 @@ def create_eval_job(
                 command=["/bin/sh", "-ce"],
                 args=[
                     PYTHON_EXECUTOR.format(
-                        python_code=exec_run_mt_bench_branch_op_command,
-                        python_main=exec_run_mt_bench_branch_op_args.strip(),
+                        python_code=exec_run_final_eval_op_command,
+                        python_main=exec_run_final_eval_op_args.strip(),
                     ),
                 ],
                 volume_mounts=get_vol_mount(),

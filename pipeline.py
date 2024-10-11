@@ -24,7 +24,7 @@ GENERATED_STANDALONE_FILE_NAME = "standalone.py"
 DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
 KFP_MODEL_SERVER_CM = "sdg/kfp-model-server.yaml"
 BASE_MODE = "ibm-granite/granite-7b-base"
-BASE_MODEL_DIR = "/model/model"  # <- "model ID for vLLM chat/completions - corresponds to path within pvc"
+BASE_MODEL_DIR = "/data/model/"  # <- "model ID for vLLM chat/completions - corresponds to path within pvc"
 MMLU_TASKS_LIST = "mmlu_anatomy,mmlu_astronomy"
 MODEL_DTYPE = "bfloat16"
 FEW_SHOTS = 5
@@ -620,6 +620,7 @@ def change_dsl_function_to_normal_function(rendered_code: list):
         "dsl.Output[dsl.Dataset]": "str",
         "dsl.Output[dsl.Model]": "str",
         "Output[Artifact]": "str",
+        "Input[Dataset]": "str",
         "import kfp": "",
         "from kfp import dsl": "",
         "from kfp.dsl import *": "",

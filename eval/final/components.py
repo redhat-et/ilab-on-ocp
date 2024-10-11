@@ -32,6 +32,7 @@ def run_final_eval_op(
 ):
     import json
     import os
+
     import torch
     from instructlab.eval.mmlu import MMLU_TASKS, MMLUBranchEvaluator
     from instructlab.eval.mt_bench import MTBenchBranchEvaluator
@@ -39,7 +40,11 @@ def run_final_eval_op(
 
     VLLM_SERVER = "http://localhost:8000/v1"
 
-    def launch_vllm(model_path: str, gpu_count: int, retries: int = 60, delay: int = 5):
+    print("Starting Final Eval...")
+
+    def launch_vllm(
+        model_path: str, gpu_count: int, retries: int = 120, delay: int = 10
+    ):
         import subprocess
         import sys
         import time
@@ -128,7 +133,7 @@ def run_final_eval_op(
         no_changes: list[tuple[str, float]],
         new=None,
     ) -> str:
-        """Generates a JSON object from the _branch benchmark evaluations"""
+        # Generates a JSON object from the _branch benchmark evaluations
 
         import json
 
@@ -177,7 +182,7 @@ def run_final_eval_op(
         return json.dumps(summary, indent=4)
 
     ######################################################################
-
+    print("Checking GPUs...")
     gpu_available = torch.cuda.is_available()
     gpu_name = (
         torch.cuda.get_device_name(torch.cuda.current_device())
@@ -206,6 +211,8 @@ def run_final_eval_op(
                     matching_dirs.append(os.path.join(root, directory))
 
         return matching_dirs
+
+    print("Starting MMLU_Branch...")
 
     mmlu_tasks = ["mmlu_pr"]
 
@@ -236,10 +243,12 @@ def run_final_eval_op(
         individual_scores_list = []
         for i, evaluator in enumerate(mmlu_branch_evaluators):
             m_path = m_paths[i]
+            print("Launching Vllm...")
             launch_vllm(m_path, gpu_count)
             overall_score, individual_scores = evaluator.run(VLLM_SERVER)
             overall_scores.append(overall_score)
             individual_scores_list.append(individual_scores)
+            print("Stopping Vllm")
             stop_vllm()
 
         # TODO: update instructlab/instructlab model/evaluate.py
@@ -284,6 +293,8 @@ def run_final_eval_op(
         print("No MMLU tasks directories found, skipping MMLU_branch evaluation.")
 
     # MT_BENCH_BRANCH
+
+    print("Strating MT_BENCH_BRANCH ...")
 
     judge_api_key = os.getenv("JUDGE_API_KEY", "")
     judge_model_name = os.getenv("JUDGE_NAME")
