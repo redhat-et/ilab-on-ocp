@@ -29,13 +29,17 @@ The `standalone.py` script is designed to run within a Kubernetes environment. T
 ## Features
 
 * Run any part of the InstructLab workflow in a standalone environment independently or a full end-to-end workflow:
-  * Fetch SDG data from an object store.
+  * Fetch SDG data, model, and taxonomy from an object store with `sdg-data-fetch` subcommand.
       * Support for AWS S3 and compatible object storage solutions.
       * Configure S3 details via CLI options, environment variables, or Kubernetes secret.
-  * Train model.
-  * Evaluate model.
-  * Final model evaluation. (Not implemented yet)
-  * Push the final model back to the object store. (Not implemented yet) -  same location as the SDG data.
+  * Train model with `train` subcommand.
+  * Evaluate model by running MT_Bench with `evaluation` subcommand along with `--eval-type mt-bench` option.
+  * Final model evaluation with `evaluation` subcommand along with `--eval-type final-eval` option.
+      * Final evaluation runs both MT Bench_Branch and MMLU_Branch
+  * Push the final model back to the object store -  same location as the SDG data with `upload-trained-model` subcommand.
+
+> [!NOTE]
+> Read about InstructLab model evaluation in the [instructlab/eval repository](https://github.com/instructlab/eval/blob/main/README.md).
 
 ## Usage
 
@@ -93,7 +97,7 @@ evaluation
 
 * `--namespace`: The namespace in which the Kubernetes resources are located - **Required**
 * `--storage-class`: The storage class to use for the PVCs - **Optional** - Default: cluster default storage class.
-* `--nproc-per-node`: The number of processes to run per node - **Optional** - Default: 1.
+* `--nproc-per-node`: Number of GPU to use per node - for training only - **Optional** - Default: 1.
 * `--sdg-object-store-secret`: The name of the Kubernetes secret containing the SDG object store
   credentials. **Optional** - If not provided, the script will expect the provided CLI options to fetch the SDG data.
 * `--sdg-object-store-endpoint`: The endpoint of the object store. `SDG_OBJECT_STORE_ENDPOINT`
@@ -115,10 +119,12 @@ evaluation
 * `--judge-serving-model-name`: The name of the model to use for evaluation. **Required**
 * `--judge-serving-model-api-key`: The API key for the model to evaluate. `JUDGE_SERVING_MODEL_API_KEY`
   environment variable can be used as well. **Required**
-* `--force-pull`: Force pull the data (sdg data and model) from the object store even if it already
+* `--force-pull`: Force pull the data (sdg data, model and taxonomy) from the object store even if it already
   exists in the PVC. **Optional** - Default: false.
 * `--training-1-epoch-num`: The number of epochs to train the model for phase 1. **Optional** - Default: 7.
-* `--training-2-epoch-num`: The number of epochs to train the model for phase 2. **Optional** - Default: 10.
+* `--training-2-epoch-num`: The number of epochs to train the model for phase 2. **Optional** -
+  Default: 10.
+* `--eval-type`: The evaluation type to use. **Optional** - Default: `mt-bench`.
 
 
 ## Example Workflow with Synthetic Data Generation (SDG)
