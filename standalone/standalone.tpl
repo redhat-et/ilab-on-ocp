@@ -59,6 +59,7 @@ PYTORCH_NNODES = 2
 # MMLU_SCORES_PATH = "/output/mmlu-results.txt"
 MT_BENCH_OUTPUT_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-results.txt")
 MT_BENCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-best.txt")
+MT_BENCH_BRANCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-branch-best.txt")
 SDG_OBJECT_STORE_SECRET_NAME = "sdg-object-store-credentials"
 KFP_MODEL_SERVER_CM = """
 # TODO: remove the following line and replace it with the actual ConfigMap/Secret
@@ -216,37 +217,48 @@ spec:
 DATA_SCRIPT = """
 set -e
 
-FORCE_PULL={force_pull}
-if [ -s {data_pvc_mount_path}/data.tar.gz ] && [ -d {data_pvc_mount_path}/data ] && [ -d {data_pvc_mount_path}/model ] ; then
-  echo "Data tarball and sdg/model directories already exist in the PVC. Skipping download."
-  if [ "$FORCE_PULL" == "None" ] || [ "$FORCE_PULL" == "False" ]; then
-    echo "'--force-pull' is not set - will not force pull the data from the object store"
-    ls -laR {data_pvc_mount_path}
-    exit 0
-  else
-    echo "'--force-pull' is set to true - will force pull the data from the object store"
-  fi
-fi
-
 export STRATEGY={strategy}
 
 if [ -z "$STRATEGY" ] || [ "$STRATEGY" == "None" ]; then
-  echo "STRATEGY is not set - must be 'download' or 'upload'"
-  exit 1
+    echo "STRATEGY is not set - must be 'download' or 'upload'"
+    exit 1
 fi
 
-if python3 -c 'import boto3'; then
-  echo 'boto3 is already installed'
-else
-  if ! [ -x "$(command -v pip)" ]; then
-    python3 -m ensurepip || python3 -m ensurepip --user || dnf install python3-pip -y
-  fi
-  python3 -m pip install boto3
+if [ "$STRATEGY" == "download" ]; then
+    FORCE_PULL={force_pull}
+    if [ -s {data_pvc_mount_path}/data.tar.gz ] && [ -d {data_pvc_mount_path}/data ] && [ -d {data_pvc_mount_path}/model ] ; then
+        echo "Data tarball and sdg/model directories already exist in the PVC. Skipping download."
+        if [ "$FORCE_PULL" == "None" ] || [ "$FORCE_PULL" == "False" ]; then
+            echo "'--force-pull' is not set - will not force pull the data from the object store"
+            ls -laR {data_pvc_mount_path}
+            exit 0
+        else
+            echo "'--force-pull' is set to true - will force pull the data from the object store"
+        fi
+    fi
+
+    if python3 -c 'import boto3'; then
+        echo 'boto3 is already installed'
+    else
+        if ! [ -x "$(command -v pip)" ]; then
+            python3 -m ensurepip || python3 -m ensurepip --user || dnf install python3-pip -y
+        fi
+        python3 -m pip install boto3
+    fi
 fi
 
+if [ "$STRATEGY" == "upload" ]; then
+    export FINAL_DATA_TAR_FILE="final.$SDG_OBJECT_STORE_DATA_KEY"
+    export FINAL_DATA_TAR_PATH="{data_pvc_mount_path}/$FINAL_DATA_TAR_FILE"
+    echo "Final data tarball path: $FINAL_DATA_TAR_PATH"
+    echo "Final data tarball file: $FINAL_DATA_TAR_FILE"
+    echo "Archiving data before pushing to the object store"
+    tar --create --gzip --verbose --file "$FINAL_DATA_TAR_PATH" {mt_bench_output_path} {mt_bench_scores_path} {mt_bench_branch_scores_path} {data_pvc_mount_path}/model
+    # TODO: change model path for the final model!!!
+fi
 
 tmp=$(mktemp -d)
-cat <<EOF > "$tmp"/download_s3.py
+cat <<EOF > "$tmp"/s3.py
 import os
 import boto3
 
@@ -278,40 +290,80 @@ def upload_s3_file():
     s3 = build_boto3_client()
 
     bucket_name = os.getenv('SDG_OBJECT_STORE_BUCKET')
-    s3_key = os.getenv('SDG_OBJECT_STORE_DATA_KEY') # TODO: change the name for the model name
-    input_file = '{data_pvc_mount_path}/data.tar.gz' # TODO: change for model path
+    s3_key = os.getenv('FINAL_DATA_TAR_FILE')
+    input_file = os.getenv('FINAL_DATA_TAR_PATH')
 
     s3.upload_file(input_file, bucket_name, s3_key)
 
 if __name__ == "__main__":
     if os.getenv('STRATEGY') == 'download':
-      print('Downloading file from S3')
+      print('Downloading file from object store')
       download_s3_file()
     elif os.getenv('STRATEGY') == 'upload':
-      print('Uploading file to S3')
+      print('Uploading file to object store')
       upload_s3_file()
     else:
       raise ValueError('Unknown STRATEGY')
 EOF
 
-python "$tmp"/download_s3.py
+python "$tmp"/s3.py
 
 if [ "$STRATEGY" == "download" ]; then
-  # List top-level directories only (no nested directories)
-  top_level_dirs=$(tar --exclude='*/*' --list --file {data_pvc_mount_path}/data.tar.gz)
+    for dir in data model taxonomy; do
+        dir_path="{data_pvc_mount_path}/$dir"
+        if [ -d "$dir_path" ]; then
+            echo "Directory $dir_path exists, it will be overwritten by the content of the archive"
+        fi
+    done
 
-  # Loop through the expected directories and check if they exist in the archive
-  for dir in data model taxonomy; do
-    if ! echo "$top_level_dirs" | grep -q "^$dir/$"; then
-      echo "Archive does not contain a '$dir' directory"
-      exit 1
+    echo "Extracting data from the archive"
+
+    tar \
+      --touch \
+      --no-same-owner \
+      --no-same-permissions \
+      --directory {data_pvc_mount_path} \
+      --extract \
+      --verbose \
+      --file {data_pvc_mount_path}/data.tar.gz
+
+    # Enable globstar for recursive globbing
+    shopt -s globstar
+
+    # Patterns to match
+    patterns=(
+        "{data_pvc_mount_path}/model/config.json"
+        "{data_pvc_mount_path}/model/tokenizer.json"
+        "{data_pvc_mount_path}/model/tokenizer_config.json"
+        "{data_pvc_mount_path}/model/*.safetensors"
+        "{data_pvc_mount_path}/data/skills_recipe_*.yaml"
+        "{data_pvc_mount_path}/data/knowledge_recipe_*.yaml"
+        "{data_pvc_mount_path}/data/skills_train_*.jsonl"
+        "{data_pvc_mount_path}/data/knowledge_train_*.jsonl"
+        "{data_pvc_mount_path}/taxonomy/knowledge"
+        "{data_pvc_mount_path}/taxonomy/foundational_skills"
+    )
+
+    match_count=0
+{% raw %}
+    for pattern in "${{patterns[@]}}"; do
+        matching_files=($pattern)
+        if [ ! -s "${{matching_files[0]}}" ]; then
+            echo "No files found matching pattern: $pattern: ${{matching_files[0]}}"
+        else
+            echo "Files found matching pattern: $pattern: ${{matching_files[0]}}"
+            match_count=$((match_count+1))
+        fi
+    done
+
+    if [ $match_count -ne ${{#patterns[@]}} ]; then
+        echo "Error: Not all files were found, only $match_count files were found"
+        ls -laR {data_pvc_mount_path}
+        exit 1
     fi
-  done
-  echo "All expected directories are present."
+{% endraw %}
 
-  echo "Extracting data from the archive"
-  tar -C {data_pvc_mount_path} -xvf {data_pvc_mount_path}/data.tar.gz
-  ls -laR {data_pvc_mount_path}
+    ls -laR {data_pvc_mount_path}
 fi
 """
 
@@ -539,7 +591,7 @@ def show(
 @click.option(
     "--nproc-per-node",
     type=int,
-    help="Number of processes per node - for training only",
+    help="Number of GPU to use per node - for training only",
     default=1,
 )
 @click.option(
@@ -773,6 +825,9 @@ def run(
         # Final evaluation
         # TODO
 
+        # Push the best model to S3
+        ctx.invoke(upload_trained_model)
+
 
 def get_security_context() -> kubernetes.client.V1SecurityContext:
     """
@@ -979,10 +1034,11 @@ def create_sdg_job(
     return job
 
 
-def create_sdg_data_fetch_job(
+def create_data_job(
     namespace: str,
     job_name: str,
     sdg_object_store_secret: str,
+    strategy: str,
     force_pull: bool = False,
 ) -> kubernetes.client.V1Job:
     """
@@ -1006,88 +1062,97 @@ def create_sdg_data_fetch_job(
 {{exec_data_processing_op_args}}
 """
 
-    init_containers = [
-        kubernetes.client.V1Container(
-            name="fetch-sdg-files-from-object-store",
-            image=DS_IMAGE,
-            command=["/bin/sh", "-c"],
-            args=[
-                DATA_SCRIPT.format(
-                    strategy="download",
-                    force_pull=force_pull,
-                    data_pvc_mount_path=DATA_PVC_MOUNT_PATH,
-                )
-            ],
-            volume_mounts=get_vol_mount(),
-            env=[
-                kubernetes.client.V1EnvVar(
-                    name="SDG_OBJECT_STORE_ENDPOINT",
-                    value_from=kubernetes.client.V1EnvVarSource(
-                        secret_key_ref=kubernetes.client.V1SecretKeySelector(
-                            name=sdg_object_store_secret, key="endpoint", optional=True
-                        )
-                    ),
+    data_container = kubernetes.client.V1Container(
+        name=f"{strategy}-data-object-store",
+        image=DS_IMAGE,
+        command=["/bin/sh", "-c"],
+        args=[
+            DATA_SCRIPT.format(
+                strategy=strategy,
+                force_pull=force_pull,
+                data_pvc_mount_path=DATA_PVC_MOUNT_PATH,
+                mt_bench_output_path=MT_BENCH_OUTPUT_PATH,
+                mt_bench_scores_path=MT_BENCH_SCORES_PATH,
+                mt_bench_branch_scores_path=MT_BENCH_BRANCH_SCORES_PATH,
+            )
+        ],
+        volume_mounts=get_vol_mount(),
+        env=[
+            kubernetes.client.V1EnvVar(
+                name="SDG_OBJECT_STORE_ENDPOINT",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                        name=sdg_object_store_secret,
+                        key="endpoint",
+                        optional=True,
+                    )
                 ),
-                kubernetes.client.V1EnvVar(
-                    name="SDG_OBJECT_STORE_BUCKET",
-                    value_from=kubernetes.client.V1EnvVarSource(
-                        secret_key_ref=kubernetes.client.V1SecretKeySelector(
-                            name=sdg_object_store_secret, key="bucket", optional=False
-                        )
-                    ),
+            ),
+            kubernetes.client.V1EnvVar(
+                name="SDG_OBJECT_STORE_BUCKET",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                        name=sdg_object_store_secret,
+                        key="bucket",
+                        optional=False,
+                    )
                 ),
-                kubernetes.client.V1EnvVar(
-                    name="SDG_OBJECT_STORE_ACCESS_KEY",
-                    value_from=kubernetes.client.V1EnvVarSource(
-                        secret_key_ref=kubernetes.client.V1SecretKeySelector(
-                            name=sdg_object_store_secret,
-                            key="access_key",
-                            optional=False,
-                        )
-                    ),
+            ),
+            kubernetes.client.V1EnvVar(
+                name="SDG_OBJECT_STORE_ACCESS_KEY",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                        name=sdg_object_store_secret,
+                        key="access_key",
+                        optional=False,
+                    )
                 ),
-                kubernetes.client.V1EnvVar(
-                    name="SDG_OBJECT_STORE_SECRET_KEY",
-                    value_from=kubernetes.client.V1EnvVarSource(
-                        secret_key_ref=kubernetes.client.V1SecretKeySelector(
-                            name=sdg_object_store_secret,
-                            key="secret_key",
-                            optional=False,
-                        )
-                    ),
+            ),
+            kubernetes.client.V1EnvVar(
+                name="SDG_OBJECT_STORE_SECRET_KEY",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                        name=sdg_object_store_secret,
+                        key="secret_key",
+                        optional=False,
+                    )
                 ),
-                kubernetes.client.V1EnvVar(
-                    name="SDG_OBJECT_STORE_REGION",
-                    value_from=kubernetes.client.V1EnvVarSource(
-                        secret_key_ref=kubernetes.client.V1SecretKeySelector(
-                            name=sdg_object_store_secret, key="region", optional=True
-                        )
-                    ),
+            ),
+            kubernetes.client.V1EnvVar(
+                name="SDG_OBJECT_STORE_REGION",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                        name=sdg_object_store_secret,
+                        key="region",
+                        optional=True,
+                    )
                 ),
-                kubernetes.client.V1EnvVar(
-                    name="SDG_OBJECT_STORE_DATA_KEY",
-                    value_from=kubernetes.client.V1EnvVarSource(
-                        secret_key_ref=kubernetes.client.V1SecretKeySelector(
-                            name=sdg_object_store_secret, key="data_key", optional=False
-                        )
-                    ),
+            ),
+            kubernetes.client.V1EnvVar(
+                name="SDG_OBJECT_STORE_DATA_KEY",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                        name=sdg_object_store_secret,
+                        key="data_key",
+                        optional=False,
+                    )
                 ),
-                kubernetes.client.V1EnvVar(
-                    name="SDG_OBJECT_STORE_VERIFY_TLS",
-                    value_from=kubernetes.client.V1EnvVarSource(
-                        secret_key_ref=kubernetes.client.V1SecretKeySelector(
-                            name=sdg_object_store_secret,
-                            key="verify_tls",
-                            optional=True,
-                        )
-                    ),
+            ),
+            kubernetes.client.V1EnvVar(
+                name="SDG_OBJECT_STORE_VERIFY_TLS",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    secret_key_ref=kubernetes.client.V1SecretKeySelector(
+                        name=sdg_object_store_secret,
+                        key="verify_tls",
+                        optional=True,
+                    )
                 ),
-            ],
-        )
-    ]
+            ),
+        ],
+    )
 
-    container = kubernetes.client.V1Container(
-        name="sdg-preprocess",
+    sdg_data_preprocess_container = kubernetes.client.V1Container(
+        name="sdg-data-preprocess",
         image=RHELAI_IMAGE,
         command=["/bin/sh", "-ce"],
         args=[
@@ -1108,16 +1173,26 @@ def create_sdg_data_fetch_job(
         ],
     )
 
+    main_container = None
+    if strategy == "download":
+        main_container = sdg_data_preprocess_container
+    # For the upload strategy, the main container is the data container since we only upload the
+    # trained model back to the object store
+    elif strategy == "upload":
+        main_container = data_container
+
     # Create and configure a spec section
     template = kubernetes.client.V1PodTemplateSpec(
-        metadata=kubernetes.client.V1ObjectMeta(labels={"app": "sdg-data-fetch"}),
+        metadata=kubernetes.client.V1ObjectMeta(labels={"app": "data-" + strategy}),
         spec=kubernetes.client.V1PodSpec(
             restart_policy="Never",
-            init_containers=init_containers,
-            containers=[container],
+            containers=[main_container],
             volumes=get_vol(),
         ),
     )
+
+    if strategy == "download":
+        template.spec.init_containers = [data_container]
 
     # Create the specification of deployment
     spec = kubernetes.client.V1JobSpec(
@@ -1419,7 +1494,7 @@ def sdg(
             "name": DATA_PVC_NAME,
             "namespace": namespace,
             "storage_class": storage_class,
-            "access_modes": ["ReadWriteOnce"],
+            "access_modes": ["ReadWriteMany"],
             "size": "200Gi",
         },
     ]
@@ -1651,7 +1726,7 @@ def sdg_data_fetch(
             v1.create_namespaced_persistent_volume_claim(
                 namespace=namespace, body=create_pvc(**pvc)
             )
-            logger.info("Successfully creayed PVC '%s' created.", pvc.get("name"))
+            logger.info("Successfully created PVC '%s' created.", pvc.get("name"))
         except kubernetes.client.rest.ApiException as exc:
             if exc.status == 409:
                 logger.info("PVC '%s' already exists.", pvc["name"])
@@ -1659,10 +1734,11 @@ def sdg_data_fetch(
                 raise
 
     # Create the job to run the pod to execute the SDG data fetch
-    job = create_sdg_data_fetch_job(
+    job = create_data_job(
         namespace=namespace,
-        job_name="sdg-data-fetch",
+        job_name="data-fetch",
         sdg_object_store_secret=sdg_object_store_secret,
+        strategy="download",
         force_pull=force_pull,
     )
 
@@ -1813,7 +1889,43 @@ def evaluation(ctx: click.Context) -> str:
         raise
 
     logger.info("Evaluation scores: %s", scores)
-    return scores
+
+
+@run.command(name="upload-trained-model")
+@click.pass_context
+def upload_trained_model(ctx: click.Context):
+    """
+    Uploads the trained model back to the object store.
+
+    This function retrieves the namespace and SDG object store secret from the
+    provided Click context object. It then creates and runs a data job to
+    upload the trained model to the object store.
+
+    Args:
+        ctx (click.Context): The Click context object containing command-line
+                             parameters and options.
+
+    Returns:
+        None
+
+    Raises:
+        ValueError: If the SDG object store secret is not provided.
+    """
+    namespace = ctx.obj["namespace"]
+    # At this stage the secret is present from previous phases so no need to check
+    sdg_object_store_secret = ctx.obj["sdg_object_store_secret"]
+
+    logger.info("Uploading the trained model back to the object store.")
+    job = create_data_job(
+        namespace=namespace,
+        job_name="trained-model-upload",
+        sdg_object_store_secret=sdg_object_store_secret,
+        strategy="upload",
+    )
+
+    # Run the job
+    run_job(namespace, job)
+    logger.info("Successfully uploaded newly trained model back to the object store.")
 
 
 if __name__ == "__main__":
