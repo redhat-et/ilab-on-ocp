@@ -195,8 +195,39 @@ def run_final_eval_op(
 
     # MMLU_BRANCH
 
+    # This is very specific to `ilab generate`, necessary because the data generation and
+    # model evaluation are taking place in separate environments.
+    def update_test_lines_in_files(base_dir):
+        import os
+        import re
+
+        # Define the regex to match lines starting with any indentation, 'test:', and containing 'node_datasets_*'
+        regex = re.compile(r"(\s*test:\s*).*/(node_datasets_[^/]*)(.*)")
+
+        for root, dirs, files in os.walk(base_dir):
+            for file_name in files:
+                file_path = os.path.join(root, file_name)
+
+                with open(file_path, "r") as file:
+                    lines = file.readlines()
+
+                updated_lines = []
+                changed = False
+
+                for line in lines:
+                    # Replace the matched line with the desired format, keeping 'test:' and leading whitespace intact
+                    new_line = re.sub(regex, rf"\1{base_dir}/\2\3", line)
+                    if new_line != line:
+                        changed = True  # Only rewrite the file if there's a change
+                    updated_lines.append(new_line)
+
+                if changed:
+                    with open(file_path, "w", encoding="utf-8") as file:
+                        file.writelines(updated_lines)
+                    print(f"Updated: {file_path}")
+
     # find_node_dataset_directories to find sdg output node_datasets_*
-    def find_node_dataset_directories(base_directory: str):
+    def find_node_dataset_directories(base_dir: str):
         import os
         import re
 
@@ -205,11 +236,17 @@ def run_final_eval_op(
         matching_dirs = []
         regex = re.compile(pattern)
 
-        for root, dirs, files in os.walk(base_directory):
+        for root, dirs, files in os.walk(base_dir):
             for directory in dirs:
                 if regex.search(directory):
                     matching_dirs.append(os.path.join(root, directory))
 
+        # From `ilab sdg` the knowledge_*_task.yaml files have a line that references where the SDG took place.
+        # This needs to be updated to run elsewhere.
+        # The line is:
+        #    test: /path/to/where/sdg/occured/node_datasets_*
+        # TODO: update sdg repo: https://github.com/instructlab/sdg/blob/366814b3e89e28c98c0d2a276ad0759c567d2798/src/instructlab/sdg/eval_data.py#L84-%23L114
+        update_test_lines_in_files(base_dir)
         return matching_dirs
 
     print("Starting MMLU_Branch...")
@@ -217,6 +254,7 @@ def run_final_eval_op(
     mmlu_tasks = ["mmlu_pr"]
 
     node_dataset_dirs = find_node_dataset_directories(tasks.path)
+
     # This assumes generated filesystem from ilab sdg, which
     # generates a node_datasets_ directory for MMLU custom tasks data
     if node_dataset_dirs:

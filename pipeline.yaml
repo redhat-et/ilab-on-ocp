@@ -1101,16 +1101,40 @@ deploymentSpec:
           \        if gpu_available\n        else \"No GPU available\"\n    )\n  \
           \  gpu_count = torch.cuda.device_count() if gpu_available else 0\n\n   \
           \ print(f\"GPU Available: {gpu_available}, Using: {gpu_name}\")\n\n    #\
-          \ MMLU_BRANCH\n\n    # find_node_dataset_directories to find sdg output\
-          \ node_datasets_*\n    def find_node_dataset_directories(base_directory:\
+          \ MMLU_BRANCH\n\n    # This is very specific to `ilab generate`, necessary\
+          \ because the data generation and\n    # model evaluation are taking place\
+          \ in separate environments.\n    def update_test_lines_in_files(base_dir):\n\
+          \        import os\n        import re\n\n        # Define the regex to match\
+          \ lines starting with any indentation, 'test:', and containing 'node_datasets_*'\n\
+          \        regex = re.compile(r\"(\\s*test:\\s*).*/(node_datasets_[^/]*)(.*)\"\
+          )\n\n        for root, dirs, files in os.walk(base_dir):\n            for\
+          \ file_name in files:\n                file_path = os.path.join(root, file_name)\n\
+          \n                with open(file_path, \"r\") as file:\n               \
+          \     lines = file.readlines()\n\n                updated_lines = []\n \
+          \               changed = False\n\n                for line in lines:\n\
+          \                    # Replace the matched line with the desired format,\
+          \ keeping 'test:' and leading whitespace intact\n                    new_line\
+          \ = re.sub(regex, rf\"\\1{base_dir}/\\2\\3\", line)\n                  \
+          \  if new_line != line:\n                        changed = True  # Only\
+          \ rewrite the file if there's a change\n                    updated_lines.append(new_line)\n\
+          \n                if changed:\n                    with open(file_path,\
+          \ \"w\", encoding=\"utf-8\") as file:\n                        file.writelines(updated_lines)\n\
+          \                    print(f\"Updated: {file_path}\")\n\n    # find_node_dataset_directories\
+          \ to find sdg output node_datasets_*\n    def find_node_dataset_directories(base_dir:\
           \ str):\n        import os\n        import re\n\n        # This is specific\
           \ to ilab/eval output\n        pattern = r\"node_datasets_\"\n        matching_dirs\
           \ = []\n        regex = re.compile(pattern)\n\n        for root, dirs, files\
-          \ in os.walk(base_directory):\n            for directory in dirs:\n    \
-          \            if regex.search(directory):\n                    matching_dirs.append(os.path.join(root,\
-          \ directory))\n\n        return matching_dirs\n\n    print(\"Starting MMLU_Branch...\"\
-          )\n\n    mmlu_tasks = [\"mmlu_pr\"]\n\n    node_dataset_dirs = find_node_dataset_directories(tasks.path)\n\
-          \    # This assumes generated filesystem from ilab sdg, which\n    # generates\
+          \ in os.walk(base_dir):\n            for directory in dirs:\n          \
+          \      if regex.search(directory):\n                    matching_dirs.append(os.path.join(root,\
+          \ directory))\n\n        # From `ilab sdg` the knowledge_*_task.yaml files\
+          \ have a line that references where the SDG took place.\n        # This\
+          \ needs to be updated to run elsewhere.\n        # The line is:\n      \
+          \  #    test: /path/to/where/sdg/occured/node_datasets_*\n        # TODO:\
+          \ update sdg repo: https://github.com/instructlab/sdg/blob/366814b3e89e28c98c0d2a276ad0759c567d2798/src/instructlab/sdg/eval_data.py#L84-%23L114\n\
+          \        update_test_lines_in_files(base_dir)\n        return matching_dirs\n\
+          \n    print(\"Starting MMLU_Branch...\")\n\n    mmlu_tasks = [\"mmlu_pr\"\
+          ]\n\n    node_dataset_dirs = find_node_dataset_directories(tasks.path)\n\
+          \n    # This assumes generated filesystem from ilab sdg, which\n    # generates\
           \ a node_datasets_ directory for MMLU custom tasks data\n    if node_dataset_dirs:\n\
           \        tasks_dir = node_dataset_dirs[0]\n\n        mmlu_branch_evaluators\
           \ = [\n            MMLUBranchEvaluator(\n                model_path=candidate_model,\n\
