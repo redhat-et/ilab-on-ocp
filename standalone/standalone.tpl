@@ -116,6 +116,7 @@ spec:
                     --seed=42 \
                     --cpu_offload_optimizer \
                     --distributed_training_framework fsdp \
+                    --cpu_offload_params \
                     --is_granite \
                     --checkpoint_at_epoch
               command:
@@ -182,6 +183,7 @@ spec:
                     --seed=42 \
                     --cpu_offload_optimizer \
                     --distributed_training_framework fsdp \
+                    --cpu_offload_params \
                     --is_granite \
                     --checkpoint_at_epoch
               command:
