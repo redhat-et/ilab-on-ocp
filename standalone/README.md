@@ -29,11 +29,11 @@ requirements must be met:
 ## Features
 
 * Run any part of the InstructLab workflow in a standalone environment independently or a full end-to-end workflow:
-  * Fetch SDG data from an object store.
-  * Train model.
-  * Evaluate model.
+  * Fetch SDG data / model and taxonomy from an object store with `sdg-data-fetch` subcommand.
+  * Train model with `train` subcommand.
+  * Evaluate model with `evaluation` subcommand along with `--eval-type mt-bench` option to specify the evaluation type.
   * Final model evaluation. (Not implemented yet)
-  * Push the final model back to the object store. (Not implemented yet) -  same location as the SDG data.
+  * Push the final model back to the object store -  same location as the SDG data with `upload-trained-model` subcommand.
 
 The `standalone.py` script includes a main command to execute the full workflow, along with
 subcommands to run individual parts of the workflow separately. To view all available commands, use
@@ -76,7 +76,7 @@ The script requires information regarding the location and method for accessing 
 
 * `--namespace`: The namespace in which the Kubernetes resources are located - **Required**
 * `--storage-class`: The storage class to use for the PVCs - **Optional** - Default: cluster default storage class.
-* `--nproc-per-node`: The number of processes to run per node - **Optional** - Default: 1.
+* `--nproc-per-node`: Number of GPU to use per node - for training only - **Optional** - Default: 1.
 * `--sdg-object-store-secret`: The name of the Kubernetes secret containing the SDG object store
   credentials. **Optional** - If not provided, the script will expect the provided CLI options to fetch the SDG data.
 * `--sdg-object-store-endpoint`: The endpoint of the object store. `SDG_OBJECT_STORE_ENDPOINT`
@@ -98,10 +98,12 @@ The script requires information regarding the location and method for accessing 
 * `--judge-serving-model-name`: The name of the model to use for evaluation. **Required**
 * `--judge-serving-model-api-key`: The API key for the model to evaluate. `JUDGE_SERVING_MODEL_API_KEY`
   environment variable can be used as well. **Required**
-* `--force-pull`: Force pull the data (sdg data and model) from the object store even if it already
+* `--force-pull`: Force pull the data (sdg data, model and taxonomy) from the object store even if it already
   exists in the PVC. **Optional** - Default: false.
 * `--training-1-epoch-num`: The number of epochs to train the model for phase 1. **Optional** - Default: 7.
-* `--training-2-epoch-num`: The number of epochs to train the model for phase 2. **Optional** - Default: 10.
+* `--training-2-epoch-num`: The number of epochs to train the model for phase 2. **Optional** -
+  Default: 10.
+* `--eval-type`: The evaluation type to use. **Optional** - Default: `mt-bench`.
 
 
 ## Example End-To-End Workflow
