@@ -3,15 +3,15 @@
 ## Overview
 
 The `standalone.py` script simulates the [InstructLab](https://instructlab.ai/) workflow within a [Kubernetes](https://kubernetes.io/) environment,
-replicating the functionality of a [KubeFlow Pipeline](https://github.com/kubeflow/pipelines). This allows for distributed training and evaluation of models
-without relying on centralized orchestration tools like KubeFlow.
+replicating the functionality of a [KubeFlow Pipeline](https://github.com/kubeflow/pipelines). This allows for distributed training and evaluation
+of models without relying on centralized orchestration tools like KubeFlow.
 
-The `standalone.py` tool provides support for fetching generated SDG (Synthetic Data Generation) data from an object store that complies with the AWS S3 specification. While AWS S3 is supported, alternative object storage solutions such as Ceph, Nooba, and MinIO are also compatible.
+The `standalone.py` tool provides support for fetching generated SDG (Synthetic Data Generation) data from an AWS S3 compatible object store.
+While AWS S3 is supported, alternative object storage solutions such as Ceph, Nooba, and MinIO are also compatible.
 
 ## Requirements
 
-Since the `standalone.py` script is designed to run within a Kubernetes environment, the following
-requirements must be met:
+The `standalone.py` script is designed to run within a Kubernetes environment. The following requirements must be met:
 * A Kubernetes cluster with the necessary resources to run the InstructLab workflow.
   * Nodes with GPUs available for training.
   * [KubeFlow training operator](https://github.com/kubeflow/training-operator) must be running and `PyTorchJob` CRD must be installed.
@@ -21,58 +21,75 @@ requirements must be met:
 * SDG data generated and uploaded to an object store.
 
 > [!NOTE]
-> The script can be run outside of a Kubernetes environment or within a Kubernetes Job, but it requires a Kubernetes configuration file to access the cluster.
+> The script can be run outside of the cluster from the command-line, but it requires that the user is currently logged into a Kubernetes cluster.
 
 > [!TIP]
-> Check the `show` command to display an example of a Kubernetes Job that runs the script. Use `./standalone.py show` to see the example.
+> Check the `show` command to display an example of a Kubernetes Job that runs the script. Run `./standalone.py show`.
 
 ## Features
 
 * Run any part of the InstructLab workflow in a standalone environment independently or a full end-to-end workflow:
   * Fetch SDG data from an object store.
+      * Support for AWS S3 and compatible object storage solutions.
+      * Configure S3 details via CLI options, environment variables, or Kubernetes secret.
   * Train model.
   * Evaluate model.
   * Final model evaluation. (Not implemented yet)
   * Push the final model back to the object store. (Not implemented yet) -  same location as the SDG data.
 
+## Usage
+
 The `standalone.py` script includes a main command to execute the full workflow, along with
-subcommands to run individual parts of the workflow separately. To view all available commands, use
-`./standalone.py --help`. Essentially, this is how the script operates to execute the end-to-end
-workflow. The command will retrieve the SDG data from the object store and set up the necessary
-resources for running the training and evaluation steps:
+subcommands to run individual parts of the workflow separately. The full workflow includes fetching SDG data from S3, training,
+and evaluating a model. To view all available commands, use `./standalone.py --help`.
+
+The script requires information regarding the location and method for accessing the SDG data. This information can be provided in two main ways:
+
+1. CLI Options or/and Environment Variables: Supply all necessary information via CLI options or environment variables.
+    * See [CLI Options](#cli-options) for full list.
+2. Kubernetes Secret: Provide the name of a Kubernetes secret that contains all relevant details using the `--sdg-object-store-secret` option.
+    *  See [Creating the Kubernetes Secret for S3 Details](#creating-the-kubernetes-secret-for-s3-details) for information on how to create the secret.
+
+The examples below assume there is a secret in `my-namespace` named `sdg-data` that holds information about the S3 bucket.
+You must also provide details for a judge model that is assumed to run external to the script.
+See [Judge Model Details](#judge-model-details) for required information.
+
+
+### Usage Examples
 
 ```bash
-./standalone.py run --namespace my-namespace --sdg-object-store-secret sdg-data
+export JUDGE_SERVING_MODEL_API_KEY=********
+
+./standalone.py run \
+  --namespace my-namespace \
+  --judge-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
+  --judge-serving-model-name my-model \
+  --sdg-object-store-secret sdg-data
 ```
 
 Now let's say you only want to fetch the SDG data, you can use the `sdg-data-fetch` subcommand:
 
 ```bash
-./standalone.py run --namespace my-namespace --sdg-object-store-secret sdg-data sdg-data-fetch
+export JUDGE_SERVING_MODEL_API_KEY=********
+
+./standalone.py run sdg-data-fetch \
+  --namespace my-namespace \
+  --judge-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
+  --judge-serving-model-name my-model \
+  --sdg-object-store-secret sdg-data
 ```
 
 Other subcommands are available to run the training and evaluation steps:
 
 ```bash
-./standalone.py run --namespace my-namespace train
-./standalone.py run --namespace my-namespace evaluation
+train
+evaluation
 ```
 
-* Fetch SDG data from an object store.
-  * Support for AWS S3 and compatible object storage solutions.
-  * Configuration via CLI options, environment variables, or Kubernetes secrets.
+### CLI Options
 
 > [!CAUTION]
-> All the CLI options MUST be positioned after the `run` command and BEFORE any subcommands.
-
-## Usage
-
-The script requires information regarding the location and method for accessing the SDG data. This information can be provided in two main ways:
-
-1. CLI Options or/and Environment Variables: Supply all necessary information via CLI options or environment variables.
-2. Kubernetes Secret: Provide the name of a Kubernetes secret that contains all relevant details using the `--sdg-object-store-secret` option.
-
-### CLI Options
+> CLI options MUST be positioned AFTER the `run` command and BEFORE any subcommands.
 
 * `--namespace`: The namespace in which the Kubernetes resources are located - **Required**
 * `--storage-class`: The storage class to use for the PVCs - **Optional** - Default: cluster default storage class.
@@ -104,7 +121,7 @@ The script requires information regarding the location and method for accessing 
 * `--training-2-epoch-num`: The number of epochs to train the model for phase 2. **Optional** - Default: 10.
 
 
-## Example End-To-End Workflow
+## Example Workflow with Synthetic Data Generation (SDG)
 
 ### Generating and Uploading SDG Data
 
@@ -121,13 +138,13 @@ aws cp data.tar.gz s3://sdg-data/data.tar.gz
 ```
 
 > [!CAUTION]
-> Ensures SDG data are in a directory called "data".
-> Ensures the model to train is in a directory called "model".
-> Ensures that the taxonomy tree used to generate the SDG data is in a directory called "taxonomy".
+> SDG data must exist in a directory called "data".
+> The model to train must exist in a directory called "model".
+> The taxonomy tree used to generate the SDG data must exist in a directory called "taxonomy".
 > The tarball must contain three top-level directories: `data`, `model` and `taxonomy`.
 
 > [!CAUTION]
-> Make sure the tarball format is .tar.gz.
+> The tarball format must be `.tar.gz`.
 
 #### Alternative Method to AWS CLI
 
@@ -144,7 +161,7 @@ to upload the SDG data to the object store.
 
 Run `./sdg-data-on-s3.py upload --help` to see all available options.
 
-### Creating the Kubernetes Secret
+### Creating the Kubernetes Secret for S3 Details
 
 The simplest method to supply the script with the required information for retrieving SDG data is by
 creating a Kubernetes secret. In the example below, we create a secret called `sdg-data` within the
@@ -167,13 +184,6 @@ stringData:
   secret_key: *****
   data_key: data.tar.gz
 EOF
-
-./standalone run \
-  --namespace my-namespace \
-  --judge-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
-  --judge-serving-model-name my-model \
-  --judge-serving-model-api-key ***** \
-  --sdg-object-store-secret sdg-data
 ```
 
 > [!WARNING]
@@ -190,42 +200,45 @@ The list of all supported keys:
 * `endpoint`: The endpoint of the object store, e.g: https://s3.openshift-storage.svc:443 - **Optional**
 * `region`: The region of the object store - **Optional**
 
-> [!NOTE]
-> The `--judge-serving-endpoint` and `--judge-serving-model-name` values will be stored in a ConfigMap
-> named `judge-serving-details` in the same namespace as the resources that the script interacts
-> with. (in this case, `my-namespace`)
-> The `--judge-serving-model-api-key` value will be stored in a secret named `judge-serving-details`
-> in the same namespace as the resources that the script interacts with. (in this case, `my-namespace`)
-
 #### Running the Script Without Kubernetes Secret
 
 Alternatively, you can provide the necessary information directly via CLI options or environment,
 the script will use the provided information to fetch the SDG data and create its own Kubernetes
 Secret named `sdg-object-store-credentials` in the same namespace as the resources it interacts with (in this case, `my-namespace`).
 
-
 ```bash
-./standalone run \
+export JUDGE_SERVING_MODEL_API_KEY=********
+
+./standalone.py run \
   --namespace my-namespace \
   --judge-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
   --judge-serving-model-name my-model \
-  --judge-serving-model-api-key ***** \
   --sdg-object-store-access-key key \
   --sdg-object-store-secret-key key \
   --sdg-object-store-bucket sdg-data \
   --sdg-object-store-data-key data.tar.gz
 ```
 
+### Judge Model Details
+
+A judge model is assumed to be running external to the script. This is used for model evaluation. At this time, judge model details
+must be passed as either environment variables or CLI options.
+
+* The `--judge-serving-endpoint` and `--judge-serving-model-name` values will be stored in a ConfigMap named `judge-serving-details` in the same namespace as the resources that the script interacts with.
+* `--judge-serving-model-api-key` or environment variable `JUDGE_SERVING_MODEL_API_KEY` value will be stored in a secret named `judge-serving-details` in the same namespace as the resources that the script interacts with.
+* In all examples, the `JUDGE_SERVING_MODEL_API_KEY` environment variable is exported rather than setting the CLI option.
+
 #### Advanced Configuration Using an S3-Compatible Object Store
 
 If you don't use the official AWS S3 endpoint, you can provide additional information about the object store:
 
 ```bash
-./standalone run \
+export JUDGE_SERVING_MODEL_API_KEY=********
+
+./standalone.py run \
   --namespace my-namespace \
   --judge-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
   --judge-serving-model-name my-model \
-  --judge-serving-model-api-key ***** \
   --sdg-object-store-access-key key \
   --sdg-object-store-secret-key key \
   --sdg-object-store-bucket sdg-data \
