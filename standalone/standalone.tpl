@@ -60,6 +60,8 @@ PYTORCH_NNODES = 2
 MT_BENCH_OUTPUT_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-results.txt")
 MT_BENCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-best.txt")
 MT_BENCH_BRANCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-branch-best.txt")
+MMLU_BRANCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mmlu-branch-best.txt")
+CANDIDATE_MODEL_PATH = path.join(DATA_PVC_OUTPUT_PATH, "hf_format/candidate_model")
 SDG_OBJECT_STORE_SECRET_NAME = "sdg-object-store-credentials"
 KFP_MODEL_SERVER_CM = """
 # TODO: remove the following line and replace it with the actual ConfigMap/Secret
@@ -253,7 +255,10 @@ if [ "$STRATEGY" == "upload" ]; then
     echo "Final data tarball path: $FINAL_DATA_TAR_PATH"
     echo "Final data tarball file: $FINAL_DATA_TAR_FILE"
     echo "Archiving data before pushing to the object store"
-    tar --create --gzip --verbose --file "$FINAL_DATA_TAR_PATH" {mt_bench_output_path} {mt_bench_scores_path} {mt_bench_branch_scores_path} {data_pvc_mount_path}/model
+    tar --create \
+      --gzip \
+      --verbose \
+      --file "$FINAL_DATA_TAR_PATH" {mt_bench_output_path} {mt_bench_scores_path} {mt_bench_branch_scores_path} {mmlu_branch_scores_path} {candidate_model_path}
     # TODO: change model path for the final model!!!
 fi
 
@@ -828,11 +833,7 @@ def run(
         scores = json.loads(scores)
         logger.info("Best model: %s", scores.get("best_model"))
         ctx.obj["candidate_model"] = scores.get("best_model")
-
-        # Push the best model to S3
-        # TODO
         logger.info("instructLab Training Finished!")
-        return 0
 
         # Push the best model to S3
         ctx.invoke(upload_trained_model)
@@ -1083,6 +1084,8 @@ def create_data_job(
                 mt_bench_output_path=MT_BENCH_OUTPUT_PATH,
                 mt_bench_scores_path=MT_BENCH_SCORES_PATH,
                 mt_bench_branch_scores_path=MT_BENCH_BRANCH_SCORES_PATH,
+                mmlu_branch_scores_path=MMLU_BRANCH_SCORES_PATH,
+                candidate_model_path=CANDIDATE_MODEL_PATH,
             )
         ],
         volume_mounts=get_vol_mount(),

@@ -60,6 +60,8 @@ PYTORCH_NNODES = 2
 MT_BENCH_OUTPUT_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-results.txt")
 MT_BENCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-best.txt")
 MT_BENCH_BRANCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-branch-best.txt")
+MMLU_BRANCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mmlu-branch-best.txt")
+CANDIDATE_MODEL_PATH = path.join(DATA_PVC_OUTPUT_PATH, "hf_format/candidate_model")
 SDG_OBJECT_STORE_SECRET_NAME = "sdg-object-store-credentials"
 KFP_MODEL_SERVER_CM = """
 # TODO: remove the following line and replace it with the actual ConfigMap/Secret
@@ -268,7 +270,10 @@ if [ "$STRATEGY" == "upload" ]; then
     echo "Final data tarball path: $FINAL_DATA_TAR_PATH"
     echo "Final data tarball file: $FINAL_DATA_TAR_FILE"
     echo "Archiving data before pushing to the object store"
-    tar --create --gzip --verbose --file "$FINAL_DATA_TAR_PATH" {mt_bench_output_path} {mt_bench_scores_path} {mt_bench_branch_scores_path} {data_pvc_mount_path}/model
+    tar --create \
+      --gzip \
+      --verbose \
+      --file "$FINAL_DATA_TAR_PATH" {mt_bench_output_path} {mt_bench_scores_path} {mt_bench_branch_scores_path} {mmlu_branch_scores_path} {candidate_model_path}
     # TODO: change model path for the final model!!!
 fi
 
@@ -843,11 +848,7 @@ def run(
         scores = json.loads(scores)
         logger.info("Best model: %s", scores.get("best_model"))
         ctx.obj["candidate_model"] = scores.get("best_model")
-
-        # Push the best model to S3
-        # TODO
         logger.info("instructLab Training Finished!")
-        return 0
 
         # Push the best model to S3
         ctx.invoke(upload_trained_model)
@@ -1271,6 +1272,8 @@ data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/data/data", mode
                 mt_bench_output_path=MT_BENCH_OUTPUT_PATH,
                 mt_bench_scores_path=MT_BENCH_SCORES_PATH,
                 mt_bench_branch_scores_path=MT_BENCH_BRANCH_SCORES_PATH,
+                mmlu_branch_scores_path=MMLU_BRANCH_SCORES_PATH,
+                candidate_model_path=CANDIDATE_MODEL_PATH,
             )
         ],
         volume_mounts=get_vol_mount(),
@@ -1831,7 +1834,7 @@ def run_final_eval_op(
 
     # MMLU_BRANCH
 
-    # This is very specific to `ilab generate`, necessary because the data generation and
+    # This is very specific to 'ilab generate', necessary because the data generation and
     # model evaluation are taking place in separate environments.
     def update_test_lines_in_files(base_dir):
         import os
@@ -1877,7 +1880,7 @@ def run_final_eval_op(
                 if regex.search(directory):
                     matching_dirs.append(os.path.join(root, directory))
 
-        # From `ilab sdg` the knowledge_*_task.yaml files have a line that references where the SDG took place.
+        # From 'ilab sdg' the knowledge_*_task.yaml files have a line that references where the SDG took place.
         # This needs to be updated to run elsewhere.
         # The line is:
         #    test: /path/to/where/sdg/occured/node_datasets_*
@@ -2105,7 +2108,7 @@ def run_final_eval_op(
         json.dump(mt_bench_branch_data, f, indent=4)
 """
     exec_run_final_eval_op_args = """
-run_final_eval_op(candidate_model='/data/model/output/hf_format/candidate_model', taxonomy='/data/taxonomy', tasks='/data/generated', base_branch='', candidate_branch='', device=None, base_model_dir='/model/model', max_workers='auto', merge_system_user_message=False, model_dtype='bfloat16', few_shots=5, batch_size=8)
+run_final_eval_op(mmlu_branch_output='/data/mmlu-branch-best.txt',mt_bench_branch_output='/data/mt-bench-branch-best.txt',candidate_model='/data/model/output/hf_format/candidate_model', taxonomy='/data/taxonomy', tasks='/data/generated', base_branch='', candidate_branch='', device=None, base_model_dir='/data/model', max_workers='auto', merge_system_user_message=False, model_dtype='bfloat16', few_shots=5, batch_size=8)
 """
 
     if eval_type == "mt-bench":

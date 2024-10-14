@@ -1101,7 +1101,7 @@ deploymentSpec:
           \        if gpu_available\n        else \"No GPU available\"\n    )\n  \
           \  gpu_count = torch.cuda.device_count() if gpu_available else 0\n\n   \
           \ print(f\"GPU Available: {gpu_available}, Using: {gpu_name}\")\n\n    #\
-          \ MMLU_BRANCH\n\n    # This is very specific to `ilab generate`, necessary\
+          \ MMLU_BRANCH\n\n    # This is very specific to 'ilab generate', necessary\
           \ because the data generation and\n    # model evaluation are taking place\
           \ in separate environments.\n    def update_test_lines_in_files(base_dir):\n\
           \        import os\n        import re\n\n        # Define the regex to match\
@@ -1126,7 +1126,7 @@ deploymentSpec:
           \ = []\n        regex = re.compile(pattern)\n\n        for root, dirs, files\
           \ in os.walk(base_dir):\n            for directory in dirs:\n          \
           \      if regex.search(directory):\n                    matching_dirs.append(os.path.join(root,\
-          \ directory))\n\n        # From `ilab sdg` the knowledge_*_task.yaml files\
+          \ directory))\n\n        # From 'ilab sdg' the knowledge_*_task.yaml files\
           \ have a line that references where the SDG took place.\n        # This\
           \ needs to be updated to run elsewhere.\n        # The line is:\n      \
           \  #    test: /path/to/where/sdg/occured/node_datasets_*\n        # TODO:\
