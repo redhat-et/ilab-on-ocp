@@ -195,7 +195,7 @@ def run_final_eval_op(
 
     # MMLU_BRANCH
 
-    # This is very specific to `ilab generate`, necessary because the data generation and
+    # This is very specific to 'ilab generate', necessary because the data generation and
     # model evaluation are taking place in separate environments.
     def update_test_lines_in_files(base_dir):
         import os
@@ -241,7 +241,7 @@ def run_final_eval_op(
                 if regex.search(directory):
                     matching_dirs.append(os.path.join(root, directory))
 
-        # From `ilab sdg` the knowledge_*_task.yaml files have a line that references where the SDG took place.
+        # From 'ilab sdg' the knowledge_*_task.yaml files have a line that references where the SDG took place.
         # This needs to be updated to run elsewhere.
         # The line is:
         #    test: /path/to/where/sdg/occured/node_datasets_*
