@@ -34,7 +34,7 @@ The `standalone.py` script is designed to run within a Kubernetes environment. T
       * Configure S3 details via CLI options, environment variables, or Kubernetes secret.
   * Train model with `train` subcommand.
   * Evaluate model by running MT_Bench with `evaluation` subcommand along with `--eval-type mt-bench` option.
-  * Final model evaluation with `evaluation` subcommand along with `--eval-type final-eval` option.
+  * Final model evaluation with `evaluation` subcommand along with `--eval-type final` option.
       * Final evaluation runs both MT Bench_Branch and MMLU_Branch
   * Push the final model back to the object store -  same location as the SDG data with `upload-trained-model` subcommand.
 
@@ -124,7 +124,7 @@ evaluation
 * `--training-1-epoch-num`: The number of epochs to train the model for phase 1. **Optional** - Default: 7.
 * `--training-2-epoch-num`: The number of epochs to train the model for phase 2. **Optional** -
   Default: 10.
-* `--eval-type`: The evaluation type to use. **Optional** - Default: `mt-bench`.
+* `--eval-type`: The evaluation type to use. **Optional** - Default: `mt-bench`. Available options: `mt-bench`, `final`.
 
 
 ## Example Workflow with Synthetic Data Generation (SDG)

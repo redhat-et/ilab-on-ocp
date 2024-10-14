@@ -61,8 +61,12 @@ MT_BENCH_OUTPUT_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-results.txt")
 MT_BENCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-best.txt")
 MT_BENCH_BRANCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-branch-best.txt")
 MMLU_BRANCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mmlu-branch-best.txt")
-CANDIDATE_MODEL_PATH = path.join(DATA_PVC_OUTPUT_PATH, "hf_format/candidate_model")
+CANDIDATE_MODEL_PATH = path.join(
+    DATA_PVC_MOUNT_PATH, "model/output/phase_2/hf_format/candidate_model"
+)
 SDG_OBJECT_STORE_SECRET_NAME = "sdg-object-store-credentials"
+EVAL_TYPE_MT_BENCH = "mt-bench"
+EVAL_TYPE_FINAL = "final"
 KFP_MODEL_SERVER_CM = """
 # TODO: remove the following line and replace it with the actual ConfigMap/Secret
 {{kfp_model_server_cm}}
@@ -250,22 +254,65 @@ if [ "$STRATEGY" == "download" ]; then
 fi
 
 if [ "$STRATEGY" == "upload" ]; then
-    export FINAL_DATA_TAR_FILE="final.$SDG_OBJECT_STORE_DATA_KEY"
+    export FINAL_DATA_TAR_FILE="$(date +"%Y-%m-%d_%H-%M-%S").$SDG_OBJECT_STORE_DATA_KEY"
     export FINAL_DATA_TAR_PATH="{data_pvc_mount_path}/$FINAL_DATA_TAR_FILE"
     echo "Final data tarball path: $FINAL_DATA_TAR_PATH"
     echo "Final data tarball file: $FINAL_DATA_TAR_FILE"
     echo "Archiving data before pushing to the object store"
+    # Use '--ignore-failed-read' to ignore missing files, needed when no MMLU tasks directories are found MMLU_branch is skipped
+    # So '{mmlu_branch_scores_path}' will not exist
     tar --create \
       --gzip \
       --verbose \
+      --ignore-failed-read \
       --file "$FINAL_DATA_TAR_PATH" {mt_bench_output_path} {mt_bench_scores_path} {mt_bench_branch_scores_path} {mmlu_branch_scores_path} {candidate_model_path}
-    # TODO: change model path for the final model!!!
 fi
 
 tmp=$(mktemp -d)
 cat <<EOF > "$tmp"/s3.py
 import os
 import boto3
+import sys
+import threading
+
+# Credit: https://gist.github.com/egeulgen/538aadc90275d79d514a5bacc4d5694e
+class ProgressPercentage(object):
+    ''' Progress Class
+    Class for calculating and displaying download progress
+    '''
+    def __init__(self, client, bucket, filename):
+        ''' Initialize
+        initialize with: file name, file size and lock.
+        Set seen_so_far to 0. Set progress bar length
+        '''
+        self._filename = filename
+        self._size = float(os.path.getsize(filename)) if os.getenv('STRATEGY') == 'upload' else client.head_object(Bucket=bucket, Key=filename)['ContentLength']
+        self._seen_so_far = 0
+        self._lock = threading.Lock()
+        self.prog_bar_len = 80
+
+    def __call__(self, bytes_amount):
+        ''' Call
+        When called, increments seen_so_far by bytes_amount,
+        calculates percentage of seen_so_far/total file size
+        and prints progress bar.
+        '''
+        # To simplify we'll assume this is hooked up to a single filename.
+        with self._lock:
+            self._seen_so_far += bytes_amount
+            ratio = round((float(self._seen_so_far) / float(self._size)) * (self.prog_bar_len - 6), 1)
+            current_length = int(round(ratio))
+
+            percentage = round(100 * ratio / (self.prog_bar_len - 6), 1)
+
+            bars = '+' * current_length
+            output = bars + ' ' * (self.prog_bar_len - current_length - len(str(percentage)) - 1) + str(percentage) + '%'
+
+            if self._seen_so_far != self._size:
+                sys.stdout.write(output + '\\r')
+            else:
+                sys.stdout.write(output + '\\n')
+            sys.stdout.flush()
 
 def str_to_bool(s):
     if s is None:
@@ -289,7 +336,8 @@ def download_s3_file():
     s3_key = os.getenv('SDG_OBJECT_STORE_DATA_KEY')
     output_file = '{data_pvc_mount_path}/data.tar.gz'
 
-    s3.download_file(bucket_name, s3_key, output_file)
+    progress = ProgressPercentage(s3, bucket_name, s3_key)
+    s3.download_file(bucket_name, s3_key, output_file, Callback=progress)
 
 def upload_s3_file():
     s3 = build_boto3_client()
@@ -298,7 +346,8 @@ def upload_s3_file():
     s3_key = os.getenv('FINAL_DATA_TAR_FILE')
     input_file = os.getenv('FINAL_DATA_TAR_PATH')
 
-    s3.upload_file(input_file, bucket_name, s3_key)
+    progress = ProgressPercentage(s3, bucket_name, input_file)
+    s3.upload_file(input_file, bucket_name, s3_key, Callback=progress)
 
 if __name__ == "__main__":
     if os.getenv('STRATEGY') == 'download':
@@ -602,7 +651,7 @@ def show(
 @click.option(
     "--eval-type",
     help="Type of evaluation to run",
-    type=click.Choice(["mt-bench", "final-eval"]),
+    type=click.Choice([EVAL_TYPE_MT_BENCH, EVAL_TYPE_FINAL]),
     hidden=True,
 )
 @click.option(
@@ -821,19 +870,16 @@ def run(
         ctx.invoke(train)
 
         # Evaluation of phase 2 with MT-Bench
-        ctx.obj["eval_type"] = "mt-bench"
+        ctx.obj["eval_type"] = EVAL_TYPE_MT_BENCH
         scores = ctx.invoke(evaluation)
         scores = json.loads(scores)
         logger.info("Best model: %s", scores.get("best_model"))
         ctx.obj["candidate_model"] = scores.get("best_model")
 
         # Final evaluation
-        ctx.obj["eval_type"] = "final-eval"
-        scores = ctx.invoke(evaluation)
-        scores = json.loads(scores)
-        logger.info("Best model: %s", scores.get("best_model"))
-        ctx.obj["candidate_model"] = scores.get("best_model")
-        logger.info("instructLab Training Finished!")
+        ctx.obj["eval_type"] = EVAL_TYPE_FINAL
+        ctx.invoke(evaluation)
+        logger.info("InstructLab Training Finished!")
 
         # Push the best model to S3
         ctx.invoke(upload_trained_model)
@@ -1060,6 +1106,8 @@ def create_data_job(
         namespace (str): The namespace in which the job will be created.
         job_name (str): The name of the job.
         sdg_object_store_secret (str): The name of the Kubernetes Secret containing the SDG object store credentials.
+        strategy (str): The strategy to use to fetch the data. Either "download" or "upload".
+        force_pull (bool): Force pull the data from the object store even if it already exists in the PVC.
 
     Returns:
         kubernetes.client.V1Job: A Kubernetes Job object configured with the specified parameters.
@@ -1224,7 +1272,6 @@ def create_data_job(
 
 def create_eval_job(
     namespace: str,
-    job_name: str,
     eval_type: str,
     nproc_per_node: int = 1,
 ) -> kubernetes.client.V1Job:
@@ -1235,11 +1282,14 @@ def create_eval_job(
 
     Args:
         namespace (str): The namespace in which the job will be created.
-        job_name (str): The name of the job.
+        eval_type (str): The type of evaluation to run.
+        nproc_per_node (int): The number of processes per node.
 
     Returns:
         kubernetes.client.V1Job: A Kubernetes Job object configured with the specified parameters.
     """
+
+    job_name = f"eval-{eval_type}"
 
     # if eval_type == "mmlu":
     #     init_containers = [
@@ -1315,7 +1365,7 @@ def create_eval_job(
             security_context=get_security_context(),
             volume_mounts=get_vol_mount(),
         )
-    elif eval_type == "final-eval":
+    elif eval_type == EVAL_TYPE_FINAL:
         init_containers = [
             kubernetes.client.V1Container(
                 name=f"run-eval-{eval_type}",
@@ -1477,10 +1527,18 @@ def run_job(namespace: str, job: kubernetes.client.V1Job) -> str:
             )
             # On success return the logs of the last pod which contains the output
             # (useful to get eval scores)
-            pod_log = core_v1.read_namespaced_pod_log(
-                name=pods.items[0].metadata.name, namespace=namespace
-            )
+            if pods.items:
+                pod_log = core_v1.read_namespaced_pod_log(
+                    name=pods.items[0].metadata.name, namespace=namespace
+                )
+            else:
+                logger.error(
+                    "No pods found for job %s. The job exists, but the pods are missing.",
+                    job.metadata.name,
+                )
+                pod_log = None
             w.stop()
+            break
         elif job_event.status.failed == 1:
             logger.error("Job failed. Pod logs:")
             pods = core_v1.list_namespaced_pod(
@@ -1494,6 +1552,8 @@ def run_job(namespace: str, job: kubernetes.client.V1Job) -> str:
                 log_pod_containers(pod, "containers", namespace)
             w.stop()
             raise RuntimeError("Job failed.")
+        else:
+            logger.info("Job still running. Waiting for the next event.")
 
     return pod_log
 
@@ -1810,7 +1870,7 @@ def sdg_data_fetch(
     # Create the job to run the pod to execute the SDG data fetch
     job = create_data_job(
         namespace=namespace,
-        job_name="data-fetch",
+        job_name="data-download",
         sdg_object_store_secret=sdg_object_store_secret,
         strategy="download",
         force_pull=force_pull,
@@ -1818,7 +1878,9 @@ def sdg_data_fetch(
 
     # Run the job
     run_job(namespace, job)
-    logger.info("SDG fetch completed.")
+    logger.info(
+        "SDG data, model to train and taxonomy tree were successfully downloaded."
+    )
 
 
 @run.command(name="train")
@@ -1896,23 +1958,31 @@ def train(
         namespace=namespace,
         plural="pytorchjobs",
     ):
-        job_event = event["object"]
+        pytorchjob_event = event["object"]
         if (
-            job_event["metadata"]["name"]
+            pytorchjob_event["metadata"]["name"]
             != pytorch_training_job_yaml["metadata"]["name"]
         ):
             continue
-        job_name = job_event["metadata"]["name"]
+        pytorchjob_name = pytorchjob_event["metadata"]["name"]
 
-        if "status" not in job_event or "conditions" not in job_event["status"]:
+        if (
+            "status" not in pytorchjob_event
+            or "conditions" not in pytorchjob_event["status"]
+        ):
             continue
         logger.info(
-            "Job: %s - %s",
-            job_name,
-            job_event["status"].get("conditions", "No conditions yet"),
+            "PytorchJob: %s - %s",
+            pytorchjob_name,
+            pytorchjob_event["status"].get("conditions", "No conditions yet"),
         )
 
-        for job_condition in job_event["status"]["conditions"]:
+        master_pod_success = False
+        worker_pod_success = False
+        # Always start by the last condition so that if the job is completed, we can stop watching
+        # If we don't do this, we might get 'stuck' into the Running condition and never stop watching
+        for job_condition in reversed(pytorchjob_event["status"]["conditions"]):
+            print(job_condition)
             if job_condition["type"] == "Running":
                 # now watch for pod event
                 for event in w.stream(
@@ -1921,7 +1991,7 @@ def train(
                     label_selector=f"training.kubeflow.org/job-name=train-phase-{training_phase}",
                 ):
                     pod_event = event["object"]
-                    if pod_event.metadata.name.startswith(job_name):
+                    if pod_event.metadata.name.startswith(pytorchjob_name):
                         logger.info(
                             "Pod: %s - %s",
                             pod_event.metadata.name,
@@ -1943,15 +2013,48 @@ def train(
                         if pod_event.status.phase == "Failed":
                             log_pod_containers(pod_event, "init_containers", namespace)
                             log_pod_containers(pod_event, "containers", namespace)
-            if job_condition["type"] == "Succeeded":
+                            w.stop()
+                        if pod_event.status.phase == "Succeeded":
+                            if pod_event.metadata.name.startswith(
+                                f"{pytorchjob_name}-master"
+                            ):
+                                master_pod_success = True
+                                logger.info(
+                                    "Pod '%s' completed successfully",
+                                    pod_event.metadata.name,
+                                )
+                            elif pod_event.metadata.name.startswith(
+                                f"{pytorchjob_name}-worker"
+                            ):
+                                logger.info(
+                                    "Pod '%s' completed successfully",
+                                    pod_event.metadata.name,
+                                )
+                                worker_pod_success = True
+                            if master_pod_success and worker_pod_success:
+                                logger.info(
+                                    "All PytorchJob Pods completed successfully"
+                                )
+                                w.stop()
+                                # Break here to avoid going into other conditions, we are done
+                                break
+                            continue
+            elif job_condition["type"] == "Succeeded":
                 logger.info(
-                    "Job '%s' completed successfully: %s",
-                    job_name,
+                    "PytorchJob '%s' completed successfully: %s",
+                    pytorchjob_name,
                     job_condition["reason"],
                 )
+                logger.info("Training phase %s completed.", training_phase)
                 w.stop()
+                # Break here to avoid going into other conditions, we are done
+                break
             elif job_condition["type"] == "Failed":
-                logger.error("Job' %s' failed: %s", job_name, job_condition["reason"])
+                logger.error(
+                    "PytorchJob' %s' failed: %s",
+                    pytorchjob_name,
+                    job_condition["reason"],
+                )
                 w.stop()
                 raise RuntimeError("Job failed.")
 
@@ -1973,26 +2076,29 @@ def evaluation(ctx: click.Context) -> str:
     eval_type = ctx.obj["eval_type"]
 
     if eval_type is None:
-        raise ValueError("Evaluation type must be provided with --eval-type=[mt-bench]")
+        raise ValueError(
+            "Evaluation type must be provided with --eval-type=[mt-bench|final]"
+        )
 
     logger.info("Running %s evaluation.", eval_type)
 
     # Create and run the evaluation job
-    job = create_eval_job(
-        namespace=namespace, job_name=f"eval-{eval_type}", eval_type=eval_type
-    )
+    job = create_eval_job(namespace=namespace, eval_type=eval_type)
     scores = run_job(namespace, job)
-    scores = scores.replace("'", '"')
 
-    try:
-        scores_data = json.loads(scores)
-        if isinstance(scores_data, dict):
-            scores = json.dumps(scores_data)
-        else:
-            raise ValueError("Unexpected format for scores data")
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse scores: %s", e)
-        raise
+    if eval_type == EVAL_TYPE_MT_BENCH:
+        scores = scores.replace("'", '"')
+        try:
+            scores_data = json.loads(scores)
+            if isinstance(scores_data, dict):
+                scores = json.dumps(scores_data)
+            else:
+                raise ValueError("Unexpected format for scores data")
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse scores: %s", e)
+            raise
+
+        return scores
 
     logger.info("Evaluation scores: %s", scores)
 
