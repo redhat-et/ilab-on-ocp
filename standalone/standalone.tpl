@@ -25,6 +25,7 @@ import base64
 import json
 import logging
 import typing
+from ast import literal_eval
 from os import path
 from urllib.parse import urlparse
 
@@ -914,13 +915,16 @@ def create_sdg_job(
     exec_data_processing_op_args = """
 {{exec_data_processing_op_args}}
 """
+    exec_git_clone_op_args = literal_eval("""
+{{exec_git_clone_op_args}}
+""")
 
     init_containers = [
         kubernetes.client.V1Container(
             name="sdg-op-fetch-taxonomy-data",
             image="{{exec_git_clone_op_image}}",
             command=["/bin/sh", "-c"],
-            args={{exec_git_clone_op_args}},
+            args=exec_git_clone_op_args,
             volume_mounts=get_vol_mount(),
             security_context=get_security_context(),
         ),

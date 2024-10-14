@@ -25,6 +25,7 @@ import base64
 import json
 import logging
 import typing
+from ast import literal_eval
 from os import path
 from urllib.parse import urlparse
 
@@ -1036,15 +1037,16 @@ def data_processing_op(
     exec_data_processing_op_args = """
 data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/data/data", model="/data/model", processed_data="/data/processed_data")
 """
+    exec_git_clone_op_args = literal_eval("""
+['git clone {exec_git_clone_op_repo_url} {TAXONOMY_PATH} && cd {TAXONOMY_PATH} && if [ -n "{exec_git_clone_op_repo_branch}" ]; then git fetch origin {exec_git_clone_op_repo_branch} && git checkout {exec_git_clone_op_repo_branch}; elif [ -n "{exec_git_clone_op_repo_pr}" ] && [ {exec_git_clone_op_repo_pr} -gt 0 ]; then git fetch origin pull/{exec_git_clone_op_repo_pr}/head:{exec_git_clone_op_repo_pr} && git checkout {exec_git_clone_op_repo_pr}; fi ']
+""")
 
     init_containers = [
         kubernetes.client.V1Container(
             name="sdg-op-fetch-taxonomy-data",
             image="registry.access.redhat.com/ubi9/toolbox",
             command=["/bin/sh", "-c"],
-            args=[
-                'git clone {exec_git_clone_op_repo_url} {TAXONOMY_PATH} && cd {TAXONOMY_PATH} && if [ -n "{exec_git_clone_op_repo_branch}" ]; then git fetch origin {exec_git_clone_op_repo_branch} && git checkout {exec_git_clone_op_repo_branch}; elif [ -n "{exec_git_clone_op_repo_pr}" ] && [ {exec_git_clone_op_repo_pr} -gt 0 ]; then git fetch origin pull/{exec_git_clone_op_repo_pr}/head:{exec_git_clone_op_repo_pr} && git checkout {exec_git_clone_op_repo_pr}; fi '
-            ],
+            args=exec_git_clone_op_args,
             volume_mounts=get_vol_mount(),
             security_context=get_security_context(),
         ),
