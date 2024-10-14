@@ -6,8 +6,12 @@ name = "pypi"
 [packages]
 kfp = {extras = ["kubernetes"], version = "*"}
 click = "*"
+ruff = "*"
+pyyaml = "*"
+kubernetes = "*"
+pre-commit = "*"
 
 [dev-packages]
 
 [requires]
-python_version = "3.11"
+python_version = "3.12"

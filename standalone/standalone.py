@@ -15,7 +15,7 @@ Dependencies:
     click: A package for creating command-line interfaces.
 
 TODO:
-    - Make sure ressources get cleaned up after the job is done. (configmap, secret etc) using a
+    - Make sure resources get cleaned up after the job is done. (configmap, secret etc) using a
       finalizer.
     - See if we can use KServe to deploy the model and serve it for SDG Data Generation.
       kubernetes_yaml/mixtral_serve/mixtral_serve.yaml
