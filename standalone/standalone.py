@@ -1705,6 +1705,51 @@ run_mt_bench_op(best_score_file="/data/mt-bench-best.txt",mt_bench_output="/data
     return job
 
 
+def log_pod_containers(
+    pod: kubernetes.client.V1Pod, container_type: str, namespace: str
+):
+    """
+    Logs the output of containers in a given pod.
+
+    Args:
+        pod (kubernetes.client.V1Pod): The pod object containing the containers.
+        container_type (str): The type of containers to log (e.g., 'containers', 'init_containers').
+        namespace (str): The namespace in which the pod is located.
+
+    Returns:
+        None
+
+    Logs:
+        Logs the output of each container in the specified pod to the logger. If the container logs
+        cannot be retrieved
+
+    Raises:
+        kubernetes.client.rest.ApiException: If there is an error other than a 400 status error when retrieving the logs.
+        due to a 400 status error, it continues to the next container.
+    """
+    core_v1 = kubernetes.client.CoreV1Api()
+    containers = getattr(pod.spec, container_type)
+    if containers is None:
+        return
+    for container in containers:
+        try:
+            pod_log = core_v1.read_namespaced_pod_log(
+                name=pod.metadata.name,
+                namespace=namespace,
+                container=container.name,
+            )
+            logger.error(
+                "Logs for pod %s, %s %s:\n%s",
+                pod.metadata.name,
+                container_type[:-1],  # Remove the trailing 's'
+                container.name,
+                pod_log,
+            )
+        except kubernetes.client.rest.ApiException as exc:
+            if exc.status == 400:
+                continue
+
+
 def run_job(namespace: str, job: kubernetes.client.V1Job) -> str:
     """
     Create and run a Kubernetes job in the specified namespace, and wait for its completion.
@@ -1770,32 +1815,8 @@ def run_job(namespace: str, job: kubernetes.client.V1Job) -> str:
                 ),
             )
             for pod in pods.items:
-
-                def log_pod_containers(pod, container_type):
-                    containers = getattr(pod.spec, container_type)
-                    # If there are no containers, skip (e.g. noinit_containers)
-                    if containers is None:
-                        return
-                    for container in containers:
-                        try:
-                            pod_log = core_v1.read_namespaced_pod_log(
-                                name=pod.metadata.name,
-                                namespace=namespace,
-                                container=container.name,
-                            )
-                            logger.error(
-                                "Logs for pod %s, %s %s:\n%s",
-                                pod.metadata.name,
-                                container_type[:-1],  # Remove the trailing 's'
-                                container.name,
-                                pod_log,
-                            )
-                        except kubernetes.client.rest.ApiException as exc:
-                            if exc.status == 400:
-                                continue
-
-                log_pod_containers(pod, "init_containers")
-                log_pod_containers(pod, "containers")
+                log_pod_containers(pod, "init_containers", namespace)
+                log_pod_containers(pod, "containers", namespace)
             w.stop()
             raise RuntimeError("Job failed.")
 
@@ -2191,6 +2212,7 @@ def train(
             raise
 
     # Get the CR status and wait for it to be completed
+    core_v1 = kubernetes.client.CoreV1Api()
     w = kubernetes.watch.Watch()
     for event in w.stream(
         api.list_namespaced_custom_object,
@@ -2215,15 +2237,46 @@ def train(
             job_event["status"].get("conditions", "No conditions yet"),
         )
 
-        # TODO: check pod status to exit if training pods are failing
-        for condition in job_event["status"]["conditions"]:
-            if condition["type"] == "Succeeded":
+        for job_condition in job_event["status"]["conditions"]:
+            if job_condition["type"] == "Running":
+                # now watch for pod event
+                for event in w.stream(
+                    core_v1.list_namespaced_pod,
+                    namespace=namespace,
+                    label_selector=f"training.kubeflow.org/job-name=train-phase-{training_phase}",
+                ):
+                    pod_event = event["object"]
+                    if pod_event.metadata.name.startswith(job_name):
+                        logger.info(
+                            "Pod: %s - %s",
+                            pod_event.metadata.name,
+                            pod_event.status.phase,
+                        )
+                        for container_status in pod_event.status.container_statuses:
+                            if (
+                                container_status.state.waiting
+                                and container_status.state.waiting.reason
+                                == "CrashLoopBackOff"  # We fail on CrashLoopBackOff and not on Error, allowing for retries
+                            ):
+                                log_pod_containers(
+                                    pod_event, "init_containers", namespace
+                                )
+                                log_pod_containers(pod_event, "containers", namespace)
+                                raise RuntimeError(
+                                    f"Pod {pod_event.metadata.name} failed."
+                                )
+                        if pod_event.status.phase == "Failed":
+                            log_pod_containers(pod_event, "init_containers", namespace)
+                            log_pod_containers(pod_event, "containers", namespace)
+            if job_condition["type"] == "Succeeded":
                 logger.info(
-                    "Job '%s' completed successfully: %s", job_name, condition["reason"]
+                    "Job '%s' completed successfully: %s",
+                    job_name,
+                    job_condition["reason"],
                 )
                 w.stop()
-            elif condition["type"] == "Failed":
-                logger.error("Job' %s' failed: %s", job_name, condition["reason"])
+            elif job_condition["type"] == "Failed":
+                logger.error("Job' %s' failed: %s", job_name, job_condition["reason"])
                 w.stop()
                 raise RuntimeError("Job failed.")
 
