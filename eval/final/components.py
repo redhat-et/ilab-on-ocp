@@ -34,14 +34,90 @@ def run_final_eval_op(
     import os
 
     import torch
-    from helpers import (
-        VLLM_SERVER,
-        launch_vllm,
-        stop_vllm,
-    )
     from instructlab.eval.mmlu import MMLU_TASKS, MMLUBranchEvaluator
     from instructlab.eval.mt_bench import MTBenchBranchEvaluator
     from instructlab.model.evaluate import qa_pairs_to_qna_to_avg_scores, sort_score
+
+    VLLM_SERVER = "http://localhost:8000/v1"
+
+    print("Starting Final Eval...")
+
+    def launch_vllm(
+        model_path: str, gpu_count: int, retries: int = 120, delay: int = 10
+    ):
+        import subprocess
+        import sys
+        import time
+
+        import requests
+
+        command = [
+            sys.executable,
+            "-m",
+            "vllm.entrypoints.openai.api_server",
+            "--model",
+            model_path,
+        ]
+        if gpu_count > 0:
+            command += [
+                "--tensor-parallel-size",
+                str(gpu_count),
+            ]
+
+        subprocess.Popen(args=command)
+
+        print(f"Waiting for vLLM server to start at {VLLM_SERVER}...")
+
+        for attempt in range(retries):
+            try:
+                response = requests.get(f"{VLLM_SERVER}/models")
+                if response.status_code == 200:
+                    print(f"vLLM server is up and running at {VLLM_SERVER}.")
+                    return
+            except requests.ConnectionError:
+                pass
+
+            print(
+                f"Server not available yet, retrying in {delay} seconds (Attempt {attempt + 1}/{retries})..."
+            )
+            time.sleep(delay)
+
+        raise RuntimeError(
+            f"Failed to start vLLM server at {VLLM_SERVER} after {retries} retries."
+        )
+
+    # This seems like excessive effort to stop the vllm process, but merely saving & killing the pid doesn't work
+    # Also, the base image does not include 'pkill' cmd, so can't pkill -f vllm.entrypoints.openai.api_server either
+    def stop_vllm():
+        import psutil
+
+        for process in psutil.process_iter(attrs=["pid", "name", "cmdline"]):
+            cmdline = process.info.get("cmdline")
+            if cmdline and "vllm.entrypoints.openai.api_server" in cmdline:
+                print(
+                    f"Found vLLM server process with PID: {process.info['pid']}, terminating..."
+                )
+                try:
+                    process.terminate()  # Try graceful termination
+                    process.wait(timeout=5)  # Wait a bit for it to terminate
+                    if process.is_running():
+                        print(
+                            f"Forcefully killing vLLM server process with PID: {process.info['pid']}"
+                        )
+                        process.kill()  # Force kill if it's still running
+                    print(
+                        f"Successfully stopped vLLM server with PID: {process.info['pid']}"
+                    )
+                except psutil.NoSuchProcess:
+                    print(f"Process with PID {process.info['pid']} no longer exists.")
+                except psutil.AccessDenied:
+                    print(
+                        f"Access denied when trying to terminate process with PID {process.info['pid']}."
+                    )
+                except Exception as e:
+                    print(
+                        f"Failed to terminate process with PID {process.info['pid']}. Error: {e}"
+                    )
 
     # For standalone mode
     if candidate_model is None:
@@ -57,7 +133,7 @@ def run_final_eval_op(
         no_changes: list[tuple[str, float]],
         new=None,
     ) -> str:
-        """Generates a JSON object from the _branch benchmark evaluations"""
+        # Generates a JSON object from the _branch benchmark evaluations
 
         import json
 
@@ -106,7 +182,7 @@ def run_final_eval_op(
         return json.dumps(summary, indent=4)
 
     ######################################################################
-
+    print("Checking GPUs...")
     gpu_available = torch.cuda.is_available()
     gpu_name = (
         torch.cuda.get_device_name(torch.cuda.current_device())
@@ -119,8 +195,39 @@ def run_final_eval_op(
 
     # MMLU_BRANCH
 
+    # This is very specific to 'ilab generate', necessary because the data generation and
+    # model evaluation are taking place in separate environments.
+    def update_test_lines_in_files(base_dir):
+        import os
+        import re
+
+        # Define the regex to match lines starting with any indentation, 'test:', and containing 'node_datasets_*'
+        regex = re.compile(r"(\s*test:\s*).*/(node_datasets_[^/]*)(.*)")
+
+        for root, dirs, files in os.walk(base_dir):
+            for file_name in files:
+                file_path = os.path.join(root, file_name)
+
+                with open(file_path, "r") as file:
+                    lines = file.readlines()
+
+                updated_lines = []
+                changed = False
+
+                for line in lines:
+                    # Replace the matched line with the desired format, keeping 'test:' and leading whitespace intact
+                    new_line = re.sub(regex, rf"\1{base_dir}/\2\3", line)
+                    if new_line != line:
+                        changed = True  # Only rewrite the file if there's a change
+                    updated_lines.append(new_line)
+
+                if changed:
+                    with open(file_path, "w", encoding="utf-8") as file:
+                        file.writelines(updated_lines)
+                    print(f"Updated: {file_path}")
+
     # find_node_dataset_directories to find sdg output node_datasets_*
-    def find_node_dataset_directories(base_directory: str):
+    def find_node_dataset_directories(base_dir: str):
         import os
         import re
 
@@ -129,16 +236,25 @@ def run_final_eval_op(
         matching_dirs = []
         regex = re.compile(pattern)
 
-        for root, dirs, files in os.walk(base_directory):
+        for root, dirs, files in os.walk(base_dir):
             for directory in dirs:
                 if regex.search(directory):
                     matching_dirs.append(os.path.join(root, directory))
 
+        # From 'ilab sdg' the knowledge_*_task.yaml files have a line that references where the SDG took place.
+        # This needs to be updated to run elsewhere.
+        # The line is:
+        #    test: /path/to/where/sdg/occured/node_datasets_*
+        # TODO: update sdg repo: https://github.com/instructlab/sdg/blob/366814b3e89e28c98c0d2a276ad0759c567d2798/src/instructlab/sdg/eval_data.py#L84-%23L114
+        update_test_lines_in_files(base_dir)
         return matching_dirs
+
+    print("Starting MMLU_Branch...")
 
     mmlu_tasks = ["mmlu_pr"]
 
     node_dataset_dirs = find_node_dataset_directories(tasks.path)
+
     # This assumes generated filesystem from ilab sdg, which
     # generates a node_datasets_ directory for MMLU custom tasks data
     if node_dataset_dirs:
@@ -165,10 +281,12 @@ def run_final_eval_op(
         individual_scores_list = []
         for i, evaluator in enumerate(mmlu_branch_evaluators):
             m_path = m_paths[i]
+            print("Launching Vllm...")
             launch_vllm(m_path, gpu_count)
             overall_score, individual_scores = evaluator.run(VLLM_SERVER)
             overall_scores.append(overall_score)
             individual_scores_list.append(individual_scores)
+            print("Stopping Vllm")
             stop_vllm()
 
         # TODO: update instructlab/instructlab model/evaluate.py
@@ -213,6 +331,8 @@ def run_final_eval_op(
         print("No MMLU tasks directories found, skipping MMLU_branch evaluation.")
 
     # MT_BENCH_BRANCH
+
+    print("Strating MT_BENCH_BRANCH ...")
 
     judge_api_key = os.getenv("JUDGE_API_KEY", "")
     judge_model_name = os.getenv("JUDGE_NAME")

@@ -60,7 +60,13 @@ PYTORCH_NNODES = 2
 MT_BENCH_OUTPUT_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-results.txt")
 MT_BENCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-best.txt")
 MT_BENCH_BRANCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-branch-best.txt")
+MMLU_BRANCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mmlu-branch-best.txt")
+CANDIDATE_MODEL_PATH = path.join(
+    DATA_PVC_MOUNT_PATH, "model/output/phase_2/hf_format/candidate_model"
+)
 SDG_OBJECT_STORE_SECRET_NAME = "sdg-object-store-credentials"
+EVAL_TYPE_MT_BENCH = "mt-bench"
+EVAL_TYPE_FINAL = "final"
 KFP_MODEL_SERVER_CM = """
 # TODO: remove the following line and replace it with the actual ConfigMap/Secret
 kind: ConfigMap
@@ -263,19 +269,65 @@ if [ "$STRATEGY" == "download" ]; then
 fi
 
 if [ "$STRATEGY" == "upload" ]; then
-    export FINAL_DATA_TAR_FILE="final.$SDG_OBJECT_STORE_DATA_KEY"
+    export FINAL_DATA_TAR_FILE="$(date +"%Y-%m-%d_%H-%M-%S").$SDG_OBJECT_STORE_DATA_KEY"
     export FINAL_DATA_TAR_PATH="{data_pvc_mount_path}/$FINAL_DATA_TAR_FILE"
     echo "Final data tarball path: $FINAL_DATA_TAR_PATH"
     echo "Final data tarball file: $FINAL_DATA_TAR_FILE"
     echo "Archiving data before pushing to the object store"
-    tar --create --gzip --verbose --file "$FINAL_DATA_TAR_PATH" {mt_bench_output_path} {mt_bench_scores_path} {mt_bench_branch_scores_path} {data_pvc_mount_path}/model
-    # TODO: change model path for the final model!!!
+    # Use '--ignore-failed-read' to ignore missing files, needed when no MMLU tasks directories are found MMLU_branch is skipped
+    # So '{mmlu_branch_scores_path}' will not exist
+    tar --create \
+      --gzip \
+      --verbose \
+      --ignore-failed-read \
+      --file "$FINAL_DATA_TAR_PATH" {mt_bench_output_path} {mt_bench_scores_path} {mt_bench_branch_scores_path} {mmlu_branch_scores_path} {candidate_model_path}
 fi
 
 tmp=$(mktemp -d)
 cat <<EOF > "$tmp"/s3.py
 import os
 import boto3
+import sys
+import threading
+
+# Credit: https://gist.github.com/egeulgen/538aadc90275d79d514a5bacc4d5694e
+class ProgressPercentage(object):
+    ''' Progress Class
+    Class for calculating and displaying download progress
+    '''
+    def __init__(self, client, bucket, filename):
+        ''' Initialize
+        initialize with: file name, file size and lock.
+        Set seen_so_far to 0. Set progress bar length
+        '''
+        self._filename = filename
+        self._size = float(os.path.getsize(filename)) if os.getenv('STRATEGY') == 'upload' else client.head_object(Bucket=bucket, Key=filename)['ContentLength']
+        self._seen_so_far = 0
+        self._lock = threading.Lock()
+        self.prog_bar_len = 80
+
+    def __call__(self, bytes_amount):
+        ''' Call
+        When called, increments seen_so_far by bytes_amount,
+        calculates percentage of seen_so_far/total file size
+        and prints progress bar.
+        '''
+        # To simplify we'll assume this is hooked up to a single filename.
+        with self._lock:
+            self._seen_so_far += bytes_amount
+            ratio = round((float(self._seen_so_far) / float(self._size)) * (self.prog_bar_len - 6), 1)
+            current_length = int(round(ratio))
+
+            percentage = round(100 * ratio / (self.prog_bar_len - 6), 1)
+
+            bars = '+' * current_length
+            output = bars + ' ' * (self.prog_bar_len - current_length - len(str(percentage)) - 1) + str(percentage) + '%'
+
+            if self._seen_so_far != self._size:
+                sys.stdout.write(output + '\\r')
+            else:
+                sys.stdout.write(output + '\\n')
+            sys.stdout.flush()
 
 def str_to_bool(s):
     if s is None:
@@ -299,7 +351,8 @@ def download_s3_file():
     s3_key = os.getenv('SDG_OBJECT_STORE_DATA_KEY')
     output_file = '{data_pvc_mount_path}/data.tar.gz'
 
-    s3.download_file(bucket_name, s3_key, output_file)
+    progress = ProgressPercentage(s3, bucket_name, s3_key)
+    s3.download_file(bucket_name, s3_key, output_file, Callback=progress)
 
 def upload_s3_file():
     s3 = build_boto3_client()
@@ -308,7 +361,8 @@ def upload_s3_file():
     s3_key = os.getenv('FINAL_DATA_TAR_FILE')
     input_file = os.getenv('FINAL_DATA_TAR_PATH')
 
-    s3.upload_file(input_file, bucket_name, s3_key)
+    progress = ProgressPercentage(s3, bucket_name, input_file)
+    s3.upload_file(input_file, bucket_name, s3_key, Callback=progress)
 
 if __name__ == "__main__":
     if os.getenv('STRATEGY') == 'download':
@@ -612,7 +666,7 @@ def show(
 @click.option(
     "--eval-type",
     help="Type of evaluation to run",
-    type=click.Choice(["mt-bench"]),
+    type=click.Choice([EVAL_TYPE_MT_BENCH, EVAL_TYPE_FINAL]),
     hidden=True,
 )
 @click.option(
@@ -831,14 +885,16 @@ def run(
         ctx.invoke(train)
 
         # Evaluation of phase 2 with MT-Bench
-        ctx.obj["eval_type"] = "mt-bench"
+        ctx.obj["eval_type"] = EVAL_TYPE_MT_BENCH
         scores = ctx.invoke(evaluation)
         scores = json.loads(scores)
         logger.info("Best model: %s", scores.get("best_model"))
         ctx.obj["candidate_model"] = scores.get("best_model")
 
         # Final evaluation
-        # TODO
+        ctx.obj["eval_type"] = EVAL_TYPE_FINAL
+        ctx.invoke(evaluation)
+        logger.info("InstructLab Training Finished!")
 
         # Push the best model to S3
         ctx.invoke(upload_trained_model)
@@ -1174,6 +1230,8 @@ def create_data_job(
         namespace (str): The namespace in which the job will be created.
         job_name (str): The name of the job.
         sdg_object_store_secret (str): The name of the Kubernetes Secret containing the SDG object store credentials.
+        strategy (str): The strategy to use to fetch the data. Either "download" or "upload".
+        force_pull (bool): Force pull the data from the object store even if it already exists in the PVC.
 
     Returns:
         kubernetes.client.V1Job: A Kubernetes Job object configured with the specified parameters.
@@ -1262,6 +1320,8 @@ data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/data/data", mode
                 mt_bench_output_path=MT_BENCH_OUTPUT_PATH,
                 mt_bench_scores_path=MT_BENCH_SCORES_PATH,
                 mt_bench_branch_scores_path=MT_BENCH_BRANCH_SCORES_PATH,
+                mmlu_branch_scores_path=MMLU_BRANCH_SCORES_PATH,
+                candidate_model_path=CANDIDATE_MODEL_PATH,
             )
         ],
         volume_mounts=get_vol_mount(),
@@ -1400,7 +1460,6 @@ data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/data/data", mode
 
 def create_eval_job(
     namespace: str,
-    job_name: str,
     eval_type: str,
     nproc_per_node: int = 1,
 ) -> kubernetes.client.V1Job:
@@ -1411,11 +1470,14 @@ def create_eval_job(
 
     Args:
         namespace (str): The namespace in which the job will be created.
-        job_name (str): The name of the job.
+        eval_type (str): The type of evaluation to run.
+        nproc_per_node (int): The number of processes per node.
 
     Returns:
         kubernetes.client.V1Job: A Kubernetes Job object configured with the specified parameters.
     """
+
+    job_name = f"eval-{eval_type}"
 
     # if eval_type == "mmlu":
     #     init_containers = [
@@ -1476,23 +1538,17 @@ def run_mt_bench_op(
 
         import requests
 
+        command = [
+            sys.executable,
+            "-m",
+            "vllm.entrypoints.openai.api_server",
+            "--model",
+            model_path,
+        ]
         if gpu_count > 0:
-            command = [
-                sys.executable,
-                "-m",
-                "vllm.entrypoints.openai.api_server",
-                "--model",
-                model_path,
+            command += [
                 "--tensor-parallel-size",
                 str(gpu_count),
-            ]
-        else:
-            command = [
-                sys.executable,
-                "-m",
-                "vllm.entrypoints.openai.api_server",
-                "--model",
-                model_path,
             ]
 
         subprocess.Popen(args=command)
@@ -1632,10 +1688,477 @@ def run_mt_bench_op(
         with open(best_score_file, "w", encoding="utf-8") as f:
             json.dump({"best_model": best_model, "best_score": best_score}, f, indent=4)
 
+    # Rename the best model directory to "candidate_model" for the next step
+    # So we know which model to use for the final evaluation
+    os.rename(
+        os.path.join(models_path_prefix, best_model),
+        os.path.join(models_path_prefix, "candidate_model"),
+    )
+
     return outputs(best_model=best_model, best_score=best_score)
 """
     exec_run_mt_bench_op_args = """
 run_mt_bench_op(best_score_file="/data/mt-bench-best.txt",mt_bench_output="/data/mt-bench-results.txt", models_folder="/data/model/output/phase_2/hf_format", models_path_prefix="/data/model/output/phase_2/hf_format", max_workers="auto", merge_system_user_message=False)
+"""
+    exec_run_final_eval_op_command = """
+from typing import *
+
+def run_final_eval_op(
+    mmlu_branch_output: str,
+    mt_bench_branch_output: str,
+    base_model_dir: str,
+    tasks: str,
+    taxonomy: str,
+    base_branch: str,
+    candidate_branch: str,
+    max_workers: str,
+    device: str,
+    model_dtype: str,
+    few_shots: int,
+    batch_size: int,
+    merge_system_user_message: bool,
+    candidate_model: str = None,
+):
+    import json
+    import os
+
+    import torch
+    from instructlab.eval.mmlu import MMLU_TASKS, MMLUBranchEvaluator
+    from instructlab.eval.mt_bench import MTBenchBranchEvaluator
+    from instructlab.model.evaluate import qa_pairs_to_qna_to_avg_scores, sort_score
+
+    VLLM_SERVER = "http://localhost:8000/v1"
+
+    print("Starting Final Eval...")
+
+    def launch_vllm(
+        model_path: str, gpu_count: int, retries: int = 120, delay: int = 10
+    ):
+        import subprocess
+        import sys
+        import time
+
+        import requests
+
+        command = [
+            sys.executable,
+            "-m",
+            "vllm.entrypoints.openai.api_server",
+            "--model",
+            model_path,
+        ]
+        if gpu_count > 0:
+            command += [
+                "--tensor-parallel-size",
+                str(gpu_count),
+            ]
+
+        subprocess.Popen(args=command)
+
+        print(f"Waiting for vLLM server to start at {VLLM_SERVER}...")
+
+        for attempt in range(retries):
+            try:
+                response = requests.get(f"{VLLM_SERVER}/models")
+                if response.status_code == 200:
+                    print(f"vLLM server is up and running at {VLLM_SERVER}.")
+                    return
+            except requests.ConnectionError:
+                pass
+
+            print(
+                f"Server not available yet, retrying in {delay} seconds (Attempt {attempt + 1}/{retries})..."
+            )
+            time.sleep(delay)
+
+        raise RuntimeError(
+            f"Failed to start vLLM server at {VLLM_SERVER} after {retries} retries."
+        )
+
+    # This seems like excessive effort to stop the vllm process, but merely saving & killing the pid doesn't work
+    # Also, the base image does not include 'pkill' cmd, so can't pkill -f vllm.entrypoints.openai.api_server either
+    def stop_vllm():
+        import psutil
+
+        for process in psutil.process_iter(attrs=["pid", "name", "cmdline"]):
+            cmdline = process.info.get("cmdline")
+            if cmdline and "vllm.entrypoints.openai.api_server" in cmdline:
+                print(
+                    f"Found vLLM server process with PID: {process.info['pid']}, terminating..."
+                )
+                try:
+                    process.terminate()  # Try graceful termination
+                    process.wait(timeout=5)  # Wait a bit for it to terminate
+                    if process.is_running():
+                        print(
+                            f"Forcefully killing vLLM server process with PID: {process.info['pid']}"
+                        )
+                        process.kill()  # Force kill if it's still running
+                    print(
+                        f"Successfully stopped vLLM server with PID: {process.info['pid']}"
+                    )
+                except psutil.NoSuchProcess:
+                    print(f"Process with PID {process.info['pid']} no longer exists.")
+                except psutil.AccessDenied:
+                    print(
+                        f"Access denied when trying to terminate process with PID {process.info['pid']}."
+                    )
+                except Exception as e:
+                    print(
+                        f"Failed to terminate process with PID {process.info['pid']}. Error: {e}"
+                    )
+
+    # For standalone mode
+    if candidate_model is None:
+        # logic to get the best model from the models folder and results
+        pass
+
+    ######################################################################
+    # branch_eval_summary_to_json creates a json object from output of instructlab/eval
+    # TODO: Add this to the instructlab/eval or instructlab/instructlab repository
+    def branch_eval_summary_to_json(
+        improvements: list[tuple[str, float, float, float]],
+        regressions: list[tuple[str, float, float, float]],
+        no_changes: list[tuple[str, float]],
+        new=None,
+    ) -> str:
+        # Generates a JSON object from the _branch benchmark evaluations
+
+        import json
+
+        summary = {"improvements": [], "regressions": [], "no_changes": [], "new": []}
+
+        if len(improvements) > 0:
+            improvements.sort(key=sort_score, reverse=True)
+            for improvement in improvements:
+                task, delta, base_score, new_score = improvement
+                summary["improvements"].append(
+                    {
+                        "task": task,
+                        "base_score": round(base_score, 2),
+                        "new_score": round(new_score, 2),
+                        "delta": delta,
+                    }
+                )
+
+        if len(regressions) > 0:
+            regressions.sort(key=sort_score)
+            for regression in regressions:
+                task, delta, base_score, new_score = regression
+                summary["regressions"].append(
+                    {
+                        "task": task,
+                        "base_score": round(base_score, 2),
+                        "new_score": round(new_score, 2),
+                        "delta": delta,
+                    }
+                )
+
+        if len(no_changes) > 0:
+            for entry in no_changes:
+                task, avg_score = entry
+                summary["no_changes"].append(
+                    {"task": task, "average_score": round(avg_score, 2)}
+                )
+
+        if new is not None and len(new) > 0:
+            for entry in new:
+                na, avg_score = entry
+                summary["new"].append(
+                    {"qna": qna, "average_score": round(avg_score, 2)}
+                )
+
+        return json.dumps(summary, indent=4)
+
+    ######################################################################
+    print("Checking GPUs...")
+    gpu_available = torch.cuda.is_available()
+    gpu_name = (
+        torch.cuda.get_device_name(torch.cuda.current_device())
+        if gpu_available
+        else "No GPU available"
+    )
+    gpu_count = torch.cuda.device_count() if gpu_available else 0
+
+    print(f"GPU Available: {gpu_available}, Using: {gpu_name}")
+
+    # MMLU_BRANCH
+
+    # This is very specific to 'ilab generate', necessary because the data generation and
+    # model evaluation are taking place in separate environments.
+    def update_test_lines_in_files(base_dir):
+        import os
+        import re
+
+        # Define the regex to match lines starting with any indentation, 'test:', and containing 'node_datasets_*'
+        regex = re.compile(r"(\s*test:\s*).*/(node_datasets_[^/]*)(.*)")
+
+        for root, dirs, files in os.walk(base_dir):
+            for file_name in files:
+                file_path = os.path.join(root, file_name)
+
+                with open(file_path, "r") as file:
+                    lines = file.readlines()
+
+                updated_lines = []
+                changed = False
+
+                for line in lines:
+                    # Replace the matched line with the desired format, keeping 'test:' and leading whitespace intact
+                    new_line = re.sub(regex, rf"\1{base_dir}/\2\3", line)
+                    if new_line != line:
+                        changed = True  # Only rewrite the file if there's a change
+                    updated_lines.append(new_line)
+
+                if changed:
+                    with open(file_path, "w", encoding="utf-8") as file:
+                        file.writelines(updated_lines)
+                    print(f"Updated: {file_path}")
+
+    # find_node_dataset_directories to find sdg output node_datasets_*
+    def find_node_dataset_directories(base_dir: str):
+        import os
+        import re
+
+        # This is specific to ilab/eval output
+        pattern = r"node_datasets_"
+        matching_dirs = []
+        regex = re.compile(pattern)
+
+        for root, dirs, files in os.walk(base_dir):
+            for directory in dirs:
+                if regex.search(directory):
+                    matching_dirs.append(os.path.join(root, directory))
+
+        # From 'ilab sdg' the knowledge_*_task.yaml files have a line that references where the SDG took place.
+        # This needs to be updated to run elsewhere.
+        # The line is:
+        #    test: /path/to/where/sdg/occured/node_datasets_*
+        # TODO: update sdg repo: https://github.com/instructlab/sdg/blob/366814b3e89e28c98c0d2a276ad0759c567d2798/src/instructlab/sdg/eval_data.py#L84-%23L114
+        update_test_lines_in_files(base_dir)
+        return matching_dirs
+
+    print("Starting MMLU_Branch...")
+
+    mmlu_tasks = ["mmlu_pr"]
+
+    node_dataset_dirs = find_node_dataset_directories(tasks)
+
+    # This assumes generated filesystem from ilab sdg, which
+    # generates a node_datasets_ directory for MMLU custom tasks data
+    if node_dataset_dirs:
+        tasks_dir = node_dataset_dirs[0]
+
+        mmlu_branch_evaluators = [
+            MMLUBranchEvaluator(
+                model_path=candidate_model,
+                tasks_dir=tasks_dir,
+                tasks=mmlu_tasks,
+                few_shots=few_shots,
+                batch_size=batch_size,
+            ),
+            MMLUBranchEvaluator(
+                model_path=base_model_dir,
+                tasks_dir=tasks_dir,
+                tasks=mmlu_tasks,
+                few_shots=few_shots,
+                batch_size=batch_size,
+            ),
+        ]
+        m_paths = [candidate_model, base_model_dir]
+        overall_scores = []
+        individual_scores_list = []
+        for i, evaluator in enumerate(mmlu_branch_evaluators):
+            m_path = m_paths[i]
+            print("Launching Vllm...")
+            launch_vllm(m_path, gpu_count)
+            overall_score, individual_scores = evaluator.run(VLLM_SERVER)
+            overall_scores.append(overall_score)
+            individual_scores_list.append(individual_scores)
+            print("Stopping Vllm")
+            stop_vllm()
+
+        # TODO: update instructlab/instructlab model/evaluate.py
+        # so this logic can be imported outside of the CLI
+        overall_score = overall_scores[0]
+        base_overall_score = overall_scores[1]
+        individual_scores = individual_scores_list[0]
+        base_individual_scores = individual_scores_list[1]
+
+        improvements, regressions, no_changes = [], [], []
+        for task, score in individual_scores.items():
+            base_score = base_individual_scores[task]
+            s = score["score"]
+            b_s = base_score["score"]
+            d = round(s - b_s, 2)
+            if s > b_s:
+                improvements.append((task, d, b_s, s))
+            elif b_s > s:
+                regressions.append((task, d, b_s, s))
+            else:
+                no_changes.append((task, s))
+
+        summary = branch_eval_summary_to_json(
+            improvements,
+            regressions,
+            no_changes,
+        )
+
+        mmlu_branch_data = {
+            "report_title": "KNOWLEDGE EVALUATION REPORT",
+            "max_score": "1.0",
+            "model": candidate_model,
+            "model_score": round(overall_score, 2),
+            "base_model": base_model_dir,
+            "base_model_score": round(base_overall_score, 2),
+            "summary": summary,
+        }
+
+        with open(mmlu_branch_output, "w") as f:
+            json.dump(mmlu_branch_data, f, indent=4)
+    else:
+        print("No MMLU tasks directories found, skipping MMLU_branch evaluation.")
+
+    # MT_BENCH_BRANCH
+
+    print("Strating MT_BENCH_BRANCH ...")
+
+    judge_api_key = os.getenv("JUDGE_API_KEY", "")
+    judge_model_name = os.getenv("JUDGE_NAME")
+    judge_endpoint = os.getenv("JUDGE_ENDPOINT")
+
+    output_dir = "/tmp/eval_output"
+
+    # TODO: candidate_branch must be in same repo, not a fork, or, can compare main branch against candidate, base models
+    base_branch = base_branch or "main"
+    candidate_branch = candidate_branch or "main"
+
+    ######################################################################
+    # TODO: Update ilab/model/evaluate evaluate def logic to allow for external judge model
+    # and when that happens, much of this logic can be imported from the 'evaluate' definition:
+    # https://github.com/instructlab/instructlab/blob/83ca501ecdd858677380046e2a56da5b2f3f14e7/src/instructlab/model/evaluate.py#L504
+    #
+    # With instructlab, model_name is synonomous with model_path
+    mt_bench_evaluators = [
+        MTBenchBranchEvaluator(
+            model_name=candidate_model,
+            judge_model_name=judge_model_name,
+            taxonomy_git_repo_path=taxonomy,
+            branch=candidate_branch,
+            output_dir=output_dir,
+            merge_system_user_message=merge_system_user_message,
+        ),
+        MTBenchBranchEvaluator(
+            model_name=base_model_dir,
+            judge_model_name=judge_model_name,
+            taxonomy_git_repo_path=taxonomy,
+            branch=base_branch,
+            output_dir=output_dir,
+            merge_system_user_message=merge_system_user_message,
+        ),
+    ]
+
+    # ilab/evaluate uses a magic word for its mt_bench evaluator  - 'auto'
+    # with 'auto', number of gpus allocated for serving is calculated based on environment
+    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
+    if max_workers == "auto":
+        try:
+            usable_cpu_count = len(os.sched_getaffinity(0)) // 2
+        except AttributeError:
+            usable_cpu_count = multiprocessing.cpu_count() // 2
+        max_workers = usable_cpu_count
+
+    branches = [candidate_branch, base_branch]
+    m_paths = [candidate_model, base_model_dir]
+    qa_pairs_and_errors = []
+    for i, evaluator in enumerate(mt_bench_evaluators):
+        branch = branches[i]
+        m_path = m_paths[i]
+
+        print(
+            f"Generating questions and reference answers from qna files for branch {branch}..."
+        )
+        launch_vllm(m_path, gpu_count)
+
+        evaluator.gen_answers(
+            server_url=VLLM_SERVER,
+            serving_gpus=gpu_count,
+            max_workers=max_workers,
+        )
+
+        stop_vllm()
+
+        print(f"Evaluating answers for branch {branch}...")
+        overall_score, qa_pairs, error_rate = evaluator.judge_answers(
+            server_url=judge_endpoint,
+            api_key=judge_api_key,
+            serving_gpus=gpu_count,
+            max_workers=max_workers,
+        )
+
+        qa_pairs_and_errors.append((overall_score, qa_pairs, error_rate))
+
+    overall_score, qa_pairs, error_rate = qa_pairs_and_errors[0]
+    base_overall_score, base_qa_pairs, base_error_rate = qa_pairs_and_errors[1]
+
+    qna_to_avg_scores = qa_pairs_to_qna_to_avg_scores(qa_pairs)
+    base_qna_to_avg_scores = qa_pairs_to_qna_to_avg_scores(base_qa_pairs)
+
+    improvements, regressions, no_changes, new_qnas = [], [], [], []
+
+    for qna, avg_score in qna_to_avg_scores.items():
+        base_avg_score = base_qna_to_avg_scores.get(qna)
+        if base_avg_score is not None:
+            if avg_score > base_avg_score:
+                improvements.append(
+                    (
+                        qna,
+                        round(avg_score - base_avg_score, 2),
+                        base_avg_score,
+                        avg_score,
+                    )
+                )
+            elif avg_score == base_avg_score:
+                no_changes.append((qna, avg_score))
+            else:
+                regressions.append(
+                    (
+                        qna,
+                        round(avg_score - base_avg_score, 2),
+                        base_avg_score,
+                        avg_score,
+                    )
+                )
+        else:
+            new_qnas.append((qna, avg_score))
+
+    error_rate = (error_rate + base_error_rate) / 2
+    if error_rate > 0:
+        error_rate = round(error_rate, 2)
+
+    summary = branch_eval_summary_to_json(
+        improvements,
+        regressions,
+        no_changes,
+        new_qnas,
+    )
+
+    mt_bench_branch_data = {
+        "report_title": "SKILLS EVALUATION REPORT",
+        "model": candidate_model,
+        "judge_model": judge_model_name,
+        "max_score": "10.0",
+        "overall_score": overall_score,
+        "base_overall_score": base_overall_score,
+        "error_rate": error_rate,
+        "summary": summary,
+    }
+
+    with open(mt_bench_branch_output, "w") as f:
+        json.dump(mt_bench_branch_data, f, indent=4)
+"""
+    exec_run_final_eval_op_args = """
+run_final_eval_op(mmlu_branch_output='/data/mmlu-branch-best.txt',mt_bench_branch_output='/data/mt-bench-branch-best.txt',candidate_model='/data/model/output/phase_2/hf_format/candidate_model', taxonomy='/data/taxonomy', tasks='/data/generated', base_branch='', candidate_branch='', device=None, base_model_dir='/data/model', max_workers='auto', merge_system_user_message=False, model_dtype='bfloat16', few_shots=5, batch_size=8)
 """
 
     if eval_type == "mt-bench":
@@ -1670,6 +2193,41 @@ run_mt_bench_op(best_score_file="/data/mt-bench-best.txt",mt_bench_output="/data
             image=RHELAI_IMAGE,
             command=["/bin/sh", "-c"],
             args=[f"cat {MT_BENCH_SCORES_PATH}"],
+            security_context=get_security_context(),
+            volume_mounts=get_vol_mount(),
+        )
+    elif eval_type == EVAL_TYPE_FINAL:
+        init_containers = [
+            kubernetes.client.V1Container(
+                name=f"run-eval-{eval_type}",
+                image=RHELAI_IMAGE,
+                command=["/bin/sh", "-ce"],
+                args=[
+                    PYTHON_EXECUTOR.format(
+                        python_code=exec_run_final_eval_op_command,
+                        python_main=exec_run_final_eval_op_args.strip(),
+                    ),
+                ],
+                volume_mounts=get_vol_mount(),
+                security_context=get_security_context(),
+                env_from=[
+                    kubernetes.client.V1EnvFromSource(
+                        secret_ref=kubernetes.client.V1SecretEnvSource(
+                            name=JUDGE_SERVING_NAME
+                        )
+                    ),
+                ],
+                resources=kubernetes.client.V1ResourceRequirements(
+                    requests={"cpu": "1", "nvidia.com/gpu": nproc_per_node},
+                    limits={"cpu": "1", "nvidia.com/gpu": nproc_per_node},
+                ),
+            )
+        ]
+        container = kubernetes.client.V1Container(
+            name=f"output-eval-{eval_type}-scores",
+            image=RHELAI_IMAGE,
+            command=["/bin/sh", "-c"],
+            args=[f"cat {MT_BENCH_BRANCH_SCORES_PATH}"],
             security_context=get_security_context(),
             volume_mounts=get_vol_mount(),
         )
@@ -1800,10 +2358,18 @@ def run_job(namespace: str, job: kubernetes.client.V1Job) -> str:
             )
             # On success return the logs of the last pod which contains the output
             # (useful to get eval scores)
-            pod_log = core_v1.read_namespaced_pod_log(
-                name=pods.items[0].metadata.name, namespace=namespace
-            )
+            if pods.items:
+                pod_log = core_v1.read_namespaced_pod_log(
+                    name=pods.items[0].metadata.name, namespace=namespace
+                )
+            else:
+                logger.error(
+                    "No pods found for job %s. The job exists, but the pods are missing.",
+                    job.metadata.name,
+                )
+                pod_log = None
             w.stop()
+            break
         elif job_event.status.failed == 1:
             logger.error("Job failed. Pod logs:")
             pods = core_v1.list_namespaced_pod(
@@ -1817,6 +2383,8 @@ def run_job(namespace: str, job: kubernetes.client.V1Job) -> str:
                 log_pod_containers(pod, "containers", namespace)
             w.stop()
             raise RuntimeError("Job failed.")
+        else:
+            logger.info("Job still running. Waiting for the next event.")
 
     return pod_log
 
@@ -2133,7 +2701,7 @@ def sdg_data_fetch(
     # Create the job to run the pod to execute the SDG data fetch
     job = create_data_job(
         namespace=namespace,
-        job_name="data-fetch",
+        job_name="data-download",
         sdg_object_store_secret=sdg_object_store_secret,
         strategy="download",
         force_pull=force_pull,
@@ -2141,7 +2709,9 @@ def sdg_data_fetch(
 
     # Run the job
     run_job(namespace, job)
-    logger.info("SDG fetch completed.")
+    logger.info(
+        "SDG data, model to train and taxonomy tree were successfully downloaded."
+    )
 
 
 @run.command(name="train")
@@ -2219,23 +2789,31 @@ def train(
         namespace=namespace,
         plural="pytorchjobs",
     ):
-        job_event = event["object"]
+        pytorchjob_event = event["object"]
         if (
-            job_event["metadata"]["name"]
+            pytorchjob_event["metadata"]["name"]
             != pytorch_training_job_yaml["metadata"]["name"]
         ):
             continue
-        job_name = job_event["metadata"]["name"]
+        pytorchjob_name = pytorchjob_event["metadata"]["name"]
 
-        if "status" not in job_event or "conditions" not in job_event["status"]:
+        if (
+            "status" not in pytorchjob_event
+            or "conditions" not in pytorchjob_event["status"]
+        ):
             continue
         logger.info(
-            "Job: %s - %s",
-            job_name,
-            job_event["status"].get("conditions", "No conditions yet"),
+            "PytorchJob: %s - %s",
+            pytorchjob_name,
+            pytorchjob_event["status"].get("conditions", "No conditions yet"),
         )
 
-        for job_condition in job_event["status"]["conditions"]:
+        master_pod_success = False
+        worker_pod_success = False
+        # Always start by the last condition so that if the job is completed, we can stop watching
+        # If we don't do this, we might get 'stuck' into the Running condition and never stop watching
+        for job_condition in reversed(pytorchjob_event["status"]["conditions"]):
+            print(job_condition)
             if job_condition["type"] == "Running":
                 # now watch for pod event
                 for event in w.stream(
@@ -2244,7 +2822,7 @@ def train(
                     label_selector=f"training.kubeflow.org/job-name=train-phase-{training_phase}",
                 ):
                     pod_event = event["object"]
-                    if pod_event.metadata.name.startswith(job_name):
+                    if pod_event.metadata.name.startswith(pytorchjob_name):
                         logger.info(
                             "Pod: %s - %s",
                             pod_event.metadata.name,
@@ -2266,15 +2844,48 @@ def train(
                         if pod_event.status.phase == "Failed":
                             log_pod_containers(pod_event, "init_containers", namespace)
                             log_pod_containers(pod_event, "containers", namespace)
-            if job_condition["type"] == "Succeeded":
+                            w.stop()
+                        if pod_event.status.phase == "Succeeded":
+                            if pod_event.metadata.name.startswith(
+                                f"{pytorchjob_name}-master"
+                            ):
+                                master_pod_success = True
+                                logger.info(
+                                    "Pod '%s' completed successfully",
+                                    pod_event.metadata.name,
+                                )
+                            elif pod_event.metadata.name.startswith(
+                                f"{pytorchjob_name}-worker"
+                            ):
+                                logger.info(
+                                    "Pod '%s' completed successfully",
+                                    pod_event.metadata.name,
+                                )
+                                worker_pod_success = True
+                            if master_pod_success and worker_pod_success:
+                                logger.info(
+                                    "All PytorchJob Pods completed successfully"
+                                )
+                                w.stop()
+                                # Break here to avoid going into other conditions, we are done
+                                break
+                            continue
+            elif job_condition["type"] == "Succeeded":
                 logger.info(
-                    "Job '%s' completed successfully: %s",
-                    job_name,
+                    "PytorchJob '%s' completed successfully: %s",
+                    pytorchjob_name,
                     job_condition["reason"],
                 )
+                logger.info("Training phase %s completed.", training_phase)
                 w.stop()
+                # Break here to avoid going into other conditions, we are done
+                break
             elif job_condition["type"] == "Failed":
-                logger.error("Job' %s' failed: %s", job_name, job_condition["reason"])
+                logger.error(
+                    "PytorchJob' %s' failed: %s",
+                    pytorchjob_name,
+                    job_condition["reason"],
+                )
                 w.stop()
                 raise RuntimeError("Job failed.")
 
@@ -2296,26 +2907,29 @@ def evaluation(ctx: click.Context) -> str:
     eval_type = ctx.obj["eval_type"]
 
     if eval_type is None:
-        raise ValueError("Evaluation type must be provided with --eval-type=[mt-bench]")
+        raise ValueError(
+            "Evaluation type must be provided with --eval-type=[mt-bench|final]"
+        )
 
     logger.info("Running %s evaluation.", eval_type)
 
     # Create and run the evaluation job
-    job = create_eval_job(
-        namespace=namespace, job_name=f"eval-{eval_type}", eval_type=eval_type
-    )
+    job = create_eval_job(namespace=namespace, eval_type=eval_type)
     scores = run_job(namespace, job)
-    scores = scores.replace("'", '"')
 
-    try:
-        scores_data = json.loads(scores)
-        if isinstance(scores_data, dict):
-            scores = json.dumps(scores_data)
-        else:
-            raise ValueError("Unexpected format for scores data")
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse scores: %s", e)
-        raise
+    if eval_type == EVAL_TYPE_MT_BENCH:
+        scores = scores.replace("'", '"')
+        try:
+            scores_data = json.loads(scores)
+            if isinstance(scores_data, dict):
+                scores = json.dumps(scores_data)
+            else:
+                raise ValueError("Unexpected format for scores data")
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse scores: %s", e)
+            raise
+
+        return scores
 
     logger.info("Evaluation scores: %s", scores)
 

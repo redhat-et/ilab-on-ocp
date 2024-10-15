@@ -1017,22 +1017,64 @@ deploymentSpec:
           \ str,\n    candidate_branch: str,\n    max_workers: str,\n    device: str,\n\
           \    model_dtype: str,\n    few_shots: int,\n    batch_size: int,\n    merge_system_user_message:\
           \ bool,\n    candidate_model: str = None,\n):\n    import json\n    import\
-          \ os\n\n    import torch\n    from helpers import (\n        VLLM_SERVER,\n\
-          \        launch_vllm,\n        stop_vllm,\n    )\n    from instructlab.eval.mmlu\
-          \ import MMLU_TASKS, MMLUBranchEvaluator\n    from instructlab.eval.mt_bench\
-          \ import MTBenchBranchEvaluator\n    from instructlab.model.evaluate import\
-          \ qa_pairs_to_qna_to_avg_scores, sort_score\n\n    # For standalone mode\n\
-          \    if candidate_model is None:\n        # logic to get the best model\
-          \ from the models folder and results\n        pass\n\n    ######################################################################\n\
+          \ os\n\n    import torch\n    from instructlab.eval.mmlu import MMLU_TASKS,\
+          \ MMLUBranchEvaluator\n    from instructlab.eval.mt_bench import MTBenchBranchEvaluator\n\
+          \    from instructlab.model.evaluate import qa_pairs_to_qna_to_avg_scores,\
+          \ sort_score\n\n    VLLM_SERVER = \"http://localhost:8000/v1\"\n\n    print(\"\
+          Starting Final Eval...\")\n\n    def launch_vllm(\n        model_path: str,\
+          \ gpu_count: int, retries: int = 120, delay: int = 10\n    ):\n        import\
+          \ subprocess\n        import sys\n        import time\n\n        import\
+          \ requests\n\n        command = [\n            sys.executable,\n       \
+          \     \"-m\",\n            \"vllm.entrypoints.openai.api_server\",\n   \
+          \         \"--model\",\n            model_path,\n        ]\n        if gpu_count\
+          \ > 0:\n            command += [\n                \"--tensor-parallel-size\"\
+          ,\n                str(gpu_count),\n            ]\n\n        subprocess.Popen(args=command)\n\
+          \n        print(f\"Waiting for vLLM server to start at {VLLM_SERVER}...\"\
+          )\n\n        for attempt in range(retries):\n            try:\n        \
+          \        response = requests.get(f\"{VLLM_SERVER}/models\")\n          \
+          \      if response.status_code == 200:\n                    print(f\"vLLM\
+          \ server is up and running at {VLLM_SERVER}.\")\n                    return\n\
+          \            except requests.ConnectionError:\n                pass\n\n\
+          \            print(\n                f\"Server not available yet, retrying\
+          \ in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\n          \
+          \  )\n            time.sleep(delay)\n\n        raise RuntimeError(\n   \
+          \         f\"Failed to start vLLM server at {VLLM_SERVER} after {retries}\
+          \ retries.\"\n        )\n\n    # This seems like excessive effort to stop\
+          \ the vllm process, but merely saving & killing the pid doesn't work\n \
+          \   # Also, the base image does not include 'pkill' cmd, so can't pkill\
+          \ -f vllm.entrypoints.openai.api_server either\n    def stop_vllm():\n \
+          \       import psutil\n\n        for process in psutil.process_iter(attrs=[\"\
+          pid\", \"name\", \"cmdline\"]):\n            cmdline = process.info.get(\"\
+          cmdline\")\n            if cmdline and \"vllm.entrypoints.openai.api_server\"\
+          \ in cmdline:\n                print(\n                    f\"Found vLLM\
+          \ server process with PID: {process.info['pid']}, terminating...\"\n   \
+          \             )\n                try:\n                    process.terminate()\
+          \  # Try graceful termination\n                    process.wait(timeout=5)\
+          \  # Wait a bit for it to terminate\n                    if process.is_running():\n\
+          \                        print(\n                            f\"Forcefully\
+          \ killing vLLM server process with PID: {process.info['pid']}\"\n      \
+          \                  )\n                        process.kill()  # Force kill\
+          \ if it's still running\n                    print(\n                  \
+          \      f\"Successfully stopped vLLM server with PID: {process.info['pid']}\"\
+          \n                    )\n                except psutil.NoSuchProcess:\n\
+          \                    print(f\"Process with PID {process.info['pid']} no\
+          \ longer exists.\")\n                except psutil.AccessDenied:\n     \
+          \               print(\n                        f\"Access denied when trying\
+          \ to terminate process with PID {process.info['pid']}.\"\n             \
+          \       )\n                except Exception as e:\n                    print(\n\
+          \                        f\"Failed to terminate process with PID {process.info['pid']}.\
+          \ Error: {e}\"\n                    )\n\n    # For standalone mode\n   \
+          \ if candidate_model is None:\n        # logic to get the best model from\
+          \ the models folder and results\n        pass\n\n    ######################################################################\n\
           \    # branch_eval_summary_to_json creates a json object from output of\
           \ instructlab/eval\n    # TODO: Add this to the instructlab/eval or instructlab/instructlab\
           \ repository\n    def branch_eval_summary_to_json(\n        improvements:\
           \ list[tuple[str, float, float, float]],\n        regressions: list[tuple[str,\
           \ float, float, float]],\n        no_changes: list[tuple[str, float]],\n\
-          \        new=None,\n    ) -> str:\n        \"\"\"Generates a JSON object\
-          \ from the _branch benchmark evaluations\"\"\"\n\n        import json\n\n\
-          \        summary = {\"improvements\": [], \"regressions\": [], \"no_changes\"\
-          : [], \"new\": []}\n\n        if len(improvements) > 0:\n            improvements.sort(key=sort_score,\
+          \        new=None,\n    ) -> str:\n        # Generates a JSON object from\
+          \ the _branch benchmark evaluations\n\n        import json\n\n        summary\
+          \ = {\"improvements\": [], \"regressions\": [], \"no_changes\": [], \"new\"\
+          : []}\n\n        if len(improvements) > 0:\n            improvements.sort(key=sort_score,\
           \ reverse=True)\n            for improvement in improvements:\n        \
           \        task, delta, base_score, new_score = improvement\n            \
           \    summary[\"improvements\"].append(\n                    {\n        \
@@ -1054,23 +1096,47 @@ deploymentSpec:
           \                summary[\"new\"].append(\n                    {\"qna\"\
           : qna, \"average_score\": round(avg_score, 2)}\n                )\n\n  \
           \      return json.dumps(summary, indent=4)\n\n    ######################################################################\n\
-          \n    gpu_available = torch.cuda.is_available()\n    gpu_name = (\n    \
-          \    torch.cuda.get_device_name(torch.cuda.current_device())\n        if\
-          \ gpu_available\n        else \"No GPU available\"\n    )\n    gpu_count\
-          \ = torch.cuda.device_count() if gpu_available else 0\n\n    print(f\"GPU\
-          \ Available: {gpu_available}, Using: {gpu_name}\")\n\n    # MMLU_BRANCH\n\
-          \n    # find_node_dataset_directories to find sdg output node_datasets_*\n\
-          \    def find_node_dataset_directories(base_directory: str):\n        import\
-          \ os\n        import re\n\n        # This is specific to ilab/eval output\n\
-          \        pattern = r\"node_datasets_\"\n        matching_dirs = []\n   \
-          \     regex = re.compile(pattern)\n\n        for root, dirs, files in os.walk(base_directory):\n\
-          \            for directory in dirs:\n                if regex.search(directory):\n\
-          \                    matching_dirs.append(os.path.join(root, directory))\n\
-          \n        return matching_dirs\n\n    mmlu_tasks = [\"mmlu_pr\"]\n\n   \
-          \ node_dataset_dirs = find_node_dataset_directories(tasks.path)\n    # This\
-          \ assumes generated filesystem from ilab sdg, which\n    # generates a node_datasets_\
-          \ directory for MMLU custom tasks data\n    if node_dataset_dirs:\n    \
-          \    tasks_dir = node_dataset_dirs[0]\n\n        mmlu_branch_evaluators\
+          \    print(\"Checking GPUs...\")\n    gpu_available = torch.cuda.is_available()\n\
+          \    gpu_name = (\n        torch.cuda.get_device_name(torch.cuda.current_device())\n\
+          \        if gpu_available\n        else \"No GPU available\"\n    )\n  \
+          \  gpu_count = torch.cuda.device_count() if gpu_available else 0\n\n   \
+          \ print(f\"GPU Available: {gpu_available}, Using: {gpu_name}\")\n\n    #\
+          \ MMLU_BRANCH\n\n    # This is very specific to 'ilab generate', necessary\
+          \ because the data generation and\n    # model evaluation are taking place\
+          \ in separate environments.\n    def update_test_lines_in_files(base_dir):\n\
+          \        import os\n        import re\n\n        # Define the regex to match\
+          \ lines starting with any indentation, 'test:', and containing 'node_datasets_*'\n\
+          \        regex = re.compile(r\"(\\s*test:\\s*).*/(node_datasets_[^/]*)(.*)\"\
+          )\n\n        for root, dirs, files in os.walk(base_dir):\n            for\
+          \ file_name in files:\n                file_path = os.path.join(root, file_name)\n\
+          \n                with open(file_path, \"r\") as file:\n               \
+          \     lines = file.readlines()\n\n                updated_lines = []\n \
+          \               changed = False\n\n                for line in lines:\n\
+          \                    # Replace the matched line with the desired format,\
+          \ keeping 'test:' and leading whitespace intact\n                    new_line\
+          \ = re.sub(regex, rf\"\\1{base_dir}/\\2\\3\", line)\n                  \
+          \  if new_line != line:\n                        changed = True  # Only\
+          \ rewrite the file if there's a change\n                    updated_lines.append(new_line)\n\
+          \n                if changed:\n                    with open(file_path,\
+          \ \"w\", encoding=\"utf-8\") as file:\n                        file.writelines(updated_lines)\n\
+          \                    print(f\"Updated: {file_path}\")\n\n    # find_node_dataset_directories\
+          \ to find sdg output node_datasets_*\n    def find_node_dataset_directories(base_dir:\
+          \ str):\n        import os\n        import re\n\n        # This is specific\
+          \ to ilab/eval output\n        pattern = r\"node_datasets_\"\n        matching_dirs\
+          \ = []\n        regex = re.compile(pattern)\n\n        for root, dirs, files\
+          \ in os.walk(base_dir):\n            for directory in dirs:\n          \
+          \      if regex.search(directory):\n                    matching_dirs.append(os.path.join(root,\
+          \ directory))\n\n        # From 'ilab sdg' the knowledge_*_task.yaml files\
+          \ have a line that references where the SDG took place.\n        # This\
+          \ needs to be updated to run elsewhere.\n        # The line is:\n      \
+          \  #    test: /path/to/where/sdg/occured/node_datasets_*\n        # TODO:\
+          \ update sdg repo: https://github.com/instructlab/sdg/blob/366814b3e89e28c98c0d2a276ad0759c567d2798/src/instructlab/sdg/eval_data.py#L84-%23L114\n\
+          \        update_test_lines_in_files(base_dir)\n        return matching_dirs\n\
+          \n    print(\"Starting MMLU_Branch...\")\n\n    mmlu_tasks = [\"mmlu_pr\"\
+          ]\n\n    node_dataset_dirs = find_node_dataset_directories(tasks.path)\n\
+          \n    # This assumes generated filesystem from ilab sdg, which\n    # generates\
+          \ a node_datasets_ directory for MMLU custom tasks data\n    if node_dataset_dirs:\n\
+          \        tasks_dir = node_dataset_dirs[0]\n\n        mmlu_branch_evaluators\
           \ = [\n            MMLUBranchEvaluator(\n                model_path=candidate_model,\n\
           \                tasks_dir=tasks_dir,\n                tasks=mmlu_tasks,\n\
           \                few_shots=few_shots,\n                batch_size=batch_size,\n\
@@ -1080,37 +1146,38 @@ deploymentSpec:
           \            ),\n        ]\n        m_paths = [candidate_model, base_model_dir]\n\
           \        overall_scores = []\n        individual_scores_list = []\n    \
           \    for i, evaluator in enumerate(mmlu_branch_evaluators):\n          \
-          \  m_path = m_paths[i]\n            launch_vllm(m_path, gpu_count)\n   \
-          \         overall_score, individual_scores = evaluator.run(VLLM_SERVER)\n\
-          \            overall_scores.append(overall_score)\n            individual_scores_list.append(individual_scores)\n\
-          \            stop_vllm()\n\n        # TODO: update instructlab/instructlab\
-          \ model/evaluate.py\n        # so this logic can be imported outside of\
-          \ the CLI\n        overall_score = overall_scores[0]\n        base_overall_score\
-          \ = overall_scores[1]\n        individual_scores = individual_scores_list[0]\n\
-          \        base_individual_scores = individual_scores_list[1]\n\n        improvements,\
-          \ regressions, no_changes = [], [], []\n        for task, score in individual_scores.items():\n\
-          \            base_score = base_individual_scores[task]\n            s =\
-          \ score[\"score\"]\n            b_s = base_score[\"score\"]\n          \
-          \  d = round(s - b_s, 2)\n            if s > b_s:\n                improvements.append((task,\
-          \ d, b_s, s))\n            elif b_s > s:\n                regressions.append((task,\
-          \ d, b_s, s))\n            else:\n                no_changes.append((task,\
-          \ s))\n\n        summary = branch_eval_summary_to_json(\n            improvements,\n\
-          \            regressions,\n            no_changes,\n        )\n\n      \
-          \  mmlu_branch_data = {\n            \"report_title\": \"KNOWLEDGE EVALUATION\
-          \ REPORT\",\n            \"max_score\": \"1.0\",\n            \"model\"\
-          : candidate_model,\n            \"model_score\": round(overall_score, 2),\n\
-          \            \"base_model\": base_model_dir,\n            \"base_model_score\"\
-          : round(base_overall_score, 2),\n            \"summary\": summary,\n   \
-          \     }\n\n        with open(mmlu_branch_output.path, \"w\") as f:\n   \
-          \         json.dump(mmlu_branch_data, f, indent=4)\n    else:\n        print(\"\
-          No MMLU tasks directories found, skipping MMLU_branch evaluation.\")\n\n\
-          \    # MT_BENCH_BRANCH\n\n    judge_api_key = os.getenv(\"JUDGE_API_KEY\"\
-          , \"\")\n    judge_model_name = os.getenv(\"JUDGE_NAME\")\n    judge_endpoint\
-          \ = os.getenv(\"JUDGE_ENDPOINT\")\n\n    output_dir = \"/tmp/eval_output\"\
-          \n\n    # TODO: candidate_branch must be in same repo, not a fork, or, can\
-          \ compare main branch against candidate, base models\n    base_branch =\
-          \ base_branch or \"main\"\n    candidate_branch = candidate_branch or \"\
-          main\"\n\n    ######################################################################\n\
+          \  m_path = m_paths[i]\n            print(\"Launching Vllm...\")\n     \
+          \       launch_vllm(m_path, gpu_count)\n            overall_score, individual_scores\
+          \ = evaluator.run(VLLM_SERVER)\n            overall_scores.append(overall_score)\n\
+          \            individual_scores_list.append(individual_scores)\n        \
+          \    print(\"Stopping Vllm\")\n            stop_vllm()\n\n        # TODO:\
+          \ update instructlab/instructlab model/evaluate.py\n        # so this logic\
+          \ can be imported outside of the CLI\n        overall_score = overall_scores[0]\n\
+          \        base_overall_score = overall_scores[1]\n        individual_scores\
+          \ = individual_scores_list[0]\n        base_individual_scores = individual_scores_list[1]\n\
+          \n        improvements, regressions, no_changes = [], [], []\n        for\
+          \ task, score in individual_scores.items():\n            base_score = base_individual_scores[task]\n\
+          \            s = score[\"score\"]\n            b_s = base_score[\"score\"\
+          ]\n            d = round(s - b_s, 2)\n            if s > b_s:\n        \
+          \        improvements.append((task, d, b_s, s))\n            elif b_s >\
+          \ s:\n                regressions.append((task, d, b_s, s))\n          \
+          \  else:\n                no_changes.append((task, s))\n\n        summary\
+          \ = branch_eval_summary_to_json(\n            improvements,\n          \
+          \  regressions,\n            no_changes,\n        )\n\n        mmlu_branch_data\
+          \ = {\n            \"report_title\": \"KNOWLEDGE EVALUATION REPORT\",\n\
+          \            \"max_score\": \"1.0\",\n            \"model\": candidate_model,\n\
+          \            \"model_score\": round(overall_score, 2),\n            \"base_model\"\
+          : base_model_dir,\n            \"base_model_score\": round(base_overall_score,\
+          \ 2),\n            \"summary\": summary,\n        }\n\n        with open(mmlu_branch_output.path,\
+          \ \"w\") as f:\n            json.dump(mmlu_branch_data, f, indent=4)\n \
+          \   else:\n        print(\"No MMLU tasks directories found, skipping MMLU_branch\
+          \ evaluation.\")\n\n    # MT_BENCH_BRANCH\n\n    print(\"Strating MT_BENCH_BRANCH\
+          \ ...\")\n\n    judge_api_key = os.getenv(\"JUDGE_API_KEY\", \"\")\n   \
+          \ judge_model_name = os.getenv(\"JUDGE_NAME\")\n    judge_endpoint = os.getenv(\"\
+          JUDGE_ENDPOINT\")\n\n    output_dir = \"/tmp/eval_output\"\n\n    # TODO:\
+          \ candidate_branch must be in same repo, not a fork, or, can compare main\
+          \ branch against candidate, base models\n    base_branch = base_branch or\
+          \ \"main\"\n    candidate_branch = candidate_branch or \"main\"\n\n    ######################################################################\n\
           \    # TODO: Update ilab/model/evaluate evaluate def logic to allow for\
           \ external judge model\n    # and when that happens, much of this logic\
           \ can be imported from the 'evaluate' definition:\n    # https://github.com/instructlab/instructlab/blob/83ca501ecdd858677380046e2a56da5b2f3f14e7/src/instructlab/model/evaluate.py#L504\n\
@@ -1214,23 +1281,21 @@ deploymentSpec:
           \n\n    def launch_vllm(\n        model_path: str, gpu_count: int, retries:\
           \ int = 120, delay: int = 10\n    ):\n        import subprocess\n      \
           \  import sys\n        import time\n\n        import requests\n\n      \
-          \  if gpu_count > 0:\n            command = [\n                sys.executable,\n\
-          \                \"-m\",\n                \"vllm.entrypoints.openai.api_server\"\
-          ,\n                \"--model\",\n                model_path,\n         \
-          \       \"--tensor-parallel-size\",\n                str(gpu_count),\n \
-          \           ]\n        else:\n            command = [\n                sys.executable,\n\
-          \                \"-m\",\n                \"vllm.entrypoints.openai.api_server\"\
-          ,\n                \"--model\",\n                model_path,\n         \
-          \   ]\n\n        subprocess.Popen(args=command)\n\n        print(f\"Waiting\
-          \ for vLLM server to start at {VLLM_SERVER}...\")\n\n        for attempt\
-          \ in range(retries):\n            try:\n                response = requests.get(f\"\
-          {VLLM_SERVER}/models\")\n                if response.status_code == 200:\n\
-          \                    print(f\"vLLM server is up and running at {VLLM_SERVER}.\"\
-          )\n                    return\n            except requests.ConnectionError:\n\
-          \                pass\n\n            print(\n                f\"Server not\
-          \ available yet, retrying in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\
-          \n            )\n            time.sleep(delay)\n\n        raise RuntimeError(\n\
-          \            f\"Failed to start vLLM server at {VLLM_SERVER} after {retries}\
+          \  command = [\n            sys.executable,\n            \"-m\",\n     \
+          \       \"vllm.entrypoints.openai.api_server\",\n            \"--model\"\
+          ,\n            model_path,\n        ]\n        if gpu_count > 0:\n     \
+          \       command += [\n                \"--tensor-parallel-size\",\n    \
+          \            str(gpu_count),\n            ]\n\n        subprocess.Popen(args=command)\n\
+          \n        print(f\"Waiting for vLLM server to start at {VLLM_SERVER}...\"\
+          )\n\n        for attempt in range(retries):\n            try:\n        \
+          \        response = requests.get(f\"{VLLM_SERVER}/models\")\n          \
+          \      if response.status_code == 200:\n                    print(f\"vLLM\
+          \ server is up and running at {VLLM_SERVER}.\")\n                    return\n\
+          \            except requests.ConnectionError:\n                pass\n\n\
+          \            print(\n                f\"Server not available yet, retrying\
+          \ in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\n          \
+          \  )\n            time.sleep(delay)\n\n        raise RuntimeError(\n   \
+          \         f\"Failed to start vLLM server at {VLLM_SERVER} after {retries}\
           \ retries.\"\n        )\n\n    # This seems like excessive effort to stop\
           \ the vllm process, but merely saving & killing the pid doesn't work\n \
           \   # Also, the base image does not include 'pkill' cmd, so can't pkill\
@@ -1294,7 +1359,11 @@ deploymentSpec:
           \ best_score=float)\n    best_model = max(scores, key=scores.get)\n    best_score\
           \ = scores[best_model]\n    if best_score_file:\n        with open(best_score_file,\
           \ \"w\", encoding=\"utf-8\") as f:\n            json.dump({\"best_model\"\
-          : best_model, \"best_score\": best_score}, f, indent=4)\n\n    return outputs(best_model=best_model,\
+          : best_model, \"best_score\": best_score}, f, indent=4)\n\n    # Rename\
+          \ the best model directory to \"candidate_model\" for the next step\n  \
+          \  # So we know which model to use for the final evaluation\n    os.rename(\n\
+          \        os.path.join(models_path_prefix, best_model),\n        os.path.join(models_path_prefix,\
+          \ \"candidate_model\"),\n    )\n\n    return outputs(best_model=best_model,\
           \ best_score=best_score)\n\n"
         image: quay.io/sallyom/instructlab-ocp:eval-10-8
         resources:
@@ -1765,7 +1834,7 @@ root:
               componentInputParameter: repo_branch
             base_model_dir:
               runtimeValue:
-                constant: /model/model
+                constant: /data/model/
             batch_size:
               componentInputParameter: batch_size
             candidate_branch:

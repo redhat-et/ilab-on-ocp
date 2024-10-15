@@ -38,23 +38,17 @@ def run_mt_bench_op(
 
         import requests
 
+        command = [
+            sys.executable,
+            "-m",
+            "vllm.entrypoints.openai.api_server",
+            "--model",
+            model_path,
+        ]
         if gpu_count > 0:
-            command = [
-                sys.executable,
-                "-m",
-                "vllm.entrypoints.openai.api_server",
-                "--model",
-                model_path,
+            command += [
                 "--tensor-parallel-size",
                 str(gpu_count),
-            ]
-        else:
-            command = [
-                sys.executable,
-                "-m",
-                "vllm.entrypoints.openai.api_server",
-                "--model",
-                model_path,
             ]
 
         subprocess.Popen(args=command)
@@ -193,6 +187,13 @@ def run_mt_bench_op(
     if best_score_file:
         with open(best_score_file, "w", encoding="utf-8") as f:
             json.dump({"best_model": best_model, "best_score": best_score}, f, indent=4)
+
+    # Rename the best model directory to "candidate_model" for the next step
+    # So we know which model to use for the final evaluation
+    os.rename(
+        os.path.join(models_path_prefix, best_model),
+        os.path.join(models_path_prefix, "candidate_model"),
+    )
 
     return outputs(best_model=best_model, best_score=best_score)
 
