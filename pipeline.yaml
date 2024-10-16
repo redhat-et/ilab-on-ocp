@@ -783,7 +783,7 @@ deploymentSpec:
           \ = f\"train-{phase_name}-{name_suffix.rstrip('-sdg')}\"\n    if phase_name\
           \ == \"first\":\n        path_to_model = \"/input_model/model\"\n    elif\
           \ phase_name == \"second\":\n        path_to_model = list_phase1_final_model()\n\
-          \    image = \"registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2\"\
+          \    image = \"registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2\"\
           \n\n    manifest = inspect.cleandoc(\n        f\"\"\"\n        apiVersion:\
           \ kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n       \
           \   name: {name}\n        spec:\n          nprocPerNode: \\\\\"{nproc_per_node}\\\
@@ -903,7 +903,7 @@ deploymentSpec:
           \ = f\"train-{phase_name}-{name_suffix.rstrip('-sdg')}\"\n    if phase_name\
           \ == \"first\":\n        path_to_model = \"/input_model/model\"\n    elif\
           \ phase_name == \"second\":\n        path_to_model = list_phase1_final_model()\n\
-          \    image = \"registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2\"\
+          \    image = \"registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2\"\
           \n\n    manifest = inspect.cleandoc(\n        f\"\"\"\n        apiVersion:\
           \ kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n       \
           \   name: {name}\n        spec:\n          nprocPerNode: \\\\\"{nproc_per_node}\\\
