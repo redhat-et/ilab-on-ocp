@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# pylint: disable=too-many-lines
 
 """
 Standalone Distributed training script
@@ -24,6 +25,7 @@ TODO:
 import base64
 import json
 import logging
+import time
 import typing
 from os import path
 from urllib.parse import urlparse
@@ -31,10 +33,12 @@ from urllib.parse import urlparse
 import click
 import kubernetes
 import kubernetes.client
+import kubernetes.client.exceptions
 import kubernetes.client.rest
 import kubernetes.config
 import kubernetes.utils
 import kubernetes.watch
+import urllib3.exceptions
 import yaml
 
 logging.basicConfig(
@@ -46,7 +50,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
 K8S_NAME = "kfp-model-server"
 TOOLBOX_IMAGE = "registry.access.redhat.com/ubi9/toolbox"
-DS_IMAGE = "quay.io/opendatahub/workbench-images:jupyter-datascience-ubi9-python-3.11-20241004-609ffb8"
+DS_IMAGE = "quay.io/opendatahub/workbench-images:jupyter-datascience-ubi9-python-3.11-20241004-609ffb8"  # pylint: disable=line-too-long
 RHELAI_IMAGE = "registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2"
 DATA_PVC_NAME = "data"
 DATA_PVC_MOUNT_PATH = "/data"
@@ -544,8 +548,10 @@ def cli():
         "The namespace is inferred from the namespace option. "
         "The following keys are expected: bucket, access_key, secret_key, data_key. "
         " (SDG_OBJECT_STORE_SECRET env var)"
-        "If used, the  endpoint, bucket, access_key, secret_key, region, data_key, verify_tls options will be ignored."
-        "All supported options are: endpoint, bucket, access_key, secret_key, region, data_key, verify_tls"
+        "If used "
+        "endpoint, bucket, access_key, secret_key, region, data_key, verify_tls will be ignored."
+        "All supported options are: "
+        "endpoint, bucket, access_key, secret_key, region, data_key, verify_tls"
     ),
     default=SDG_OBJECT_STORE_SECRET_NAME,
     type=str,
@@ -663,7 +669,8 @@ def show(
     "--model-to-train",
     help=(
         "Path to model to train (PVC filesystem path). "
-        "Useful when calling training phases independently and users wants to point to the epoch directory. "
+        "Useful when calling training phases independently "
+        "and users wants to point to the epoch directory. "
         "Very advanced usage, not recommended for general use."
     ),
     type=str,
@@ -672,8 +679,9 @@ def show(
     "--sdg-object-store-endpoint",
     envvar="SDG_OBJECT_STORE_ENDPOINT",
     help=(
-        "Object store endpoint for SDG if different than the official AWS S3 endpoint. "
-        "Expects an URL. TLS with self-signed certificates is not supported. (SDG_OBJECT_STORE_ENDPOINT env var)"
+        "Object store endpoint if different than the official AWS S3 endpoint. "
+        "Expects an URL. TLS with self-signed certificates is not supported. "
+        "(SDG_OBJECT_STORE_ENDPOINT env var)"
         "e.g. https://s3.openshift-storage.svc:443"
         "Don't forget the URL scheme (http/https) and the port"
     ),
@@ -707,11 +715,13 @@ def show(
     "--sdg-object-store-data-key",
     envvar="SDG_OBJECT_STORE_DATA_KEY",
     help=(
-        "Name of tarball that contains SDG data AND model files. (SDG_OBJECT_STORE_DATA_KEY env var)."
+        "Name of tarball that contains SDG data AND model files."
+        "(SDG_OBJECT_STORE_DATA_KEY env var)."
         "The tarball MUST contain two directories: data and model."
         "The data directory contains the SDG data."
         "The model directory contains the model to train."
-        "To archive , use the following command: tar -czvf data.tar.gz /path/to/data /path/to/model ."
+        "To archive use the following command: "
+        "tar -czvf data.tar.gz /path/to/data /path/to/model /path/to/taxonomy."
     ),
     type=str,
 )
@@ -730,14 +740,19 @@ def show(
         "The namespace is inferred from the namespace option. "
         "The following keys are expected: bucket, access_key, secret_key, data_key. "
         " (SDG_OBJECT_STORE_SECRET env var)"
-        "If used, the  endpoint, bucket, access_key, secret_key, region, data_key, verify_tls options will be ignored."
-        "All supported options are: endpoint, bucket, access_key, secret_key, region, data_key, verify_tls"
+        "If used "
+        "endpoint, bucket, access_key, secret_key, region, data_key, verify_tls will be ignored."
+        "All supported options are: "
+        "endpoint, bucket, access_key, secret_key, region, data_key, verify_tls"
     ),
     type=str,
 )
 @click.option(
     "--force-pull",
-    help="Force pull the data (sdg data and model) from the object store even if it already exists in the PVC.",
+    help=(
+        "Force pull the data (sdg data and model) from the object store "
+        "even if it already exists in the PVC."
+    ),
     is_flag=True,
     default=False,
 )
@@ -791,7 +806,8 @@ def run(
         serving_model (str): The serving model for SDG. For SDG only.
         judge_serving_endpoint (str): The serving endpoint for evaluation. For Evaluation only.
         judge_serving_model_name (str): The serving model name for evaluation. For Evaluation only.
-        judge_serving_model_api_key (str): The serving model API key for evaluation. For Evaluation only.
+        judge_serving_model_api_key (str): The serving model API key for evaluation. For Evaluation
+        only.
         nproc_per_node (int): The number of processes per node. For training only.
         eval_type (str): The type of evaluation to run.
         training_phase (str): The type of training phase to run.
@@ -803,8 +819,10 @@ def run(
         sdg_object_store_region (str): The region for the object store.
         sdg_object_store_data_key (str): The name of the tarball that contains SDG data.
         sdg_object_store_verify_tls (bool): Verify TLS for the object store.
-        sdg_object_store_secret (str): The name of the Kubernetes Secret containing the SDG object store credentials. The namespace is inferred from the namespace option.
-        force_pull (bool): Force pull the data (sdg data and model) from the object store even if it already exists in the PVC.
+        sdg_object_store_secret (str): The name of the Kubernetes Secret containing the SDG object
+        store credentials. The namespace is inferred from the namespace option.
+        force_pull (bool): Force pull the data (sdg data and model) from the object store even if it
+        already exists in the PVC.
         training_1_epoch_num (int): Number of epochs to train the model for during phase 1.
         training_2_epoch_num (int): Number of epochs to train the model for during phase 2.
 
@@ -944,7 +962,8 @@ def create_sdg_job(
         job_name (str): The name of the job.
         exec_git_clone_op_repo_url (str): The URL of the taxonomy repository.
         exec_git_clone_op_repo_branch (str, optional): The branch of the taxonomy repository.
-        exec_git_clone_op_repo_pr (str, optional): The pull request number of the taxonomy repository.
+        exec_git_clone_op_repo_pr (str, optional): The pull request number of the taxonomy
+        repository.
 
     Returns:
         kubernetes.client.V1Job: A Kubernetes Job object configured with the specified parameters.
@@ -1100,14 +1119,17 @@ def create_data_job(
     """
     Create a Kubernetes Job object.
 
-    This function generates a Kubernetes Job object configured to fetch SDG data from an object store.
+    This function generates a Kubernetes Job object configured to fetch SDG data from an object
+    store.
 
     Args:
         namespace (str): The namespace in which the job will be created.
         job_name (str): The name of the job.
-        sdg_object_store_secret (str): The name of the Kubernetes Secret containing the SDG object store credentials.
+        sdg_object_store_secret (str): The name of the Kubernetes Secret containing the SDG object
+        store credentials.
         strategy (str): The strategy to use to fetch the data. Either "download" or "upload".
-        force_pull (bool): Force pull the data from the object store even if it already exists in the PVC.
+        force_pull (bool): Force pull the data from the object store even if it already exists in
+        the PVC.
 
     Returns:
         kubernetes.client.V1Job: A Kubernetes Job object configured with the specified parameters.
@@ -1449,8 +1471,8 @@ def log_pod_containers(
         cannot be retrieved
 
     Raises:
-        kubernetes.client.rest.ApiException: If there is an error other than a 400 status error when retrieving the logs.
-        due to a 400 status error, it continues to the next container.
+        kubernetes.client.rest.ApiException: If there is an error other than a 400 status error when
+        retrieving the logs. due to a 400 status error, it continues to the next container.
     """
     core_v1 = kubernetes.client.CoreV1Api()
     containers = getattr(pod.spec, container_type)
@@ -1509,52 +1531,80 @@ def run_job(namespace: str, job: kubernetes.client.V1Job) -> str:
         else:
             raise
 
+    # It seems that the watcher suffers from a bug where it misses job events
+    # https://github.com/kubernetes-client/python/issues/2238
+    # Or connections are dropped
+    # https://github.com/kubernetes-client/python/issues/2238
+    # Once the librarie supports Informer API, we can switch to it
+    # https://github.com/kubernetes-client/python/issues/868
     # Wait for the job to complete
     w = kubernetes.watch.Watch()
     pod_log = None
-    for event in w.stream(batch_v1.list_namespaced_job, namespace=namespace):
-        job_event = event["object"]
-        if job_event.metadata.name != job.metadata.name:
-            continue
-        logger.info("Job: %s - %s", job.metadata.name, job_event.status)
-        if job_event.status.succeeded == 1:
-            logger.info("Job completed successfully.")
-            pods = core_v1.list_namespaced_pod(
+    exit_flag = False
+    while not exit_flag:  # Keep the watch active
+        try:
+            for event in w.stream(
+                batch_v1.list_namespaced_job,
                 namespace=namespace,
-                label_selector="app={}".format(
-                    job.spec.template.metadata.labels["app"]
-                ),
-            )
-            # On success return the logs of the last pod which contains the output
-            # (useful to get eval scores)
-            if pods.items:
-                pod_log = core_v1.read_namespaced_pod_log(
-                    name=pods.items[0].metadata.name, namespace=namespace
-                )
-            else:
-                logger.error(
-                    "No pods found for job %s. The job exists, but the pods are missing.",
-                    job.metadata.name,
-                )
-                pod_log = None
-            w.stop()
-            break
-        elif job_event.status.failed == 1:
-            logger.error("Job failed. Pod logs:")
-            pods = core_v1.list_namespaced_pod(
-                namespace=namespace,
-                label_selector="app={}".format(
-                    job.spec.template.metadata.labels["app"]
-                ),
-            )
-            for pod in pods.items:
-                log_pod_containers(pod, "init_containers", namespace)
-                log_pod_containers(pod, "containers", namespace)
-            w.stop()
-            raise RuntimeError("Job failed.")
-        else:
-            logger.info("Job still running. Waiting for the next event.")
+                timeout_seconds=60,  # Timeout after 1 minutes
+            ):
+                job_event = event["object"]
+                if job_event.metadata.name != job.metadata.name:
+                    continue
 
+                logger.info("Job: %s - %s", job.metadata.name, job_event.status)
+
+                # Handle job completion (successful or failed)
+                if job_event.status.succeeded == 1:
+                    logger.info("Job completed successfully.")
+                    pods = core_v1.list_namespaced_pod(
+                        namespace=namespace,
+                        label_selector=f"app={job.spec.template.metadata.labels['app']}",
+                    )
+                    if pods.items:
+                        pod_log = core_v1.read_namespaced_pod_log(
+                            name=pods.items[0].metadata.name, namespace=namespace
+                        )
+                    else:
+                        logger.error(
+                            "No pods found for job %s. The job exists, but the pods are missing.",
+                            job.metadata.name,
+                        )
+                        pod_log = None
+                    w.stop()
+                    exit_flag = True  # Set the flag to exit the outer loop
+                    break
+
+                elif job_event.status.failed == 1:
+                    logger.error("Job failed. Pod logs:")
+                    pods = core_v1.list_namespaced_pod(
+                        namespace=namespace,
+                        label_selector=f"app={job.spec.template.metadata.labels['app']}",
+                    )
+                    for pod in pods.items:
+                        log_pod_containers(pod, "init_containers", namespace)
+                        log_pod_containers(pod, "containers", namespace)
+                    w.stop()
+                    raise RuntimeError("Job failed.")
+
+                else:
+                    logger.info(
+                        "Job '%s' is still running. Waiting for the next event.",
+                        job.metadata.name,
+                    )
+
+        except kubernetes.client.exceptions.ApiException as e:
+            logger.error("API exception occurred: %s", str(e))
+            time.sleep(5)  # Backoff before retrying
+
+        except urllib3.exceptions.InvalidChunkLength as e:
+            logger.error("Connection broken: %s", str(e))
+            time.sleep(5)  # Backoff before retrying
+
+        finally:
+            w.stop()  # Ensure the watch is stopped after each try
+
+    # Ensure pod logs are returned after success
     return pod_log
 
 
@@ -1615,7 +1665,8 @@ def sdg(
     # check in the context
     if not taxonomy_repo_branch and not taxonomy_repo_pr:
         raise ValueError(
-            "Either '--taxonomy-repo-branch' or '--taxonomy-repo-pr' must be provided to the 'run' command."
+            "Either '--taxonomy-repo-branch' or '--taxonomy-repo-pr' "
+            "must be provided to the 'run' command."
         )
 
     logger.info("Running setup for SDG.")
@@ -1740,7 +1791,8 @@ def sdg_data_fetch(
             # Endpoint is optional if AWS S3 is used
             raise ValueError(
                 "All of '--sdg-object-store-bucket', "
-                "'--sdg-object-store-access-key', '--sdg-object-store-secret-key', '--sdg-object-store-data-key' "
+                "'--sdg-object-store-access-key', '--sdg-object-store-secret-key', "
+                "'--sdg-object-store-data-key' "
                 "must be provided to the 'sdg-data-fetch' command. Alternatively, provide "
                 "'--sdg-object-store-secret' to use a Kubernetes Secret."
             )
@@ -1951,112 +2003,145 @@ def train(
     # Get the CR status and wait for it to be completed
     core_v1 = kubernetes.client.CoreV1Api()
     w = kubernetes.watch.Watch()
-    for event in w.stream(
-        api.list_namespaced_custom_object,
-        group="kubeflow.org",
-        version="v1",
-        namespace=namespace,
-        plural="pytorchjobs",
-    ):
-        pytorchjob_event = event["object"]
-        if (
-            pytorchjob_event["metadata"]["name"]
-            != pytorch_training_job_yaml["metadata"]["name"]
-        ):
-            continue
-        pytorchjob_name = pytorchjob_event["metadata"]["name"]
-
-        if (
-            "status" not in pytorchjob_event
-            or "conditions" not in pytorchjob_event["status"]
-        ):
-            continue
-        logger.info(
-            "PytorchJob: %s - %s",
-            pytorchjob_name,
-            pytorchjob_event["status"].get("conditions", "No conditions yet"),
-        )
-
-        master_pod_success = False
-        worker_pod_success = False
-        # Always start by the last condition so that if the job is completed, we can stop watching
-        # If we don't do this, we might get 'stuck' into the Running condition and never stop watching
-        for job_condition in reversed(pytorchjob_event["status"]["conditions"]):
-            print(job_condition)
-            if job_condition["type"] == "Running":
-                # now watch for pod event
-                for event in w.stream(
-                    core_v1.list_namespaced_pod,
-                    namespace=namespace,
-                    label_selector=f"training.kubeflow.org/job-name=train-phase-{training_phase}",
+    exit_flag = False
+    # TODO: this block is getting really deep, would be nice to refactor one day
+    while not exit_flag:  # Keep the watch active
+        try:
+            for event in w.stream(
+                api.list_namespaced_custom_object,
+                group="kubeflow.org",
+                version="v1",
+                namespace=namespace,
+                plural="pytorchjobs",
+            ):
+                pytorchjob_event = event["object"]
+                if (
+                    pytorchjob_event["metadata"]["name"]
+                    != pytorch_training_job_yaml["metadata"]["name"]
                 ):
-                    pod_event = event["object"]
-                    if pod_event.metadata.name.startswith(pytorchjob_name):
-                        logger.info(
-                            "Pod: %s - %s",
-                            pod_event.metadata.name,
-                            pod_event.status.phase,
-                        )
-                        for container_status in pod_event.status.container_statuses:
-                            if (
-                                container_status.state.waiting
-                                and container_status.state.waiting.reason
-                                == "CrashLoopBackOff"  # We fail on CrashLoopBackOff and not on Error, allowing for retries
-                            ):
-                                log_pod_containers(
-                                    pod_event, "init_containers", namespace
-                                )
-                                log_pod_containers(pod_event, "containers", namespace)
-                                raise RuntimeError(
-                                    f"Pod {pod_event.metadata.name} failed."
-                                )
-                        if pod_event.status.phase == "Failed":
-                            log_pod_containers(pod_event, "init_containers", namespace)
-                            log_pod_containers(pod_event, "containers", namespace)
-                            w.stop()
-                        if pod_event.status.phase == "Succeeded":
-                            if pod_event.metadata.name.startswith(
-                                f"{pytorchjob_name}-master"
-                            ):
-                                master_pod_success = True
-                                logger.info(
-                                    "Pod '%s' completed successfully",
-                                    pod_event.metadata.name,
-                                )
-                            elif pod_event.metadata.name.startswith(
-                                f"{pytorchjob_name}-worker"
-                            ):
-                                logger.info(
-                                    "Pod '%s' completed successfully",
-                                    pod_event.metadata.name,
-                                )
-                                worker_pod_success = True
-                            if master_pod_success and worker_pod_success:
-                                logger.info(
-                                    "All PytorchJob Pods completed successfully"
-                                )
-                                w.stop()
-                                # Break here to avoid going into other conditions, we are done
-                                break
-                            continue
-            elif job_condition["type"] == "Succeeded":
+                    continue
+                pytorchjob_name = pytorchjob_event["metadata"]["name"]
+
+                if (
+                    "status" not in pytorchjob_event
+                    or "conditions" not in pytorchjob_event["status"]
+                ):
+                    continue
                 logger.info(
-                    "PytorchJob '%s' completed successfully: %s",
+                    "PytorchJob: %s - %s",
                     pytorchjob_name,
-                    job_condition["reason"],
+                    pytorchjob_event["status"].get("conditions", "No conditions yet"),
                 )
-                logger.info("Training phase %s completed.", training_phase)
-                w.stop()
-                # Break here to avoid going into other conditions, we are done
-                break
-            elif job_condition["type"] == "Failed":
-                logger.error(
-                    "PytorchJob' %s' failed: %s",
-                    pytorchjob_name,
-                    job_condition["reason"],
-                )
-                w.stop()
-                raise RuntimeError("Job failed.")
+
+                master_pod_success = False
+                worker_pod_success = False
+                # Always start by the last condition so that if the job is completed, we can stop
+                # watching If we don't do this, we might get 'stuck' into the Running condition and
+                # never stop
+                # watching
+                for job_condition in reversed(pytorchjob_event["status"]["conditions"]):
+                    print(job_condition)
+                    if job_condition["type"] == "Running":
+                        # now watch for pod event
+                        for event in w.stream(
+                            core_v1.list_namespaced_pod,
+                            namespace=namespace,
+                            label_selector=(
+                                f"training.kubeflow.org/job-name=train-phase-{training_phase}"
+                            ),
+                        ):
+                            pod_event = event["object"]
+                            if pod_event.metadata.name.startswith(pytorchjob_name):
+                                logger.info(
+                                    "Pod: %s - %s",
+                                    pod_event.metadata.name,
+                                    pod_event.status.phase,
+                                )
+                                for (
+                                    container_status
+                                ) in pod_event.status.container_statuses:
+                                    # We fail on CrashLoopBackOff and not on Error, allowing for
+                                    # retries
+                                    if (
+                                        container_status.state.waiting
+                                        and container_status.state.waiting.reason
+                                        == "CrashLoopBackOff"
+                                    ):
+                                        log_pod_containers(
+                                            pod_event, "init_containers", namespace
+                                        )
+                                        log_pod_containers(
+                                            pod_event, "containers", namespace
+                                        )
+                                        raise RuntimeError(
+                                            f"Pod {pod_event.metadata.name} failed."
+                                        )
+                                if pod_event.status.phase == "Failed":
+                                    log_pod_containers(
+                                        pod_event, "init_containers", namespace
+                                    )
+                                    log_pod_containers(
+                                        pod_event, "containers", namespace
+                                    )
+                                    w.stop()
+                                if pod_event.status.phase == "Succeeded":
+                                    if pod_event.metadata.name.startswith(
+                                        f"{pytorchjob_name}-master"
+                                    ):
+                                        master_pod_success = True
+                                        logger.info(
+                                            "Pod '%s' completed successfully",
+                                            pod_event.metadata.name,
+                                        )
+                                    elif pod_event.metadata.name.startswith(
+                                        f"{pytorchjob_name}-worker"
+                                    ):
+                                        logger.info(
+                                            "Pod '%s' completed successfully",
+                                            pod_event.metadata.name,
+                                        )
+                                        worker_pod_success = True
+                                    if master_pod_success and worker_pod_success:
+                                        logger.info(
+                                            "All PytorchJob Pods completed successfully"
+                                        )
+                                        w.stop()
+                                        exit_flag = True
+                                        # Break here to avoid going into other conditions, we are
+                                        # done
+                                        break
+                                    continue
+                    elif job_condition["type"] == "Succeeded":
+                        logger.info(
+                            "PytorchJob '%s' completed successfully: %s",
+                            pytorchjob_name,
+                            job_condition["reason"],
+                        )
+                        logger.info("Training phase %s completed.", training_phase)
+                        w.stop()
+                        exit_flag = True
+                        # Break here to avoid going into other conditions, we are done
+                        break
+                    elif job_condition["type"] == "Failed":
+                        logger.error(
+                            "PytorchJob' %s' failed: %s",
+                            pytorchjob_name,
+                            job_condition["reason"],
+                        )
+                        w.stop()
+                        raise RuntimeError("Job failed.")
+        except kubernetes.client.exceptions.ApiException as e:
+            logger.error("API exception occurred: %s", str(e))
+            time.sleep(5)  # Backoff before retrying
+
+        # Catches the following error:
+        # "InvalidChunkLength(got length b'', 0 bytes read)"
+        except urllib3.exceptions.InvalidChunkLength as e:
+            logger.error("Connection broken: %s", str(e))
+            time.sleep(5)  # Backoff before retrying
+
+        finally:
+            w.stop()
 
 
 @run.command(name="evaluation")
