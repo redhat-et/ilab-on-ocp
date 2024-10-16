@@ -109,7 +109,7 @@ def pytorchjob_manifest_op(
         path_to_model = "/input_model/model"
     elif phase_name == "second":
         path_to_model = list_phase1_final_model()
-    image = "registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2"
+    image = "registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2"
 
     manifest = inspect.cleandoc(
         f"""
