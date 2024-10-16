@@ -1104,22 +1104,21 @@ deploymentSpec:
           \ MMLU_BRANCH\n\n    # This is very specific to 'ilab generate', necessary\
           \ because the data generation and\n    # model evaluation are taking place\
           \ in separate environments.\n    def update_test_lines_in_files(base_dir):\n\
-          \        import os\n        import re\n\n        # Define the regex to match\
-          \ lines starting with any indentation, 'test:', and containing 'node_datasets_*'\n\
-          \        regex = re.compile(r\"(\\s*test:\\s*).*/(node_datasets_[^/]*)(.*)\"\
-          )\n\n        for root, dirs, files in os.walk(base_dir):\n            for\
-          \ file_name in files:\n                file_path = os.path.join(root, file_name)\n\
-          \n                with open(file_path, \"r\") as file:\n               \
-          \     lines = file.readlines()\n\n                updated_lines = []\n \
-          \               changed = False\n\n                for line in lines:\n\
-          \                    # Replace the matched line with the desired format,\
-          \ keeping 'test:' and leading whitespace intact\n                    new_line\
-          \ = re.sub(regex, rf\"\\1{base_dir}/\\2\\3\", line)\n                  \
-          \  if new_line != line:\n                        changed = True  # Only\
-          \ rewrite the file if there's a change\n                    updated_lines.append(new_line)\n\
-          \n                if changed:\n                    with open(file_path,\
-          \ \"w\", encoding=\"utf-8\") as file:\n                        file.writelines(updated_lines)\n\
-          \                    print(f\"Updated: {file_path}\")\n\n    # find_node_dataset_directories\
+          \        import os\n\n        import yaml\n\n        for root, dirs, files\
+          \ in os.walk(base_dir):\n            for file_name in files:\n         \
+          \       if file_name.startswith(\"knowledge_\") and file_name.endswith(\n\
+          \                    \"_task.yaml\"\n                ):\n              \
+          \      file_path = os.path.join(root, file_name)\n\n                   \
+          \ with open(file_path, \"r\") as file:\n                        task_yaml\
+          \ = yaml.load(file, Loader=yaml.Loader)\n\n                    current_test_file_path\
+          \ = task_yaml[\"dataset_kwargs\"][\"data_files\"][\n                   \
+          \     \"test\"\n                    ]\n                    current_test_file_path_parts\
+          \ = current_test_file_path.split(\"/\")\n                    new_test_file_path\
+          \ = f\"{root}/{current_test_file_path_parts[-1]}\"\n                   \
+          \ task_yaml[\"dataset_kwargs\"][\"data_files\"][\"test\"] = (\n        \
+          \                new_test_file_path\n                    )\n           \
+          \         with open(file_path, \"w\", encoding=\"utf-8\") as file:\n   \
+          \                     yaml.dump(task_yaml, file)\n\n    # find_node_dataset_directories\
           \ to find sdg output node_datasets_*\n    def find_node_dataset_directories(base_dir:\
           \ str):\n        import os\n        import re\n\n        # This is specific\
           \ to ilab/eval output\n        pattern = r\"node_datasets_\"\n        matching_dirs\
