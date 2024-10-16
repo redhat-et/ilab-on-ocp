@@ -447,7 +447,7 @@ def gen_standalone():
         "exec-git-clone-op": {},
         "exec-huggingface-importer-op": 'huggingface_importer_op(repo_name="ibm-granite/granite-7b-base", model="/data/model")',
         "exec-run-mt-bench-op": 'run_mt_bench_op(best_score_file="/data/mt-bench-best.txt",mt_bench_output="/data/mt-bench-results.txt", models_folder="/data/model/output/phase_2/hf_format", models_path_prefix="/data/model/output/phase_2/hf_format", max_workers="auto", merge_system_user_message=False)',
-        "exec-run-final-eval-op": "run_final_eval_op(mmlu_branch_output='/data/mmlu-branch-best.txt',mt_bench_branch_output='/data/mt-bench-branch-best.txt',candidate_model='/data/model/output/phase_2/hf_format/candidate_model', taxonomy='/data/taxonomy', tasks='/data/generated', base_branch='', candidate_branch='', device=None, base_model_dir='/data/model', max_workers='auto', merge_system_user_message=False, model_dtype='bfloat16', few_shots=5, batch_size=8)",
+        "exec-run-final-eval-op": "run_final_eval_op(mmlu_branch_output='/data/mmlu-branch-best.txt',mt_bench_branch_output='/data/mt-bench-branch-best.txt',candidate_model='/data/model/output/phase_2/hf_format/candidate_model', taxonomy='/data/taxonomy', tasks='/data/data/', base_branch='', candidate_branch='', device=None, base_model_dir='/data/model', max_workers='auto', merge_system_user_message=False, model_dtype='bfloat16', few_shots=5, batch_size=8)",
     }
 
     details = {}
