@@ -1017,55 +1017,52 @@ deploymentSpec:
           \ str,\n    candidate_branch: str,\n    max_workers: str,\n    device: str,\n\
           \    model_dtype: str,\n    few_shots: int,\n    batch_size: int,\n    merge_system_user_message:\
           \ bool,\n    candidate_model: str = None,\n):\n    import json\n    import\
-          \ os\n\n    import torch\n    from instructlab.eval.mmlu import MMLU_TASKS,\
-          \ MMLUBranchEvaluator\n    from instructlab.eval.mt_bench import MTBenchBranchEvaluator\n\
-          \    from instructlab.model.evaluate import qa_pairs_to_qna_to_avg_scores,\
-          \ sort_score\n\n    VLLM_SERVER = \"http://localhost:8000/v1\"\n\n    print(\"\
-          Starting Final Eval...\")\n\n    def launch_vllm(\n        model_path: str,\
-          \ gpu_count: int, retries: int = 120, delay: int = 10\n    ):\n        import\
+          \ os\n    import subprocess\n\n    import torch\n    from instructlab.eval.mmlu\
+          \ import MMLU_TASKS, MMLUBranchEvaluator\n    from instructlab.eval.mt_bench\
+          \ import MTBenchBranchEvaluator\n    from instructlab.model.evaluate import\
+          \ qa_pairs_to_qna_to_avg_scores, sort_score\n\n    print(\"Starting Final\
+          \ Eval...\")\n\n    def launch_vllm(\n        model_path: str, gpu_count:\
+          \ int, retries: int = 120, delay: int = 10\n    ) -> tuple:\n        import\
           \ subprocess\n        import sys\n        import time\n\n        import\
-          \ requests\n\n        command = [\n            sys.executable,\n       \
-          \     \"-m\",\n            \"vllm.entrypoints.openai.api_server\",\n   \
-          \         \"--model\",\n            model_path,\n        ]\n        if gpu_count\
-          \ > 0:\n            command += [\n                \"--tensor-parallel-size\"\
-          ,\n                str(gpu_count),\n            ]\n\n        subprocess.Popen(args=command)\n\
-          \n        print(f\"Waiting for vLLM server to start at {VLLM_SERVER}...\"\
+          \ requests\n        from instructlab.model.backends.common import free_tcp_ipv4_port\n\
+          \n        free_port = free_tcp_ipv4_port(\"127.0.0.1\")\n        port =\
+          \ str(free_port)\n        vllm_server = f\"http://127.0.0.1:{port}/v1\"\n\
+          \n        command = [\n            sys.executable,\n            \"-m\",\n\
+          \            \"vllm.entrypoints.openai.api_server\",\n            \"--port\"\
+          ,\n            port,\n            \"--model\",\n            model_path,\n\
+          \        ]\n        if gpu_count > 0:\n            command += [\n      \
+          \          \"--tensor-parallel-size\",\n                str(gpu_count),\n\
+          \            ]\n\n        process = subprocess.Popen(args=command)\n\n \
+          \       print(f\"Waiting for vLLM server to start at {vllm_server}...\"\
           )\n\n        for attempt in range(retries):\n            try:\n        \
-          \        response = requests.get(f\"{VLLM_SERVER}/models\")\n          \
+          \        response = requests.get(f\"{vllm_server}/models\")\n          \
           \      if response.status_code == 200:\n                    print(f\"vLLM\
-          \ server is up and running at {VLLM_SERVER}.\")\n                    return\n\
-          \            except requests.ConnectionError:\n                pass\n\n\
-          \            print(\n                f\"Server not available yet, retrying\
-          \ in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\n          \
-          \  )\n            time.sleep(delay)\n\n        raise RuntimeError(\n   \
-          \         f\"Failed to start vLLM server at {VLLM_SERVER} after {retries}\
-          \ retries.\"\n        )\n\n    # This seems like excessive effort to stop\
-          \ the vllm process, but merely saving & killing the pid doesn't work\n \
-          \   # Also, the base image does not include 'pkill' cmd, so can't pkill\
-          \ -f vllm.entrypoints.openai.api_server either\n    def stop_vllm():\n \
-          \       import psutil\n\n        for process in psutil.process_iter(attrs=[\"\
-          pid\", \"name\", \"cmdline\"]):\n            cmdline = process.info.get(\"\
-          cmdline\")\n            if cmdline and \"vllm.entrypoints.openai.api_server\"\
-          \ in cmdline:\n                print(\n                    f\"Found vLLM\
-          \ server process with PID: {process.info['pid']}, terminating...\"\n   \
-          \             )\n                try:\n                    process.terminate()\
-          \  # Try graceful termination\n                    process.wait(timeout=5)\
-          \  # Wait a bit for it to terminate\n                    if process.is_running():\n\
-          \                        print(\n                            f\"Forcefully\
-          \ killing vLLM server process with PID: {process.info['pid']}\"\n      \
-          \                  )\n                        process.kill()  # Force kill\
-          \ if it's still running\n                    print(\n                  \
-          \      f\"Successfully stopped vLLM server with PID: {process.info['pid']}\"\
-          \n                    )\n                except psutil.NoSuchProcess:\n\
-          \                    print(f\"Process with PID {process.info['pid']} no\
-          \ longer exists.\")\n                except psutil.AccessDenied:\n     \
-          \               print(\n                        f\"Access denied when trying\
-          \ to terminate process with PID {process.info['pid']}.\"\n             \
-          \       )\n                except Exception as e:\n                    print(\n\
-          \                        f\"Failed to terminate process with PID {process.info['pid']}.\
-          \ Error: {e}\"\n                    )\n\n    # For standalone mode\n   \
-          \ if candidate_model is None:\n        # logic to get the best model from\
-          \ the models folder and results\n        pass\n\n    ######################################################################\n\
+          \ server is up and running at {vllm_server}.\")\n                    return\
+          \ process, vllm_server\n            except requests.ConnectionError:\n \
+          \               pass\n\n            print(\n                f\"Server not\
+          \ available yet, retrying in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\
+          \n            )\n            time.sleep(delay)\n\n        raise RuntimeError(\n\
+          \            f\"Failed to start vLLM server at {vllm_server} after {retries}\
+          \ retries.\"\n        )\n\n    def shutdown_vllm(process: subprocess.Popen,\
+          \ timeout: int = 20):\n        import subprocess\n\n        from instructlab.model.backends.vllm\
+          \ import wait_for_stable_vram\n\n        try:\n            process.terminate()\n\
+          \            process.wait(timeout=timeout)\n\n            if process.poll()\
+          \ is None:\n                print(f\"Forcefully killing vLLM server process\
+          \ with PID: {process.pid}\")\n                process.kill()\n\n       \
+          \     print(f\"Successfully stopped vLLM server with PID: {process.pid}\"\
+          )\n\n        except subprocess.TimeoutExpired:\n            print(\n   \
+          \             f\"Timeout expired. Forcefully killing vLLM server with PID:\
+          \ {process.pid}\"\n            )\n            process.kill()  # Force kill\
+          \ the process if over timeout\n        except subprocess.NoSuchProcess:\n\
+          \            print(f\"Process with PID {process.pid} no longer exists.\"\
+          )\n        except Exception as e:\n            print(f\"Failed to stop process\
+          \ with PID {process.pid}. Error: {e}\")\n        # Note from instructlab/model/backends/vllm.py\n\
+          \        # vLLM relies on stable VRAM,  residual reclamation activity\n\
+          \        # can lead to crashes on restart. To prevent this add a\n     \
+          \   # short delay (typically ~ 10 seconds, max 30) to verify stability.\n\
+          \        wait_for_stable_vram(30)\n\n    # For standalone mode\n    if candidate_model\
+          \ is None:\n        # logic to get the best model from the models folder\
+          \ and results\n        pass\n\n    ######################################################################\n\
           \    # branch_eval_summary_to_json creates a json object from output of\
           \ instructlab/eval\n    # TODO: Add this to the instructlab/eval or instructlab/instructlab\
           \ repository\n    def branch_eval_summary_to_json(\n        improvements:\
@@ -1146,37 +1143,38 @@ deploymentSpec:
           \        overall_scores = []\n        individual_scores_list = []\n    \
           \    for i, evaluator in enumerate(mmlu_branch_evaluators):\n          \
           \  m_path = m_paths[i]\n            print(\"Launching Vllm...\")\n     \
-          \       launch_vllm(m_path, gpu_count)\n            overall_score, individual_scores\
-          \ = evaluator.run(VLLM_SERVER)\n            overall_scores.append(overall_score)\n\
-          \            individual_scores_list.append(individual_scores)\n        \
-          \    print(\"Stopping Vllm\")\n            stop_vllm()\n\n        # TODO:\
-          \ update instructlab/instructlab model/evaluate.py\n        # so this logic\
-          \ can be imported outside of the CLI\n        overall_score = overall_scores[0]\n\
-          \        base_overall_score = overall_scores[1]\n        individual_scores\
-          \ = individual_scores_list[0]\n        base_individual_scores = individual_scores_list[1]\n\
-          \n        improvements, regressions, no_changes = [], [], []\n        for\
-          \ task, score in individual_scores.items():\n            base_score = base_individual_scores[task]\n\
-          \            s = score[\"score\"]\n            b_s = base_score[\"score\"\
-          ]\n            d = round(s - b_s, 2)\n            if s > b_s:\n        \
-          \        improvements.append((task, d, b_s, s))\n            elif b_s >\
-          \ s:\n                regressions.append((task, d, b_s, s))\n          \
-          \  else:\n                no_changes.append((task, s))\n\n        summary\
-          \ = branch_eval_summary_to_json(\n            improvements,\n          \
-          \  regressions,\n            no_changes,\n        )\n\n        mmlu_branch_data\
-          \ = {\n            \"report_title\": \"KNOWLEDGE EVALUATION REPORT\",\n\
-          \            \"max_score\": \"1.0\",\n            \"model\": candidate_model,\n\
-          \            \"model_score\": round(overall_score, 2),\n            \"base_model\"\
-          : base_model_dir,\n            \"base_model_score\": round(base_overall_score,\
-          \ 2),\n            \"summary\": summary,\n        }\n\n        with open(mmlu_branch_output.path,\
-          \ \"w\") as f:\n            json.dump(mmlu_branch_data, f, indent=4)\n \
-          \   else:\n        print(\"No MMLU tasks directories found, skipping MMLU_branch\
-          \ evaluation.\")\n\n    # MT_BENCH_BRANCH\n\n    print(\"Strating MT_BENCH_BRANCH\
-          \ ...\")\n\n    judge_api_key = os.getenv(\"JUDGE_API_KEY\", \"\")\n   \
-          \ judge_model_name = os.getenv(\"JUDGE_NAME\")\n    judge_endpoint = os.getenv(\"\
-          JUDGE_ENDPOINT\")\n\n    output_dir = \"/tmp/eval_output\"\n\n    # TODO:\
-          \ candidate_branch must be in same repo, not a fork, or, can compare main\
-          \ branch against candidate, base models\n    base_branch = base_branch or\
-          \ \"main\"\n    candidate_branch = candidate_branch or \"main\"\n\n    ######################################################################\n\
+          \       vllm_process, vllm_server = launch_vllm(m_path, gpu_count)\n   \
+          \         overall_score, individual_scores = evaluator.run(vllm_server)\n\
+          \            overall_scores.append(overall_score)\n            individual_scores_list.append(individual_scores)\n\
+          \            print(\"Stopping Vllm\")\n            shutdown_vllm(vllm_process)\n\
+          \n        # TODO: update instructlab/instructlab model/evaluate.py\n   \
+          \     # so this logic can be imported outside of the CLI\n        overall_score\
+          \ = overall_scores[0]\n        base_overall_score = overall_scores[1]\n\
+          \        individual_scores = individual_scores_list[0]\n        base_individual_scores\
+          \ = individual_scores_list[1]\n\n        improvements, regressions, no_changes\
+          \ = [], [], []\n        for task, score in individual_scores.items():\n\
+          \            base_score = base_individual_scores[task]\n            s =\
+          \ score[\"score\"]\n            b_s = base_score[\"score\"]\n          \
+          \  d = round(s - b_s, 2)\n            if s > b_s:\n                improvements.append((task,\
+          \ d, b_s, s))\n            elif b_s > s:\n                regressions.append((task,\
+          \ d, b_s, s))\n            else:\n                no_changes.append((task,\
+          \ s))\n\n        summary = branch_eval_summary_to_json(\n            improvements,\n\
+          \            regressions,\n            no_changes,\n        )\n\n      \
+          \  mmlu_branch_data = {\n            \"report_title\": \"KNOWLEDGE EVALUATION\
+          \ REPORT\",\n            \"max_score\": \"1.0\",\n            \"model\"\
+          : candidate_model,\n            \"model_score\": round(overall_score, 2),\n\
+          \            \"base_model\": base_model_dir,\n            \"base_model_score\"\
+          : round(base_overall_score, 2),\n            \"summary\": summary,\n   \
+          \     }\n\n        with open(mmlu_branch_output.path, \"w\") as f:\n   \
+          \         json.dump(mmlu_branch_data, f, indent=4)\n    else:\n        print(\"\
+          No MMLU tasks directories found, skipping MMLU_branch evaluation.\")\n\n\
+          \    # MT_BENCH_BRANCH\n\n    print(\"Strating MT_BENCH_BRANCH ...\")\n\n\
+          \    judge_api_key = os.getenv(\"JUDGE_API_KEY\", \"\")\n    judge_model_name\
+          \ = os.getenv(\"JUDGE_NAME\")\n    judge_endpoint = os.getenv(\"JUDGE_ENDPOINT\"\
+          )\n\n    output_dir = \"/tmp/eval_output\"\n\n    # TODO: candidate_branch\
+          \ must be in same repo, not a fork, or, can compare main branch against\
+          \ candidate, base models\n    base_branch = base_branch or \"main\"\n  \
+          \  candidate_branch = candidate_branch or \"main\"\n\n    ######################################################################\n\
           \    # TODO: Update ilab/model/evaluate evaluate def logic to allow for\
           \ external judge model\n    # and when that happens, much of this logic\
           \ can be imported from the 'evaluate' definition:\n    # https://github.com/instructlab/instructlab/blob/83ca501ecdd858677380046e2a56da5b2f3f14e7/src/instructlab/model/evaluate.py#L504\n\
@@ -1200,15 +1198,16 @@ deploymentSpec:
           \ = []\n    for i, evaluator in enumerate(mt_bench_evaluators):\n      \
           \  branch = branches[i]\n        m_path = m_paths[i]\n\n        print(\n\
           \            f\"Generating questions and reference answers from qna files\
-          \ for branch {branch}...\"\n        )\n        launch_vllm(m_path, gpu_count)\n\
-          \n        evaluator.gen_answers(\n            server_url=VLLM_SERVER,\n\
+          \ for branch {branch}...\"\n        )\n        vllm_process, vllm_server\
+          \ = launch_vllm(m_path, gpu_count)\n\n        evaluator.gen_answers(\n \
+          \           server_url=vllm_server,\n            serving_gpus=gpu_count,\n\
+          \            max_workers=max_workers,\n        )\n\n        shutdown_vllm(vllm_process)\n\
+          \n        print(f\"Evaluating answers for branch {branch}...\")\n      \
+          \  overall_score, qa_pairs, error_rate = evaluator.judge_answers(\n    \
+          \        server_url=judge_endpoint,\n            api_key=judge_api_key,\n\
           \            serving_gpus=gpu_count,\n            max_workers=max_workers,\n\
-          \        )\n\n        stop_vllm()\n\n        print(f\"Evaluating answers\
-          \ for branch {branch}...\")\n        overall_score, qa_pairs, error_rate\
-          \ = evaluator.judge_answers(\n            server_url=judge_endpoint,\n \
-          \           api_key=judge_api_key,\n            serving_gpus=gpu_count,\n\
-          \            max_workers=max_workers,\n        )\n\n        qa_pairs_and_errors.append((overall_score,\
-          \ qa_pairs, error_rate))\n\n    overall_score, qa_pairs, error_rate = qa_pairs_and_errors[0]\n\
+          \        )\n\n        qa_pairs_and_errors.append((overall_score, qa_pairs,\
+          \ error_rate))\n\n    overall_score, qa_pairs, error_rate = qa_pairs_and_errors[0]\n\
           \    base_overall_score, base_qa_pairs, base_error_rate = qa_pairs_and_errors[1]\n\
           \n    qna_to_avg_scores = qa_pairs_to_qna_to_avg_scores(qa_pairs)\n    base_qna_to_avg_scores\
           \ = qa_pairs_to_qna_to_avg_scores(base_qa_pairs)\n\n    improvements, regressions,\
@@ -1275,51 +1274,47 @@ deploymentSpec:
           \    max_workers: str,\n    models_list: List[str] = None,\n    models_folder:\
           \ Optional[str] = None,\n    device: str = None,\n    best_score_file: Optional[str]\
           \ = None,\n) -> NamedTuple(\"outputs\", best_model=str, best_score=float):\n\
-          \    import json\n    import os\n\n    import torch\n    from instructlab.eval.mt_bench\
-          \ import MTBenchEvaluator\n\n    VLLM_SERVER = \"http://localhost:8000/v1\"\
-          \n\n    def launch_vllm(\n        model_path: str, gpu_count: int, retries:\
-          \ int = 120, delay: int = 10\n    ):\n        import subprocess\n      \
-          \  import sys\n        import time\n\n        import requests\n\n      \
-          \  command = [\n            sys.executable,\n            \"-m\",\n     \
-          \       \"vllm.entrypoints.openai.api_server\",\n            \"--model\"\
-          ,\n            model_path,\n        ]\n        if gpu_count > 0:\n     \
-          \       command += [\n                \"--tensor-parallel-size\",\n    \
-          \            str(gpu_count),\n            ]\n\n        subprocess.Popen(args=command)\n\
-          \n        print(f\"Waiting for vLLM server to start at {VLLM_SERVER}...\"\
+          \    import json\n    import os\n    import subprocess\n\n    import torch\n\
+          \    from instructlab.eval.mt_bench import MTBenchEvaluator\n\n    def launch_vllm(\n\
+          \        model_path: str, gpu_count: int, retries: int = 120, delay: int\
+          \ = 10\n    ) -> tuple:\n        import subprocess\n        import sys\n\
+          \        import time\n\n        import requests\n        from instructlab.model.backends.common\
+          \ import free_tcp_ipv4_port\n\n        free_port = free_tcp_ipv4_port(\"\
+          127.0.0.1\")\n        port = str(free_port)\n        vllm_server = f\"http://127.0.0.1:{port}/v1\"\
+          \n\n        command = [\n            sys.executable,\n            \"-m\"\
+          ,\n            \"vllm.entrypoints.openai.api_server\",\n            \"--port\"\
+          ,\n            port,\n            \"--model\",\n            model_path,\n\
+          \        ]\n        if gpu_count > 0:\n            command += [\n      \
+          \          \"--tensor-parallel-size\",\n                str(gpu_count),\n\
+          \            ]\n\n        process = subprocess.Popen(args=command)\n\n \
+          \       print(f\"Waiting for vLLM server to start at {vllm_server}...\"\
           )\n\n        for attempt in range(retries):\n            try:\n        \
-          \        response = requests.get(f\"{VLLM_SERVER}/models\")\n          \
+          \        response = requests.get(f\"{vllm_server}/models\")\n          \
           \      if response.status_code == 200:\n                    print(f\"vLLM\
-          \ server is up and running at {VLLM_SERVER}.\")\n                    return\n\
-          \            except requests.ConnectionError:\n                pass\n\n\
-          \            print(\n                f\"Server not available yet, retrying\
-          \ in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\n          \
-          \  )\n            time.sleep(delay)\n\n        raise RuntimeError(\n   \
-          \         f\"Failed to start vLLM server at {VLLM_SERVER} after {retries}\
-          \ retries.\"\n        )\n\n    # This seems like excessive effort to stop\
-          \ the vllm process, but merely saving & killing the pid doesn't work\n \
-          \   # Also, the base image does not include 'pkill' cmd, so can't pkill\
-          \ -f vllm.entrypoints.openai.api_server either\n    def stop_vllm():\n \
-          \       import psutil\n\n        for process in psutil.process_iter(attrs=[\"\
-          pid\", \"name\", \"cmdline\"]):\n            cmdline = process.info.get(\"\
-          cmdline\")\n            if cmdline and \"vllm.entrypoints.openai.api_server\"\
-          \ in cmdline:\n                print(\n                    f\"Found vLLM\
-          \ server process with PID: {process.info['pid']}, terminating...\"\n   \
-          \             )\n                try:\n                    process.terminate()\
-          \  # Try graceful termination\n                    process.wait(timeout=5)\
-          \  # Wait a bit for it to terminate\n                    if process.is_running():\n\
-          \                        print(\n                            f\"Forcefully\
-          \ killing vLLM server process with PID: {process.info['pid']}\"\n      \
-          \                  )\n                        process.kill()  # Force kill\
-          \ if it's still running\n                    print(\n                  \
-          \      f\"Successfully stopped vLLM server with PID: {process.info['pid']}\"\
-          \n                    )\n                except psutil.NoSuchProcess:\n\
-          \                    print(f\"Process with PID {process.info['pid']} no\
-          \ longer exists.\")\n                except psutil.AccessDenied:\n     \
-          \               print(\n                        f\"Access denied when trying\
-          \ to terminate process with PID {process.info['pid']}.\"\n             \
-          \       )\n                except Exception as e:\n                    print(\n\
-          \                        f\"Failed to terminate process with PID {process.info['pid']}.\
-          \ Error: {e}\"\n                    )\n\n    gpu_available = torch.cuda.is_available()\n\
+          \ server is up and running at {vllm_server}.\")\n                    return\
+          \ process, vllm_server\n            except requests.ConnectionError:\n \
+          \               pass\n\n            print(\n                f\"Server not\
+          \ available yet, retrying in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\
+          \n            )\n            time.sleep(delay)\n\n        raise RuntimeError(\n\
+          \            f\"Failed to start vLLM server at {vllm_server} after {retries}\
+          \ retries.\"\n        )\n\n    def shutdown_vllm(process: subprocess.Popen,\
+          \ timeout: int = 20):\n        import subprocess\n\n        from instructlab.model.backends.vllm\
+          \ import wait_for_stable_vram\n\n        try:\n            process.terminate()\n\
+          \            process.wait(timeout=timeout)\n\n            if process.poll()\
+          \ is None:\n                print(f\"Forcefully killing vLLM server process\
+          \ with PID: {process.pid}\")\n                process.kill()\n\n       \
+          \     print(f\"Successfully stopped vLLM server with PID: {process.pid}\"\
+          )\n\n        except subprocess.TimeoutExpired:\n            print(\n   \
+          \             f\"Timeout expired. Forcefully killing vLLM server with PID:\
+          \ {process.pid}\"\n            )\n            process.kill()  # Force kill\
+          \ the process if over timeout\n        except subprocess.NoSuchProcess:\n\
+          \            print(f\"Process with PID {process.pid} no longer exists.\"\
+          )\n        except Exception as e:\n            print(f\"Failed to stop process\
+          \ with PID {process.pid}. Error: {e}\")\n        # Note from instructlab/model/backends/vllm.py\n\
+          \        # vLLM relies on stable VRAM,  residual reclamation activity\n\
+          \        # can lead to crashes on restart. To prevent this add a\n     \
+          \   # short delay (typically ~ 10 seconds, max 30) to verify stability.\n\
+          \        wait_for_stable_vram(30)\n\n    gpu_available = torch.cuda.is_available()\n\
           \    gpu_name = (\n        torch.cuda.get_device_name(torch.cuda.current_device())\n\
           \        if gpu_available\n        else \"No GPU available\"\n    )\n  \
           \  gpu_count = torch.cuda.device_count() if gpu_available else 0\n\n   \
@@ -1336,34 +1331,35 @@ deploymentSpec:
           \            usable_cpu_count = multiprocessing.cpu_count() // 2\n     \
           \   max_workers = usable_cpu_count\n\n    for model_name in models_list:\n\
           \        print(f\"Serving candidate model: {model_name}\")\n        model_path\
-          \ = f\"{models_path_prefix}/{model_name}\"\n\n        launch_vllm(model_path,\
-          \ gpu_count)\n\n        # model ID is the model_path value in vLLM\n   \
-          \     evaluator = MTBenchEvaluator(\n            model_name=model_path,\n\
+          \ = f\"{models_path_prefix}/{model_name}\"\n\n        vllm_process, vllm_server\
+          \ = launch_vllm(model_path, gpu_count)\n\n        # model ID is the model_path\
+          \ value in vLLM\n        evaluator = MTBenchEvaluator(\n            model_name=model_path,\n\
           \            judge_model_name=judge_model_name,\n            output_dir=\"\
           /tmp/eval_output\",\n            merge_system_user_message=merge_system_user_message,\n\
-          \        )\n\n        evaluator.gen_answers(\n            server_url=VLLM_SERVER,\n\
+          \        )\n\n        evaluator.gen_answers(\n            server_url=vllm_server,\n\
           \            serving_gpus=gpu_count,\n            max_workers=max_workers,\n\
-          \        )\n\n        stop_vllm()\n\n        overall_score, qa_pairs, turn_scores,\
-          \ error_rate = evaluator.judge_answers(\n            server_url=judge_endpoint,\n\
-          \            api_key=judge_api_key,\n            serving_gpus=gpu_count,\n\
-          \            max_workers=max_workers,\n        )\n\n        mt_bench_data\
-          \ = {\n            \"report_title\": \"SKILLS EVALUATION REPORT\",\n   \
-          \         \"model\": model_path,\n            \"judge_model\": judge_model_name,\n\
-          \            \"overall_score\": overall_score,\n            \"turn_scores\"\
-          : turn_scores,\n            \"qa_scores\": qa_pairs,\n            \"error_rate\"\
-          : error_rate,\n        }\n\n        all_mt_bench_data.append(mt_bench_data)\n\
-          \        scores[model_path] = overall_score\n\n    with open(mt_bench_output.path,\
-          \ \"w\", encoding=\"utf-8\") as f:\n        json.dump(all_mt_bench_data,\
-          \ f, indent=4)\n\n    outputs = NamedTuple(\"outputs\", best_model=str,\
-          \ best_score=float)\n    best_model = max(scores, key=scores.get)\n    best_score\
-          \ = scores[best_model]\n    if best_score_file:\n        with open(best_score_file,\
-          \ \"w\", encoding=\"utf-8\") as f:\n            json.dump({\"best_model\"\
-          : best_model, \"best_score\": best_score}, f, indent=4)\n\n    # Rename\
-          \ the best model directory to \"candidate_model\" for the next step\n  \
-          \  # So we know which model to use for the final evaluation\n    os.rename(\n\
-          \        os.path.join(models_path_prefix, best_model),\n        os.path.join(models_path_prefix,\
-          \ \"candidate_model\"),\n    )\n\n    return outputs(best_model=best_model,\
-          \ best_score=best_score)\n\n"
+          \        )\n\n        shutdown_vllm(vllm_process)\n\n        overall_score,\
+          \ qa_pairs, turn_scores, error_rate = evaluator.judge_answers(\n       \
+          \     server_url=judge_endpoint,\n            api_key=judge_api_key,\n \
+          \           serving_gpus=gpu_count,\n            max_workers=max_workers,\n\
+          \        )\n\n        mt_bench_data = {\n            \"report_title\": \"\
+          SKILLS EVALUATION REPORT\",\n            \"model\": model_path,\n      \
+          \      \"judge_model\": judge_model_name,\n            \"overall_score\"\
+          : overall_score,\n            \"turn_scores\": turn_scores,\n          \
+          \  \"qa_scores\": qa_pairs,\n            \"error_rate\": error_rate,\n \
+          \       }\n\n        all_mt_bench_data.append(mt_bench_data)\n        scores[model_path]\
+          \ = overall_score\n\n    with open(mt_bench_output.path, \"w\", encoding=\"\
+          utf-8\") as f:\n        json.dump(all_mt_bench_data, f, indent=4)\n\n  \
+          \  outputs = NamedTuple(\"outputs\", best_model=str, best_score=float)\n\
+          \    best_model = max(scores, key=scores.get)\n    best_score = scores[best_model]\n\
+          \    if best_score_file:\n        with open(best_score_file, \"w\", encoding=\"\
+          utf-8\") as f:\n            json.dump({\"best_model\": best_model, \"best_score\"\
+          : best_score}, f, indent=4)\n\n    # Rename the best model directory to\
+          \ \"candidate_model\" for the next step\n    # So we know which model to\
+          \ use for the final evaluation\n    os.rename(\n        os.path.join(models_path_prefix,\
+          \ best_model),\n        os.path.join(models_path_prefix, \"candidate_model\"\
+          ),\n    )\n\n    return outputs(best_model=best_model, best_score=best_score)\n\
+          \n"
         image: quay.io/sallyom/instructlab-ocp:eval-10-8
         resources:
           accelerator:
@@ -1839,9 +1835,8 @@ root:
             candidate_branch:
               componentInputParameter: repo_branch
             candidate_model:
-              taskOutputParameter:
-                outputParameterKey: best_model
-                producerTask: run-mt-bench-op
+              runtimeValue:
+                constant: /output/model/hf_format/candidate_model
             device:
               componentInputParameter: device
             few_shots:
@@ -2011,7 +2006,7 @@ platforms:
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-3
-          - mountPath: /model
+          - mountPath: /data
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc

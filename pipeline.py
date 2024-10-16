@@ -314,7 +314,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         use_secret_as_env(run_mt_bench_task, JUDGE_SECRET, {"api_key": "JUDGE_API_KEY"})
 
         final_eval_task = run_final_eval_op(
-            candidate_model=run_mt_bench_task.outputs["best_model"],
+            candidate_model="/output/model/hf_format/candidate_model",
             taxonomy=git_clone_task.outputs["taxonomy"],
             tasks=sdg_task.outputs["sdg"],
             # TODO: DO we need both candidate_branch and base_branch
@@ -334,7 +334,9 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
 
         mount_pvc(
-            task=final_eval_task, pvc_name=model_pvc_task.output, mount_path="/model"
+            task=final_eval_task,
+            pvc_name=model_pvc_task.output,
+            mount_path="/data",
         )
 
         use_config_map_as_env(
@@ -345,6 +347,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
         use_secret_as_env(final_eval_task, JUDGE_SECRET, {"api_key": "JUDGE_API_KEY"})
 
+        final_eval_task.after(run_mt_bench_task)
         final_eval_task.set_accelerator_type("nvidia.com/gpu")
         final_eval_task.set_accelerator_limit(1)
 
