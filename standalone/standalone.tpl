@@ -25,6 +25,7 @@ TODO:
 import base64
 import json
 import logging
+import time
 import typing
 from os import path
 from urllib.parse import urlparse
@@ -32,10 +33,12 @@ from urllib.parse import urlparse
 import click
 import kubernetes
 import kubernetes.client
+import kubernetes.client.exceptions
 import kubernetes.client.rest
 import kubernetes.config
 import kubernetes.utils
 import kubernetes.watch
+import urllib3.exceptions
 import yaml
 
 logging.basicConfig(
@@ -1528,52 +1531,80 @@ def run_job(namespace: str, job: kubernetes.client.V1Job) -> str:
         else:
             raise
 
+    # It seems that the watcher suffers from a bug where it misses job events
+    # https://github.com/kubernetes-client/python/issues/2238
+    # Or connections are dropped
+    # https://github.com/kubernetes-client/python/issues/2238
+    # Once the librarie supports Informer API, we can switch to it
+    # https://github.com/kubernetes-client/python/issues/868
     # Wait for the job to complete
     w = kubernetes.watch.Watch()
     pod_log = None
-    for event in w.stream(batch_v1.list_namespaced_job, namespace=namespace):
-        job_event = event["object"]
-        if job_event.metadata.name != job.metadata.name:
-            continue
-        logger.info("Job: %s - %s", job.metadata.name, job_event.status)
-        if job_event.status.succeeded == 1:
-            logger.info("Job completed successfully.")
-            pods = core_v1.list_namespaced_pod(
+    exit_flag = False
+    while not exit_flag:  # Keep the watch active
+        try:
+            for event in w.stream(
+                batch_v1.list_namespaced_job,
                 namespace=namespace,
-                label_selector="app={}".format(
-                    job.spec.template.metadata.labels["app"]
-                ),
-            )
-            # On success return the logs of the last pod which contains the output
-            # (useful to get eval scores)
-            if pods.items:
-                pod_log = core_v1.read_namespaced_pod_log(
-                    name=pods.items[0].metadata.name, namespace=namespace
-                )
-            else:
-                logger.error(
-                    "No pods found for job %s. The job exists, but the pods are missing.",
-                    job.metadata.name,
-                )
-                pod_log = None
-            w.stop()
-            break
-        elif job_event.status.failed == 1:
-            logger.error("Job failed. Pod logs:")
-            pods = core_v1.list_namespaced_pod(
-                namespace=namespace,
-                label_selector="app={}".format(
-                    job.spec.template.metadata.labels["app"]
-                ),
-            )
-            for pod in pods.items:
-                log_pod_containers(pod, "init_containers", namespace)
-                log_pod_containers(pod, "containers", namespace)
-            w.stop()
-            raise RuntimeError("Job failed.")
-        else:
-            logger.info("Job still running. Waiting for the next event.")
+                timeout_seconds=60,  # Timeout after 1 minutes
+            ):
+                job_event = event["object"]
+                if job_event.metadata.name != job.metadata.name:
+                    continue
 
+                logger.info("Job: %s - %s", job.metadata.name, job_event.status)
+
+                # Handle job completion (successful or failed)
+                if job_event.status.succeeded == 1:
+                    logger.info("Job completed successfully.")
+                    pods = core_v1.list_namespaced_pod(
+                        namespace=namespace,
+                        label_selector=f"app={job.spec.template.metadata.labels['app']}",
+                    )
+                    if pods.items:
+                        pod_log = core_v1.read_namespaced_pod_log(
+                            name=pods.items[0].metadata.name, namespace=namespace
+                        )
+                    else:
+                        logger.error(
+                            "No pods found for job %s. The job exists, but the pods are missing.",
+                            job.metadata.name,
+                        )
+                        pod_log = None
+                    w.stop()
+                    exit_flag = True  # Set the flag to exit the outer loop
+                    break
+
+                elif job_event.status.failed == 1:
+                    logger.error("Job failed. Pod logs:")
+                    pods = core_v1.list_namespaced_pod(
+                        namespace=namespace,
+                        label_selector=f"app={job.spec.template.metadata.labels['app']}",
+                    )
+                    for pod in pods.items:
+                        log_pod_containers(pod, "init_containers", namespace)
+                        log_pod_containers(pod, "containers", namespace)
+                    w.stop()
+                    raise RuntimeError("Job failed.")
+
+                else:
+                    logger.info(
+                        "Job '%s' is still running. Waiting for the next event.",
+                        job.metadata.name,
+                    )
+
+        except kubernetes.client.exceptions.ApiException as e:
+            logger.error("API exception occurred: %s", str(e))
+            time.sleep(5)  # Backoff before retrying
+
+        except urllib3.exceptions.InvalidChunkLength as e:
+            logger.error("Connection broken: %s", str(e))
+            time.sleep(5)  # Backoff before retrying
+
+        finally:
+            w.stop()  # Ensure the watch is stopped after each try
+
+    # Ensure pod logs are returned after success
     return pod_log
 
 
@@ -1972,112 +2003,145 @@ def train(
     # Get the CR status and wait for it to be completed
     core_v1 = kubernetes.client.CoreV1Api()
     w = kubernetes.watch.Watch()
-    for event in w.stream(
-        api.list_namespaced_custom_object,
-        group="kubeflow.org",
-        version="v1",
-        namespace=namespace,
-        plural="pytorchjobs",
-    ):
-        pytorchjob_event = event["object"]
-        if (
-            pytorchjob_event["metadata"]["name"]
-            != pytorch_training_job_yaml["metadata"]["name"]
-        ):
-            continue
-        pytorchjob_name = pytorchjob_event["metadata"]["name"]
-
-        if (
-            "status" not in pytorchjob_event
-            or "conditions" not in pytorchjob_event["status"]
-        ):
-            continue
-        logger.info(
-            "PytorchJob: %s - %s",
-            pytorchjob_name,
-            pytorchjob_event["status"].get("conditions", "No conditions yet"),
-        )
-
-        master_pod_success = False
-        worker_pod_success = False
-        # Always start by the last condition so that if the job is completed, we can stop watching
-        # If we don't do this, we might get 'stuck' into the Running condition and never stop watching
-        for job_condition in reversed(pytorchjob_event["status"]["conditions"]):
-            print(job_condition)
-            if job_condition["type"] == "Running":
-                # now watch for pod event
-                for event in w.stream(
-                    core_v1.list_namespaced_pod,
-                    namespace=namespace,
-                    label_selector=f"training.kubeflow.org/job-name=train-phase-{training_phase}",
+    exit_flag = False
+    # TODO: this block is getting really deep, would be nice to refactor one day
+    while not exit_flag:  # Keep the watch active
+        try:
+            for event in w.stream(
+                api.list_namespaced_custom_object,
+                group="kubeflow.org",
+                version="v1",
+                namespace=namespace,
+                plural="pytorchjobs",
+            ):
+                pytorchjob_event = event["object"]
+                if (
+                    pytorchjob_event["metadata"]["name"]
+                    != pytorch_training_job_yaml["metadata"]["name"]
                 ):
-                    pod_event = event["object"]
-                    if pod_event.metadata.name.startswith(pytorchjob_name):
-                        logger.info(
-                            "Pod: %s - %s",
-                            pod_event.metadata.name,
-                            pod_event.status.phase,
-                        )
-                        for container_status in pod_event.status.container_statuses:
-                            if (
-                                container_status.state.waiting
-                                and container_status.state.waiting.reason
-                                == "CrashLoopBackOff"  # We fail on CrashLoopBackOff and not on Error, allowing for retries
-                            ):
-                                log_pod_containers(
-                                    pod_event, "init_containers", namespace
-                                )
-                                log_pod_containers(pod_event, "containers", namespace)
-                                raise RuntimeError(
-                                    f"Pod {pod_event.metadata.name} failed."
-                                )
-                        if pod_event.status.phase == "Failed":
-                            log_pod_containers(pod_event, "init_containers", namespace)
-                            log_pod_containers(pod_event, "containers", namespace)
-                            w.stop()
-                        if pod_event.status.phase == "Succeeded":
-                            if pod_event.metadata.name.startswith(
-                                f"{pytorchjob_name}-master"
-                            ):
-                                master_pod_success = True
-                                logger.info(
-                                    "Pod '%s' completed successfully",
-                                    pod_event.metadata.name,
-                                )
-                            elif pod_event.metadata.name.startswith(
-                                f"{pytorchjob_name}-worker"
-                            ):
-                                logger.info(
-                                    "Pod '%s' completed successfully",
-                                    pod_event.metadata.name,
-                                )
-                                worker_pod_success = True
-                            if master_pod_success and worker_pod_success:
-                                logger.info(
-                                    "All PytorchJob Pods completed successfully"
-                                )
-                                w.stop()
-                                # Break here to avoid going into other conditions, we are done
-                                break
-                            continue
-            elif job_condition["type"] == "Succeeded":
+                    continue
+                pytorchjob_name = pytorchjob_event["metadata"]["name"]
+
+                if (
+                    "status" not in pytorchjob_event
+                    or "conditions" not in pytorchjob_event["status"]
+                ):
+                    continue
                 logger.info(
-                    "PytorchJob '%s' completed successfully: %s",
+                    "PytorchJob: %s - %s",
                     pytorchjob_name,
-                    job_condition["reason"],
+                    pytorchjob_event["status"].get("conditions", "No conditions yet"),
                 )
-                logger.info("Training phase %s completed.", training_phase)
-                w.stop()
-                # Break here to avoid going into other conditions, we are done
-                break
-            elif job_condition["type"] == "Failed":
-                logger.error(
-                    "PytorchJob' %s' failed: %s",
-                    pytorchjob_name,
-                    job_condition["reason"],
-                )
-                w.stop()
-                raise RuntimeError("Job failed.")
+
+                master_pod_success = False
+                worker_pod_success = False
+                # Always start by the last condition so that if the job is completed, we can stop
+                # watching If we don't do this, we might get 'stuck' into the Running condition and
+                # never stop
+                # watching
+                for job_condition in reversed(pytorchjob_event["status"]["conditions"]):
+                    print(job_condition)
+                    if job_condition["type"] == "Running":
+                        # now watch for pod event
+                        for event in w.stream(
+                            core_v1.list_namespaced_pod,
+                            namespace=namespace,
+                            label_selector=(
+                                f"training.kubeflow.org/job-name=train-phase-{training_phase}"
+                            ),
+                        ):
+                            pod_event = event["object"]
+                            if pod_event.metadata.name.startswith(pytorchjob_name):
+                                logger.info(
+                                    "Pod: %s - %s",
+                                    pod_event.metadata.name,
+                                    pod_event.status.phase,
+                                )
+                                for (
+                                    container_status
+                                ) in pod_event.status.container_statuses:
+                                    # We fail on CrashLoopBackOff and not on Error, allowing for
+                                    # retries
+                                    if (
+                                        container_status.state.waiting
+                                        and container_status.state.waiting.reason
+                                        == "CrashLoopBackOff"
+                                    ):
+                                        log_pod_containers(
+                                            pod_event, "init_containers", namespace
+                                        )
+                                        log_pod_containers(
+                                            pod_event, "containers", namespace
+                                        )
+                                        raise RuntimeError(
+                                            f"Pod {pod_event.metadata.name} failed."
+                                        )
+                                if pod_event.status.phase == "Failed":
+                                    log_pod_containers(
+                                        pod_event, "init_containers", namespace
+                                    )
+                                    log_pod_containers(
+                                        pod_event, "containers", namespace
+                                    )
+                                    w.stop()
+                                if pod_event.status.phase == "Succeeded":
+                                    if pod_event.metadata.name.startswith(
+                                        f"{pytorchjob_name}-master"
+                                    ):
+                                        master_pod_success = True
+                                        logger.info(
+                                            "Pod '%s' completed successfully",
+                                            pod_event.metadata.name,
+                                        )
+                                    elif pod_event.metadata.name.startswith(
+                                        f"{pytorchjob_name}-worker"
+                                    ):
+                                        logger.info(
+                                            "Pod '%s' completed successfully",
+                                            pod_event.metadata.name,
+                                        )
+                                        worker_pod_success = True
+                                    if master_pod_success and worker_pod_success:
+                                        logger.info(
+                                            "All PytorchJob Pods completed successfully"
+                                        )
+                                        w.stop()
+                                        exit_flag = True
+                                        # Break here to avoid going into other conditions, we are
+                                        # done
+                                        break
+                                    continue
+                    elif job_condition["type"] == "Succeeded":
+                        logger.info(
+                            "PytorchJob '%s' completed successfully: %s",
+                            pytorchjob_name,
+                            job_condition["reason"],
+                        )
+                        logger.info("Training phase %s completed.", training_phase)
+                        w.stop()
+                        exit_flag = True
+                        # Break here to avoid going into other conditions, we are done
+                        break
+                    elif job_condition["type"] == "Failed":
+                        logger.error(
+                            "PytorchJob' %s' failed: %s",
+                            pytorchjob_name,
+                            job_condition["reason"],
+                        )
+                        w.stop()
+                        raise RuntimeError("Job failed.")
+        except kubernetes.client.exceptions.ApiException as e:
+            logger.error("API exception occurred: %s", str(e))
+            time.sleep(5)  # Backoff before retrying
+
+        # Catches the following error:
+        # "InvalidChunkLength(got length b'', 0 bytes read)"
+        except urllib3.exceptions.InvalidChunkLength as e:
+            logger.error("Connection broken: %s", str(e))
+            time.sleep(5)  # Backoff before retrying
+
+        finally:
+            w.stop()
 
 
 @run.command(name="evaluation")
