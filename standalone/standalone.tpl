@@ -134,7 +134,7 @@ spec:
                     --rdzv_endpoint $(MASTER_ADDR):$(MASTER_PORT) \
                     -m instructlab.training.main_ds \
                     --model_name_or_path="$PATH_TO_MODEL" \
-                    --data_path=/data/processed_data/data.jsonl \
+                    --data_path=/data/data/processed_data/data.jsonl \
                     --output_dir={path_to_model}/output/phase_{phase_num} \
                     --num_epochs={epoch_num} \
                     --effective_batch_size=3840 \
@@ -206,7 +206,7 @@ spec:
                     --rdzv_endpoint $(MASTER_ADDR):$(MASTER_PORT) \
                     -m instructlab.training.main_ds \
                     --model_name_or_path="$PATH_TO_MODEL" \
-                    --data_path=/data/processed_data/data.jsonl \
+                    --data_path=/data/data/processed_data/data.jsonl \
                     --output_dir="$tmp_model" \
                     --num_epochs={epoch_num} \
                     --effective_batch_size=3840 \
