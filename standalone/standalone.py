@@ -1771,13 +1771,16 @@ def run_mt_bench_op(
         os.path.join(models_path_prefix, best_model),
         os.path.join(models_path_prefix, "candidate_model"),
     )
-    best_model = f"{models_path_prefix}/candidate_model"
+    best_model_renamed = os.path.join(models_path_prefix, "candidate_model")
+    best_model_output = f"Candidate model: {best_model} located at {best_model_renamed}"
 
     if best_score_file:
         with open(best_score_file, "w", encoding="utf-8") as f:
-            json.dump({"best_model": best_model, "best_score": best_score}, f, indent=4)
+            json.dump(
+                {"best_model": best_model_output, "best_score": best_score}, f, indent=4
+            )
 
-    return outputs(best_model=best_model, best_score=best_score)
+    return outputs(best_model=best_model_renamed, best_score=best_score)
 """
     exec_run_mt_bench_op_args = f"""
 run_mt_bench_op(best_score_file="{MT_BENCH_SCORES_PATH}",mt_bench_output="{MT_BENCH_OUTPUT_PATH}", models_folder="{CANDIDATE_MODEL_PATH}", models_path_prefix="{CANDIDATE_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE})

@@ -334,7 +334,9 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
 
         mount_pvc(
-            task=final_eval_task, pvc_name=model_pvc_task.output, mount_path="/model"
+            task=final_eval_task,
+            pvc_name=model_pvc_task.output,
+            mount_path="/data",
         )
 
         use_config_map_as_env(
