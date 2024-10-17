@@ -1195,7 +1195,7 @@ def create_data_job(
 {{exec_data_processing_op_command}}
 """
     exec_data_processing_op_args = f"""
-data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg={DATA_PVC_SDG_PATH}, model={DATA_PVC_SDG_PATH}, processed_data={PREPROCESSED_DATA_PATH})
+data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg="{DATA_PVC_SDG_PATH}", model="{DATA_PVC_MODEL_PATH}", processed_data="{PREPROCESSED_DATA_PATH}")
 """
 
     data_container = kubernetes.client.V1Container(
