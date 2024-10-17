@@ -377,13 +377,13 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
 
         output_pvc_delete_task = DeletePVC(pvc_name=output_pvc_task.output)
-        output_pvc_delete_task.after(output_data_task)
+        output_pvc_delete_task.after(final_eval_task, output_data_task)
 
         sdg_pvc_delete_task = DeletePVC(pvc_name=sdg_input_pvc_task.output)
-        sdg_pvc_delete_task.after(output_data_task)
+        sdg_pvc_delete_task.after(final_eval_task, output_data_task)
 
         model_pvc_delete_task = DeletePVC(pvc_name=model_pvc_task.output)
-        model_pvc_delete_task.after(output_data_task)
+        model_pvc_delete_task.after(final_eval_task, output_data_task)
 
         return
 
