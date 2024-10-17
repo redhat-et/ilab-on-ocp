@@ -20,6 +20,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pipenv
+
+      - name: Setup Pipenv
+        uses: tiagovrtr/actions-pipenv@v1
+        with:
+          pipenv-version: "v2024.1.0"
 
       - name: Configure caching
         uses: actions/cache@v4
@@ -27,16 +33,15 @@ jobs:
           path: ~/.cache/pre-commit
           key: precommit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
 
-      - name: Install pre-commit
+      - name: Install dependencies
         run: |
-          pip install pre-commit
+          pipenv sync
 
       - name: Run pre-commit
         run: |
-          pre-commit run --all-files
+          pipenv run pre-commit run --all-files
 
       - name: Test if pipeline is up-to-date
         run: |
-          pip install click kfp==2.9.0 kfp.kubernetes
-          make pipeline
+          pipenv run make pipeline
           git diff --exit-code || (echo "Pipeline is not up-to-date. Please run 'make pipeline' and commit the changes." && exit 1)
