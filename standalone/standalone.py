@@ -2945,7 +2945,7 @@ def train(
                 )
 
                 master_pod_success = False
-                worker_pod_success = False
+                workers_pod_success = {}
                 # Always start by the last condition so that if the job is completed, we can stop
                 # watching If we don't do this, we might get 'stuck' into the Running condition and
                 # never stop
@@ -3011,8 +3011,13 @@ def train(
                                             "Pod '%s' completed successfully",
                                             pod_event.metadata.name,
                                         )
-                                        worker_pod_success = True
-                                    if master_pod_success and worker_pod_success:
+                                        # Add the worker pod to the list of successful pods
+                                        workers_pod_success[pod_event.metadata.name] = (
+                                            True
+                                        )
+                                    if master_pod_success and (
+                                        len(workers_pod_success) == worker_replicas
+                                    ):
                                         logger.info(
                                             "All PytorchJob Pods completed successfully"
                                         )
