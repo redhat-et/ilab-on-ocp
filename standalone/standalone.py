@@ -1910,32 +1910,22 @@ def run_final_eval_op(
     # model evaluation are taking place in separate environments.
     def update_test_lines_in_files(base_dir):
         import os
-        import re
-
-        # Define the regex to match lines starting with any indentation, 'test:', and containing 'node_datasets_*'
-        regex = re.compile(r"(\s*test:\s*).*/(node_datasets_[^/]*)(.*)")
+        import yaml
 
         for root, dirs, files in os.walk(base_dir):
             for file_name in files:
-                file_path = os.path.join(root, file_name)
+                if file_name.startswith("knowledge_") and file_name.endswith("_task.yaml"):
+                    file_path = os.path.join(root, file_name)
 
-                with open(file_path, "r") as file:
-                    lines = file.readlines()
+                    with open(file_path, "r") as file:
+                        task_yaml = yaml.load(file, Loader=yaml.Loader)
 
-                updated_lines = []
-                changed = False
-
-                for line in lines:
-                    # Replace the matched line with the desired format, keeping 'test:' and leading whitespace intact
-                    new_line = re.sub(regex, rf"\1{base_dir}/\2\3", line)
-                    if new_line != line:
-                        changed = True  # Only rewrite the file if there's a change
-                    updated_lines.append(new_line)
-
-                if changed:
+                    current_test_file_path = task_yaml["dataset_kwargs"]["data_files"]["test"]
+                    current_test_file_path_parts = current_test_file_path.split("/")
+                    new_test_file_path = f"{root}/{current_test_file_path_parts[-1]}"
+                    task_yaml["dataset_kwargs"]["data_files"]["test"] = new_test_file_path
                     with open(file_path, "w", encoding="utf-8") as file:
-                        file.writelines(updated_lines)
-                    print(f"Updated: {file_path}")
+                            yaml.dump(task_yaml, file)
 
     # find_node_dataset_directories to find sdg output node_datasets_*
     def find_node_dataset_directories(base_dir: str):
@@ -2180,7 +2170,7 @@ def run_final_eval_op(
         json.dump(mt_bench_branch_data, f, indent=4)
 """
     exec_run_final_eval_op_args = """
-run_final_eval_op(mmlu_branch_output='/data/mmlu-branch-best.txt',mt_bench_branch_output='/data/mt-bench-branch-best.txt',candidate_model='/data/model/output/phase_2/hf_format/candidate_model', taxonomy='/data/taxonomy', tasks='/data/generated', base_branch='', candidate_branch='', device=None, base_model_dir='/data/model', max_workers='auto', merge_system_user_message=False, model_dtype='bfloat16', few_shots=5, batch_size=8)
+run_final_eval_op(mmlu_branch_output='/data/mmlu-branch-best.txt',mt_bench_branch_output='/data/mt-bench-branch-best.txt',candidate_model='/data/model/output/phase_2/hf_format/candidate_model', taxonomy='/data/taxonomy', tasks='/data/data', base_branch='', candidate_branch='', device=None, base_model_dir='/data/model', max_workers='auto', merge_system_user_message=False, model_dtype='bfloat16', few_shots=5, batch_size=8)
 """
 
     if eval_type == "mt-bench":
