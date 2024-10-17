@@ -2356,7 +2356,7 @@ def run_job(namespace: str, job: kubernetes.client.V1Job) -> str:
     # https://github.com/kubernetes-client/python/issues/2238
     # Or connections are dropped
     # https://github.com/kubernetes-client/python/issues/2238
-    # Once the librarie supports Informer API, we can switch to it
+    # Once the library supports Informer API, we can switch to it
     # https://github.com/kubernetes-client/python/issues/868
     # Wait for the job to complete
     w = kubernetes.watch.Watch()
