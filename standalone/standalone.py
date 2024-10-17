@@ -75,9 +75,10 @@ MT_BENCH_OUTPUT_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-results.txt")
 MT_BENCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-best.txt")
 MT_BENCH_BRANCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-branch-best.txt")
 MMLU_BRANCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mmlu-branch-best.txt")
-CANDIDATE_MODEL_PATH = path.join(
-    DATA_PVC_MOUNT_PATH, "model/output/phase_2/hf_format/candidate_model"
+CANDIDATE_MODEL_PATH_PREFIX = path.join(
+    DATA_PVC_MOUNT_PATH, "model/output/phase_2/hf_format"
 )
+CANDIDATE_MODEL_PATH = path.join(CANDIDATE_MODEL_PATH_PREFIX, "candidate_model")
 SDG_GENERATED_DATA_PATH = path.join(DATA_PVC_MOUNT_PATH, "generated")
 TAXONOMY_DATA_PATH = path.join(DATA_PVC_MOUNT_PATH, "taxonomy")
 # MMLU_SCORES_PATH = "/output/mmlu-results.txt" - after training phase 1 is done MMLU is not performed anymore
@@ -1776,7 +1777,7 @@ def run_mt_bench_op(
     return outputs(best_model=best_model, best_score=best_score)
 """
     exec_run_mt_bench_op_args = f"""
-run_mt_bench_op(best_score_file="{MT_BENCH_SCORES_PATH}",mt_bench_output="{MT_BENCH_OUTPUT_PATH}", models_folder="{CANDIDATE_MODEL_PATH}", models_path_prefix="{CANDIDATE_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE})
+run_mt_bench_op(best_score_file="{MT_BENCH_SCORES_PATH}",mt_bench_output="{MT_BENCH_OUTPUT_PATH}",models_folder="{CANDIDATE_MODEL_PATH_PREFIX}",models_path_prefix="{CANDIDATE_MODEL_PATH_PREFIX}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE})
 """
     exec_run_final_eval_op_command = """
 from typing import *
