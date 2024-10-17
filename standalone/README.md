@@ -47,39 +47,37 @@ The `standalone.py` script includes a main command to execute the full workflow,
 subcommands to run individual parts of the workflow separately. The full workflow includes fetching SDG data from S3, training,
 and evaluating a model. To view all available commands, use `./standalone.py --help`.
 
-The script requires information regarding the location and method for accessing the SDG data. This information can be provided in two main ways:
+The script requires information regarding the location and method for accessing the SDG
+data/model/taxonomy tree and the evaluation Judge model serving endpoint. This information can be
+provided in two main ways:
 
 1. CLI Options or/and Environment Variables: Supply all necessary information via CLI options or environment variables.
-    * See [CLI Options](#cli-options) for full list.
-2. Kubernetes Secret: Provide the name of a Kubernetes secret that contains all relevant details using the `--sdg-object-store-secret` option.
+    * See [CLI Options](#cli-options) for full list. In particular `--sdg-object-store-*` and `--judge-serving-model-*` options.
+2. Kubernetes Secret: Provide the name of a Kubernetes secret that contains all relevant details
+   using the `--sdg-object-store-secret` option and `--judge-serving-model-secret` option.
     *  See [Creating the Kubernetes Secret for S3 Details](#creating-the-kubernetes-secret-for-s3-details) for information on how to create the secret.
 
-The examples below assume there is a secret in `my-namespace` named `sdg-data` that holds information about the S3 bucket.
-You must also provide details for a judge model that is assumed to run external to the script.
-See [Judge Model Details](#judge-model-details) for required information.
+The examples below assume there is a secret in `my-namespace` named `sdg-data` that holds
+information about the S3 bucket and `judge-serving-details` secret that includes information about
+the judge server model. A judge server model is assumed to run external to the script. See [Judge
+Model Details](#judge-model-details) for required information.
 
 
 ### Usage Examples
 
 ```bash
-export JUDGE_SERVING_MODEL_API_KEY=********
-
 ./standalone.py run \
   --namespace my-namespace \
-  --judge-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
-  --judge-serving-model-name my-model \
+  --judge-serving-model-secret judge-serving-details \
   --sdg-object-store-secret sdg-data
 ```
 
 Now let's say you only want to fetch the SDG data, you can use the `sdg-data-fetch` subcommand:
 
 ```bash
-export JUDGE_SERVING_MODEL_API_KEY=********
-
 ./standalone.py run sdg-data-fetch \
   --namespace my-namespace \
-  --judge-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
-  --judge-serving-model-name my-model \
+  --judge-serving-model-secret judge-serving-details \
   --sdg-object-store-secret sdg-data
 ```
 
@@ -114,11 +112,13 @@ evaluation
   true). `SDG_OBJECT_STORE_VERIFY_TLS` environment variable can be used as well. **Optional**
 * `--sdg-object-store-region`: The region of the object store. `SDG_OBJECT_STORE_REGION` environment
   variable can be used as well. **Optional**
-* `--judge-serving-endpoint`: Serving endpoint for evaluation. e.g:
-  http://serving.kubeflow.svc.cluster.local:8080/v1 - **Required**
-* `--judge-serving-model-name`: The name of the model to use for evaluation. **Required**
+* `--judge-serving-model-endpoint`: Serving endpoint for evaluation. e.g:
+  http://serving.kubeflow.svc.cluster.local:8080/v1 - **Optional**
+* `--judge-serving-model-name`: The name of the model to use for evaluation. **Optional**
 * `--judge-serving-model-api-key`: The API key for the model to evaluate. `JUDGE_SERVING_MODEL_API_KEY`
-  environment variable can be used as well. **Required**
+  environment variable can be used as well. **Optional**
+* `--judge-serving-model-secret`: The name of the Kubernetes secret containing the judge serving model
+  API key. **Optional** - If not provided, the script will expect the provided CLI options to evaluate the model.
 * `--force-pull`: Force pull the data (sdg data, model and taxonomy) from the object store even if it already
   exists in the PVC. **Optional** - Default: false.
 * `--training-1-epoch-num`: The number of epochs to train the model for phase 1. **Optional** - Default: 7.
@@ -206,6 +206,32 @@ The list of all supported keys:
 * `endpoint`: The endpoint of the object store, e.g: https://s3.openshift-storage.svc:443 - **Optional**
 * `region`: The region of the object store - **Optional**
 
+A similar operation can be performed for the evaluation judge model serving service. Currently, the script expects the Judge serving service to be running and accessible from within the cluster. If it is not present, the script will not create this resource.
+
+```bash
+cat <<EOF | kubectl create -f -
+apiVersion: v1
+kind: Secret
+metadata:
+  name: judge-serving-details
+  namespace: my-namespace
+type: Opaque
+stringData:
+  JUDGE_API_KEY: ********
+  JUDGE_ENDPOINT: https://mistral-sallyom.apps.ocp-beta-test.nerc.mghpcc.org/v1
+  JUDGE_NAME: mistral
+EOF
+```
+
+The list of all mandatory keys:
+
+* `JUDGE_API_KEY`: The API key for the model to evaluate - **Required**
+* `JUDGE_ENDPOINT`: Serving endpoint for evaluation - **Required**
+* `JUDGE_NAME`: The name of the model to use for evaluation - **Required**
+
+> [!WARNING]
+> Mind the upper case of the keys, as the script expects them to be in upper case.
+
 #### Running the Script Without Kubernetes Secret
 
 Alternatively, you can provide the necessary information directly via CLI options or environment,
@@ -217,7 +243,7 @@ export JUDGE_SERVING_MODEL_API_KEY=********
 
 ./standalone.py run \
   --namespace my-namespace \
-  --judge-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
+  --judge-serving-model-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
   --judge-serving-model-name my-model \
   --sdg-object-store-access-key key \
   --sdg-object-store-secret-key key \
@@ -227,10 +253,9 @@ export JUDGE_SERVING_MODEL_API_KEY=********
 
 ### Judge Model Details
 
-A judge model is assumed to be running external to the script. This is used for model evaluation. At this time, judge model details
-must be passed as either environment variables or CLI options.
+A judge model is assumed to be running external to the script. This is used for model evaluation.
 
-* The `--judge-serving-endpoint` and `--judge-serving-model-name` values will be stored in a ConfigMap named `judge-serving-details` in the same namespace as the resources that the script interacts with.
+* The `--judge-serving-model-endpoint` and `--judge-serving-model-name` values will be stored in a ConfigMap named `judge-serving-details` in the same namespace as the resources that the script interacts with.
 * `--judge-serving-model-api-key` or environment variable `JUDGE_SERVING_MODEL_API_KEY` value will be stored in a secret named `judge-serving-details` in the same namespace as the resources that the script interacts with.
 * In all examples, the `JUDGE_SERVING_MODEL_API_KEY` environment variable is exported rather than setting the CLI option.
 
@@ -243,7 +268,7 @@ export JUDGE_SERVING_MODEL_API_KEY=********
 
 ./standalone.py run \
   --namespace my-namespace \
-  --judge-serving-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
+  --judge-serving-model-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
   --judge-serving-model-name my-model \
   --sdg-object-store-access-key key \
   --sdg-object-store-secret-key key \

@@ -625,19 +625,17 @@ def show(
     hidden=True,
 )
 @click.option(
-    "--judge-serving-endpoint",
+    "--judge-serving-model-endpoint",
     type=str,
     help=(
-        "Serving endpoint for evaluation."
+        "Judge model serving endpoint for evaluation."
         "e.g. http://serving.kubeflow.svc.cluster.local:8080/v1"
     ),
-    required=True,
 )
 @click.option(
     "--judge-serving-model-name",
     type=str,
     help="The name of the model to use for evaluation.",
-    required=True,
 )
 @click.option(
     "--judge-serving-model-api-key",
@@ -646,7 +644,19 @@ def show(
         "Serving model API key for evaluation. " "(JUDGE_SERVING_MODEL_API_KEY env var)"
     ),
     envvar="JUDGE_SERVING_MODEL_API_KEY",
-    required=True,
+)
+@click.option(
+    "--judge-serving-model-secret",
+    type=str,
+    envvar="JUDGE_SERVING_MODEL_SECRET",
+    help=(
+        "Name of the Kubernetes Secret containing the judge serving model endpoint. "
+        "For evaluation only. "
+        "The namespace is inferred from the namespace option. "
+        "The following keys are expected: JUDGE_API_KEY, JUDGE_ENDPOINT, JUDGE_NAME "
+        " (JUDGE_SERVING_MODEL_SECRET env var)"
+        "If used, the --judge-serving-model-{api-key,endpoint,name} options will be ignored."
+    ),
 )
 @click.option(
     "--nproc-per-node",
@@ -774,9 +784,10 @@ def run(
     storage_class: typing.Optional[str] = None,
     serving_endpoint: typing.Optional[str] = None,
     serving_model: typing.Optional[str] = None,
-    judge_serving_endpoint: typing.Optional[str] = None,
+    judge_serving_model_endpoint: typing.Optional[str] = None,
     judge_serving_model_name: typing.Optional[str] = None,
     judge_serving_model_api_key: typing.Optional[str] = None,
+    judge_serving_model_secret: typing.Optional[str] = None,
     nproc_per_node: typing.Optional[int] = 1,
     eval_type: typing.Optional[str] = None,
     training_phase: typing.Optional[str] = None,
@@ -804,10 +815,13 @@ def run(
         storage_class (str): The storage class to use for the PersistentVolumeClaim. For SDG only.
         serving_endpoint (str): The serving endpoint for SDG. For SDG only.
         serving_model (str): The serving model for SDG. For SDG only.
-        judge_serving_endpoint (str): The serving endpoint for evaluation. For Evaluation only.
+        judge_serving_model_endpoint (str): The serving endpoint for evaluation. For Evaluation
+        only.
         judge_serving_model_name (str): The serving model name for evaluation. For Evaluation only.
         judge_serving_model_api_key (str): The serving model API key for evaluation. For Evaluation
         only.
+        judge_serving_model_secret (str): The name of the Kubernetes Secret containing the serving
+        model credentials. For Evaluation only.
         nproc_per_node (int): The number of processes per node. For training only.
         eval_type (str): The type of evaluation to run.
         training_phase (str): The type of training phase to run.
@@ -837,9 +851,10 @@ def run(
     ctx.obj["storage_class"] = storage_class
     ctx.obj["serving_endpoint"] = serving_endpoint
     ctx.obj["serving_model"] = serving_model
-    ctx.obj["judge_serving_endpoint"] = judge_serving_endpoint
+    ctx.obj["judge_serving_model_endpoint"] = judge_serving_model_endpoint
     ctx.obj["judge_serving_model_name"] = judge_serving_model_name
     ctx.obj["judge_serving_model_api_key"] = judge_serving_model_api_key
+    ctx.obj["judge_serving_model_secret"] = judge_serving_model_secret
     ctx.obj["nproc_per_node"] = nproc_per_node
     ctx.obj["eval_type"] = eval_type
     ctx.obj["training_phase"] = training_phase
@@ -1535,7 +1550,7 @@ def run_job(namespace: str, job: kubernetes.client.V1Job) -> str:
     # https://github.com/kubernetes-client/python/issues/2238
     # Or connections are dropped
     # https://github.com/kubernetes-client/python/issues/2238
-    # Once the librarie supports Informer API, we can switch to it
+    # Once the library supports Informer API, we can switch to it
     # https://github.com/kubernetes-client/python/issues/868
     # Wait for the job to complete
     w = kubernetes.watch.Watch()
@@ -1762,9 +1777,10 @@ def sdg_data_fetch(
     # Populate variables from context
     namespace = ctx.obj["namespace"]
     storage_class = ctx.obj["storage_class"]
-    judge_serving_endpoint = ctx.obj["judge_serving_endpoint"]
+    judge_serving_model_endpoint = ctx.obj["judge_serving_model_endpoint"]
     judge_serving_model_name = ctx.obj["judge_serving_model_name"]
     judge_serving_model_api_key = ctx.obj["judge_serving_model_api_key"]
+    judge_serving_model_secret = ctx.obj["judge_serving_model_secret"]
     sdg_object_store_endpoint = ctx.obj["sdg_object_store_endpoint"]
     sdg_object_store_bucket = ctx.obj["sdg_object_store_bucket"]
     sdg_object_store_access_key = ctx.obj["sdg_object_store_access_key"]
@@ -1775,10 +1791,7 @@ def sdg_data_fetch(
     sdg_object_store_secret = ctx.obj["sdg_object_store_secret"]
     force_pull = ctx.obj["force_pull"]
 
-    # Make sure the endpoint is a valid URL
-    validate_url(judge_serving_endpoint)
-
-    # Check if all required arguments are provided
+    # Check if all required arguments are provided for Data Fetch
     if not sdg_object_store_secret:
         if not all(
             [
@@ -1797,12 +1810,30 @@ def sdg_data_fetch(
                 "'--sdg-object-store-secret' to use a Kubernetes Secret."
             )
 
+    # Check if all required arguments are provided for Evaluation
+    if not judge_serving_model_secret:
+        if not all(
+            [
+                judge_serving_model_endpoint,
+                judge_serving_model_name,
+                judge_serving_model_api_key,
+            ]
+        ):
+            # Endpoint is optional if AWS S3 is used
+            raise ValueError(
+                "All of '--judge-serving-model-endpoint', "
+                "'--sdg-object-store-access-key', '--judge-serving-model-name', "
+                "'--judge-serving-model-api-key' "
+                "must be provided to the 'sdg-data-fetch' command. Alternatively, provide "
+                "'--judge-serving-model-secret' to use a Kubernetes Secret."
+            )
+
     logger.info("Running setup for SDG data fetch.")
 
     # Request the Kubernetes API
     v1 = kubernetes.client.CoreV1Api()
 
-    # Create the object store secret if it does not exist
+    # SDG Data Fetch secret
     if (
         # Endpoint (if AWS S3 is used) and Region are optional
         all(
@@ -1850,45 +1881,97 @@ def sdg_data_fetch(
             else:
                 raise
 
-    # If the secret exists, verify the presence of the keys
+    # If the secret option is used, verify the presence of the keys and the existence of the secret
     elif sdg_object_store_secret:
-        secret = v1.read_namespaced_secret(
-            name=sdg_object_store_secret, namespace=namespace
-        )
-
-        def decode_base64(data):
-            return base64.b64decode(data).decode("utf-8")
-
-        if secret.data.get("endpoint"):
-            endpoint = decode_base64(secret.data.get("endpoint"))
-            validate_url(endpoint)
-
-        if not all(
-            [
-                secret.data.get("bucket"),
-                secret.data.get("access_key"),
-                secret.data.get("secret_key"),
-                secret.data.get("data_key"),
-            ]
-        ):
-            raise ValueError(
-                f"The provided secret {sdg_object_store_secret} must contain the keys:"
-                "'bucket', 'access_key', 'secret_key', 'data_key'.",
+        try:
+            secret = v1.read_namespaced_secret(
+                name=sdg_object_store_secret, namespace=namespace
             )
 
-    # Create Secret config details for evaluation
-    judge_serving_details_secret = JUDGE_SERVING_NAME
-    secret = kubernetes.client.V1Secret(
-        metadata=kubernetes.client.V1ObjectMeta(
-            name=judge_serving_details_secret, namespace=namespace
-        ),
-        string_data={
-            "JUDGE_NAME": judge_serving_model_name,
-            "JUDGE_API_KEY": judge_serving_model_api_key,
-            "JUDGE_ENDPOINT": judge_serving_endpoint,
-        },
-    )
+            def decode_base64(data):
+                return base64.b64decode(data).decode("utf-8")
 
+            if secret.data.get("endpoint"):
+                endpoint = decode_base64(secret.data.get("endpoint"))
+                validate_url(endpoint)
+
+            if not all(
+                [
+                    secret.data.get("bucket"),
+                    secret.data.get("access_key"),
+                    secret.data.get("secret_key"),
+                    secret.data.get("data_key"),
+                ]
+            ):
+                raise ValueError(
+                    f"The provided secret {sdg_object_store_secret} must contain the keys:"
+                    "'bucket', 'access_key', 'secret_key', 'data_key'.",
+                )
+        except kubernetes.client.rest.ApiException as exc:
+            if exc.status == 404:
+                raise ValueError(
+                    f"Secret {sdg_object_store_secret} not found in namespace {namespace}."
+                ) from exc
+
+    # Judge serving model secret
+    if (
+        all(
+            [
+                judge_serving_model_endpoint,
+                judge_serving_model_name,
+                judge_serving_model_api_key,
+            ]
+        )
+        and not judge_serving_model_secret
+    ):
+        judge_serving_model_secret = JUDGE_SERVING_NAME
+        secret = kubernetes.client.V1Secret(
+            metadata=kubernetes.client.V1ObjectMeta(
+                name=judge_serving_model_secret, namespace=namespace
+            ),
+            string_data={
+                "JUDGE_API_KEY": judge_serving_model_api_key,
+                "JUDGE_ENDPOINT": judge_serving_model_endpoint,
+                "JUDGE_NAME": judge_serving_model_name,
+            },
+        )
+
+        try:
+            v1.create_namespaced_secret(namespace=namespace, body=secret)
+        except kubernetes.client.rest.ApiException as exc:
+            if exc.status == 409:
+                logger.info("Secret '%s' already exists.", secret.metadata.name)
+            else:
+                raise
+
+    # If the secret option is used, verify the presence of the keys and the existence of the secret
+    elif judge_serving_model_secret:
+        try:
+            secret = v1.read_namespaced_secret(
+                name=judge_serving_model_secret, namespace=namespace
+            )
+
+            if not all(
+                [
+                    secret.data.get("JUDGE_API_KEY"),
+                    secret.data.get("JUDGE_ENDPOINT"),
+                    secret.data.get("JUDGE_NAME"),
+                ]
+            ):
+                raise ValueError(
+                    f"The provided secret {judge_serving_model_secret} must contain the keys:"
+                    "'JUDGE_API_KEY', 'JUDGE_ENDPOINT', 'JUDGE_NAME' mind the uppercase.",
+                )
+
+            judge_serving_model_endpoint = decode_base64(
+                secret.data.get("JUDGE_ENDPOINT")
+            )
+            validate_url(judge_serving_model_endpoint)
+        except kubernetes.client.rest.ApiException as exc:
+            if exc.status == 404:
+                raise ValueError(
+                    f"Secret {judge_serving_model_secret} not found in namespace {namespace}."
+                ) from exc
     try:
         v1.create_namespaced_secret(namespace=namespace, body=secret)
     except kubernetes.client.rest.ApiException as exc:
