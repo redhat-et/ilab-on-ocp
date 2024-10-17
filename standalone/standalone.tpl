@@ -469,20 +469,14 @@ metadata:
 spec:
   template:
     spec:
-      serviceAccountName: {service_account}
       containers:
       - name: {name}
         image: {image}
         command:
-        - "python3"
-        - "/config/{script_name}"
-        - "run"
-        - "--namespace"
-        - "{namespace_workflow}"
-        - "--storage-class"
-        - "{storage_class}"
-        - "--sdg-object-store-secret"
-        - "{sdg_object_store_secret}"
+          - "python3"
+          - "/config/{script_name}"
+          - "run"
+        args: {args}
         volumeMounts:
         - name: script-config
           mountPath: /config
@@ -535,12 +529,6 @@ def cli():
     help="Kubernetes namespace to run the job",
 )
 @click.option(
-    "--namespace-workflow",
-    type=str,
-    default="default",
-    help="Kubernetes namespace to run the end-to-end workflow that the script will execute",
-)
-@click.option(
     "--name",
     type=str,
     default="distributed-ilab",
@@ -555,7 +543,6 @@ def cli():
 @click.option(
     "--service-account",
     type=str,
-    default="default",
     help="Service account to use for the Job",
 )
 @click.option(
@@ -567,58 +554,45 @@ def cli():
 @click.option(
     "--script-name",
     type=str,
-    help="Name of the standalone script in the ConfigMap",
-    default="standalone.py",
+    help="Name of the standalone script in the ConfigMap (key)",
+    default="standalone",
 )
 @click.option(
-    "--storage-class",
+    "--args",
     type=str,
-    help="Storage class to use for the PersistentVolumeClaim - for SDG only",
-)
-@click.option(
-    "--sdg-object-store-secret",
-    envvar="SDG_OBJECT_STORE_SECRET",
-    help=(
-        "Name of the Kubernetes Secret containing the SDG object store credentials. "
-        "The namespace is inferred from the namespace option. "
-        "The following keys are expected: bucket, access_key, secret_key, data_key. "
-        " (SDG_OBJECT_STORE_SECRET env var)"
-        "If used "
-        "endpoint, bucket, access_key, secret_key, region, data_key, verify_tls will be ignored."
-        "All supported options are: "
-        "endpoint, bucket, access_key, secret_key, region, data_key, verify_tls"
-    ),
-    default=SDG_OBJECT_STORE_SECRET_NAME,
-    type=str,
+    help="Extra arguments to pass to the script",
+    multiple=True,
+    required=True,
 )
 def show(
     namespace: str,
-    namespace_workflow: str,
     name: str,
     image: str,
     script_configmap: str,
     script_name: str,
     service_account: str,
-    storage_class: str,
-    sdg_object_store_secret: str,
+    args: typing.List[str],
 ):
     """
     Print an example Job YAML to stdout to run the script in a Kubernetes cluster.
     The job excepts the standalone.py script to be available in a ConfigMap.
     """
-    print(
+    script = yaml.safe_load(
         JOB_SCRIPT_EXAMPLE.format(
             name=name,
             namespace=namespace,
-            namespace_workflow=namespace_workflow,
             image=image,
             script_configmap=script_configmap,
             script_name=script_name,
-            service_account=service_account,
-            storage_class=storage_class,
-            sdg_object_store_secret=sdg_object_store_secret,
+            args=list(args),
         )
     )
+
+    if service_account:
+        script["spec"]["template"]["spec"]["serviceAccountName"] = service_account
+
+    print(script["kind"])
+    print(yaml.dump(script))
 
 
 @cli.group(invoke_without_command=True)

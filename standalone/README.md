@@ -26,6 +26,144 @@ The `standalone.py` script is designed to run within a Kubernetes environment. T
 > [!TIP]
 > Check the `show` command to display an example of a Kubernetes Job that runs the script. Run `./standalone.py show`.
 
+### RBAC Requirements when running in a Kubernetes Job
+
+The script manipulates a number of Kubernetes resources, and therefore requires the following RBAC
+permissions on the [ServiceAccount](https://kubernetes.io/docs/concepts/security/service-accounts/)
+running the script:
+
+```yaml
+# logs
+- verbs:
+    - get
+    - list
+  apiGroups:
+    - ""
+  resources:
+    - pods/log
+# Jobs
+- verbs:
+    - create
+    - get
+    - list
+    - watch
+  apiGroups:
+    - batch
+  resources:
+    - jobs
+# Pods
+- verbs:
+    - create
+    - get
+    - list
+    - watch
+  apiGroups:
+    - ""
+  resources:
+    - pods
+# Secrets
+- verbs:
+    - create
+    - get
+  apiGroups:
+    - ""
+  resources:
+    - secrets
+# ConfigMaps
+- verbs:
+    - create
+    - get
+  apiGroups:
+    - ""
+  resources:
+    - configmaps
+# PVCs
+- verbs:
+    - create
+  apiGroups:
+    - ""
+  resources:
+    - persistentvolumeclaims
+# PyTorchJob
+- verbs:
+    - create
+    - get
+    - list
+    - watch
+  apiGroups:
+    - kubeflow.org
+  resources:
+    - pytorchjobs
+# Watchers
+- verbs:
+    - get
+    - list
+    - watch
+  apiGroups:
+    - ""
+  resources:
+    - events
+```
+
+### Run in a Kubernetes Job
+
+The script can be run in a Kubernetes Job by creating a Job resource that runs the script. The
+`show` subcommand displays an example of a Kubernetes Job that runs the script:
+
+```bash
+./standalone/standalone.py show \
+  --image quay.io/opendatahub/workbench-images:jupyter-datascience-ubi9-python-3.11-20241004-609ffb8 \
+  --script-configmap standalone \
+  --script-name script \
+  --namespace leseb \
+  --args "--storage-class=nfs-csi" \
+  --args "--namespace=leseb" \
+  --args "--sdg-object-store-secret=sdg-object-store-credentials" \
+  --args "--judge-serving-model-secret=judge-serving-details"
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: distributed-ilab
+  namespace: leseb
+spec:
+  template:
+    spec:
+      containers:
+      - args:
+        - --storage-class=nfs-csi
+        - --namespace=leseb
+        - --sdg-object-store-secret=sdg-object-store-credentials
+        - --judge-serving-model-secret=judge-serving-details
+        command:
+        - python3
+        - /config/script
+        - run
+        image: quay.io/opendatahub/workbench-images:jupyter-datascience-ubi9-python-3.11-20241004-609ffb8
+        name: distributed-ilab
+        volumeMounts:
+        - mountPath: /config
+          name: script-config
+      restartPolicy: Never
+      serviceAccountName: default
+      volumes:
+      - configMap:
+          name: standalone
+        name: script-config
+```
+
+Optional arguments can be added to the `args` list to customize the script's behavior. They
+represent the script options that would be passed to the script if run from the command line.
+
+List of available options of the `show` subcommand:
+
+* `--namespace`: Kubernetes namespace to run the job
+* `--name`: Name of the job
+* `--image`: The image to use for the job
+* `--script-configmap`: The name of the ConfigMap that holds the script
+* `--script-name`: The name of the script in the ConfigMap
+* `--args`: Additional arguments to pass to the script - can be passed multiple times
+
 ## Features
 
 * Run any part of the InstructLab workflow in a standalone environment independently or a full end-to-end workflow:
