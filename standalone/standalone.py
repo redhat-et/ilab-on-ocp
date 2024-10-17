@@ -47,20 +47,30 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
-K8S_NAME = "kfp-model-server"
-TOOLBOX_IMAGE = "registry.access.redhat.com/ubi9/toolbox"
+# IMAGES
 DS_IMAGE = "quay.io/opendatahub/workbench-images:jupyter-datascience-ubi9-python-3.11-20241004-609ffb8"  # pylint: disable=line-too-long
 RHELAI_IMAGE = "registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2"
+
+# SDG
+DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
+K8S_NAME = "kfp-model-server"
+SDG_OBJECT_STORE_SECRET_NAME = "sdg-object-store-credentials"
+REPO_GRANITE_7B_IMAGE = "ibm-granite/granite-7b-base"  # used by HF downloader
+
+# SDG DATA PREPROCESSING (before doing training, data has to be converted)
+MAX_SEQ_LEN = 4096
+MAX_BATCH_LEN = 20000
+
+# DATA
 DATA_PVC_NAME = "data"
 DATA_PVC_MOUNT_PATH = "/data"
+DATA_PVC_SDG_PATH = path.join(DATA_PVC_MOUNT_PATH, "data")
 DATA_PVC_MODEL_PATH = path.join(DATA_PVC_MOUNT_PATH, "model")
 DATA_VOLUME_NAME = "data"
 TAXONOMY_PATH = path.join(DATA_PVC_MOUNT_PATH, "taxonomy")
 DATA_PVC_OUTPUT_PATH = path.join(DATA_PVC_MOUNT_PATH, "output")
 DATA_PVC_OUTPUT_DATA_PATH = path.join(DATA_PVC_OUTPUT_PATH, "data")
-PYTORCH_NNODES = 2
-# MMLU_SCORES_PATH = "/output/mmlu-results.txt"
+PREPROCESSED_DATA_PATH = path.join(DATA_PVC_SDG_PATH, "processed_data")
 MT_BENCH_OUTPUT_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-results.txt")
 MT_BENCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-best.txt")
 MT_BENCH_BRANCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-branch-best.txt")
@@ -68,9 +78,24 @@ MMLU_BRANCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mmlu-branch-best.txt")
 CANDIDATE_MODEL_PATH = path.join(
     DATA_PVC_MOUNT_PATH, "model/output/phase_2/hf_format/candidate_model"
 )
-SDG_OBJECT_STORE_SECRET_NAME = "sdg-object-store-credentials"
+SDG_GENERATED_DATA_PATH = path.join(DATA_PVC_MOUNT_PATH, "generated")
+TAXONOMY_DATA_PATH = path.join(DATA_PVC_MOUNT_PATH, "taxonomy")
+# MMLU_SCORES_PATH = "/output/mmlu-results.txt" - after training phase 1 is done MMLU is not performed anymore
+
+# TRAINING
+PYTORCH_NNODES = 2
+
+# EVALUATION
 EVAL_TYPE_MT_BENCH = "mt-bench"
 EVAL_TYPE_FINAL = "final"
+JUDGE_SERVING_NAME = "judge-serving-details"
+MODEL_DTYPE = "bfloat16"
+MAX_WORKERS = "auto"
+MERGE_SYSTEM_USER_MESSAGE = False
+FEW_SHOTS = 5
+BATCH_SIZE = 8
+
+# TEMPLATES
 KFP_MODEL_SERVER_CM = """
 # TODO: remove the following line and replace it with the actual ConfigMap/Secret
 kind: ConfigMap
@@ -90,8 +115,6 @@ stringData:
   api_key: ""
 
 """
-
-JUDGE_SERVING_NAME = "judge-serving-details"
 
 PYTORCH_TRAINING_JOB = """
 apiVersion: kubeflow.org/v1
@@ -117,13 +140,9 @@ spec:
                   PATH_TO_MODEL={path_to_model}
                   if [ "$phase_num" -eq 2 ]; then PATH_TO_MODEL="{path_to_model}/output/phase_1/hf_format/$(ls --sort=time {path_to_model}/output/phase_1/hf_format|head -n 1)"; fi
                   echo "Using $PATH_TO_MODEL model for training"
-                  mkdir -p /data/model;
-                  mkdir -p /data/data;
+                  mkdir -p {data_pvc_model_path};
+                  mkdir -p {data_pvc_sdg_path};
                   mkdir -p {path_to_model}/output/phase_{phase_num}
-                  export XDG_CACHE_HOME=/tmp
-                  export TRITON_CACHE_DIR=/tmp
-                  export HF_HOME=/tmp
-                  export TRANSFORMERS_CACHE=/tmp
                   torchrun --nnodes {nnodes} \
                     --nproc_per_node {nproc_per_node} \
                     --node_rank $(RANK) \
@@ -159,6 +178,14 @@ spec:
                   value: \"{nnodes}\"
                 - name: NPROC_PER_NODE
                   value: \"{nproc_per_node}\"
+                - name: XDG_CACHE_HOME
+                  value: /tmp
+                - name: TRITON_CACHE_DIR
+                  value: /tmp
+                - name: HF_HOME
+                  value: /tmp
+                - name: TRANSFORMERS_CACHE
+                  value: /tmp
               resources:
                 requests:
                   cpu: 2
@@ -186,11 +213,8 @@ spec:
                   PATH_TO_MODEL={path_to_model}
                   if [ "$phase_num" -eq 2 ]; then PATH_TO_MODEL="{path_to_model}/output/phase_1/hf_format/$(ls --sort=time {path_to_model}/output/phase_1/hf_format|head -n 1)"; fi
                   echo "Using $PATH_TO_MODEL model for training"
-                  mkdir -p /tmp/model;
-                  export TRITON_CACHE_DIR=/tmp
-                  export XDG_CACHE_HOME=/tmp
-                  export HF_HOME=/tmp
-                  export TRANSFORMERS_CACHE=/tmp
+                  tmp_model=$(mktemp -d)
+                  mkdir -p "$tmp_model";
                   torchrun --nnodes {nnodes} \
                     --nproc_per_node {nproc_per_node} \
                     --node_rank $(RANK) \
@@ -198,7 +222,7 @@ spec:
                     -m instructlab.training.main_ds \
                     --model_name_or_path="$PATH_TO_MODEL" \
                     --data_path=/data/processed_data/data.jsonl \
-                    --output_dir=/tmp/model \
+                    --output_dir="$tmp_model" \
                     --num_epochs={epoch_num} \
                     --effective_batch_size=3840 \
                     --learning_rate=1e-4 \
@@ -226,6 +250,14 @@ spec:
                   value: \"{nnodes}\"
                 - name: NPROC_PER_NODE
                   value: \"{nproc_per_node}\"
+                - name: XDG_CACHE_HOME
+                  value: /tmp
+                - name: TRITON_CACHE_DIR
+                  value: /tmp
+                - name: HF_HOME
+                  value: /tmp
+                - name: TRANSFORMERS_CACHE
+                  value: /tmp
               resources:
                 requests:
                   cpu: 2
@@ -238,7 +270,7 @@ spec:
               persistentVolumeClaim:
                 claimName: {data_pvc_name}
 """
-# TODO: support signature version?
+
 DATA_SCRIPT = """
 set -e
 
@@ -338,6 +370,7 @@ def str_to_bool(s):
       return False
     return s.lower() in ['true', '1', 't', 'y', 'yes']
 
+# TODO: support signature version?
 def build_boto3_client():
   return boto3.client(
     's3',
@@ -789,6 +822,12 @@ def show(
     help="Number of epochs to train the model for.",
     default=10,
 )
+@click.option(
+    "--num-instructions-to-generate",
+    help="Number of instructions to generate.",
+    default=30,
+    hidden=True,
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -818,6 +857,7 @@ def run(
     force_pull: typing.Optional[bool] = False,
     training_1_epoch_num: int = 7,
     training_2_epoch_num: int = 10,
+    num_instructions_to_generate: typing.Optional[int] = 30,
 ):
     """
     Execute the distributed training on Kubernetes.
@@ -854,6 +894,7 @@ def run(
         already exists in the PVC.
         training_1_epoch_num (int): Number of epochs to train the model for during phase 1.
         training_2_epoch_num (int): Number of epochs to train the model for during phase 2.
+        num_instructions_to_generate (int): Number of instructions to generate during SDG.
 
     Returns:
         None
@@ -885,6 +926,7 @@ def run(
     ctx.obj["force_pull"] = force_pull
     ctx.obj["training_1_epoch_num"] = training_1_epoch_num
     ctx.obj["training_2_epoch_num"] = training_2_epoch_num
+    ctx.obj["num_instructions_to_generate"] = num_instructions_to_generate
 
     ##########################
     # MAIN WORKFLOW SEQUENCE #
@@ -971,6 +1013,7 @@ def get_vol() -> list[kubernetes.client.V1Volume]:
 def create_sdg_job(
     namespace: str,
     job_name: str,
+    num_instructions_to_generate: int,
     exec_git_clone_op_repo_url: str = "",
     exec_git_clone_op_repo_branch: str = "",
     exec_git_clone_op_repo_pr: str = "",
@@ -990,6 +1033,7 @@ def create_sdg_job(
     Args:
         namespace (str): The namespace in which the job will be created.
         job_name (str): The name of the job.
+        num_instructions_to_generate (int): The number of instructions to generate.
         exec_git_clone_op_repo_url (str): The URL of the taxonomy repository.
         exec_git_clone_op_repo_branch (str, optional): The branch of the taxonomy repository.
         exec_git_clone_op_repo_pr (str, optional): The pull request number of the taxonomy
@@ -1040,10 +1084,9 @@ def sdg_op(
         server_ctx_size=4096,
     )
 """
-    exec_sdg_op_args = """
-sdg_op(num_instructions_to_generate=2, repo_branch="", repo_pr="", taxonomy="/data/taxonomy", sdg="/data/generated")
+    exec_sdg_op_args = f"""
+sdg_op(num_instructions_to_generate={num_instructions_to_generate}, repo_branch="{exec_git_clone_op_repo_branch}", repo_pr={exec_git_clone_op_repo_pr}, taxonomy="{TAXONOMY_DATA_PATH}", sdg="{SDG_GENERATED_DATA_PATH}")
 """
-
     exec_huggingface_importer_op_command = """
 from typing import *
 
@@ -1052,10 +1095,9 @@ def huggingface_importer_op(model: str, repo_name: str):
 
     snapshot_download(repo_id=repo_name, cache_dir="/tmp", local_dir=model)
 """
-    exec_huggingface_importer_op_args = """
-huggingface_importer_op(repo_name="ibm-granite/granite-7b-base", model="/data/model")
+    exec_huggingface_importer_op_args = f"""
+huggingface_importer_op(repo_name="{REPO_GRANITE_7B_IMAGE}", model="{DATA_PVC_MODEL_PATH}")
 """
-
     exec_data_processing_op_command = """
 from typing import *
 
@@ -1123,14 +1165,14 @@ def data_processing_op(
 
     data_processing(train_args=training_args)
 """
-    exec_data_processing_op_args = """
-data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/data/data", model="/data/model", processed_data="/data/processed_data")
+    exec_data_processing_op_args = f"""
+data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg="{DATA_PVC_SDG_PATH}", model="{DATA_PVC_SDG_PATH}", processed_data="{PREPROCESSED_DATA_PATH}")
 """
 
     init_containers = [
         kubernetes.client.V1Container(
             name="sdg-op-fetch-taxonomy-data",
-            image="registry.access.redhat.com/ubi9/toolbox",
+            image=DS_IMAGE,
             command=["/bin/sh", "-c"],
             args=[
                 'git clone {exec_git_clone_op_repo_url} {TAXONOMY_PATH} && cd {TAXONOMY_PATH} && if [ -n "{exec_git_clone_op_repo_branch}" ]; then git fetch origin {exec_git_clone_op_repo_branch} && git checkout {exec_git_clone_op_repo_branch}; elif [ -n "{exec_git_clone_op_repo_pr}" ] && [ {exec_git_clone_op_repo_pr} -gt 0 ]; then git fetch origin pull/{exec_git_clone_op_repo_pr}/head:{exec_git_clone_op_repo_pr} && git checkout {exec_git_clone_op_repo_pr}; fi '
@@ -1140,8 +1182,7 @@ data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/data/data", mode
         ),
         kubernetes.client.V1Container(
             name="sdg-op-generate-synthetic-data",
-            # image="quay.io/tcoufal/ilab-sdg:latest",
-            image="registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.1-1724960989",
+            image=RHELAI_IMAGE,
             command=["/bin/sh", "-ce"],
             args=[
                 PYTHON_EXECUTOR.format(
@@ -1162,7 +1203,7 @@ data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/data/data", mode
         ),
         kubernetes.client.V1Container(
             name="huggingface-importer-op",
-            image="registry.access.redhat.com/ubi9/python-311:latest",
+            image=RHELAI_IMAGE,
             command=["/bin/sh", "-ce"],
             args=[
                 PYTHON_EXECUTOR.format(
@@ -1183,7 +1224,7 @@ data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/data/data", mode
         ),
         kubernetes.client.V1Container(
             name="sdg-preprocess",
-            image="registry.access.redhat.com/ubi9/python-311:latest",
+            image=RHELAI_IMAGE,
             command=["/bin/sh", "-ce"],
             args=[
                 PYTHON_EXECUTOR.format(
@@ -1211,7 +1252,7 @@ data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/data/data", mode
 
     container = kubernetes.client.V1Container(
         name="copy-model-to-pvc",
-        image=TOOLBOX_IMAGE,
+        image=DS_IMAGE,
         command=["/bin/sh", "-c"],
         args=[
             f"cp -r -v {DATA_PVC_MOUNT_PATH} {DATA_PVC_MOUNT_PATH}"
@@ -1341,8 +1382,8 @@ def data_processing_op(
 
     data_processing(train_args=training_args)
 """
-    exec_data_processing_op_args = """
-data_processing_op(max_seq_len=4096, max_batch_len=20000, sdg="/data/data", model="/data/model", processed_data="/data/processed_data")
+    exec_data_processing_op_args = f"""
+data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg={DATA_PVC_SDG_PATH}, model={DATA_PVC_SDG_PATH}, processed_data={PREPROCESSED_DATA_PATH})
 """
 
     data_container = kubernetes.client.V1Container(
@@ -1734,8 +1775,8 @@ def run_mt_bench_op(
 
     return outputs(best_model=best_model, best_score=best_score)
 """
-    exec_run_mt_bench_op_args = """
-run_mt_bench_op(best_score_file="/data/mt-bench-best.txt",mt_bench_output="/data/mt-bench-results.txt", models_folder="/data/model/output/phase_2/hf_format", models_path_prefix="/data/model/output/phase_2/hf_format", max_workers="auto", merge_system_user_message=False)
+    exec_run_mt_bench_op_args = f"""
+run_mt_bench_op(best_score_file="{MT_BENCH_SCORES_PATH}",mt_bench_output="{MT_BENCH_OUTPUT_PATH}", models_folder="{CANDIDATE_MODEL_PATH}", models_path_prefix="{CANDIDATE_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE})
 """
     exec_run_final_eval_op_command = """
 from typing import *
@@ -2191,8 +2232,8 @@ def run_final_eval_op(
     with open(mt_bench_branch_output, "w") as f:
         json.dump(mt_bench_branch_data, f, indent=4)
 """
-    exec_run_final_eval_op_args = """
-run_final_eval_op(mmlu_branch_output='/data/mmlu-branch-best.txt',mt_bench_branch_output='/data/mt-bench-branch-best.txt',candidate_model='/data/model/output/phase_2/hf_format/candidate_model', taxonomy='/data/taxonomy', tasks='/data/data', base_branch='', candidate_branch='', device=None, base_model_dir='/data/model', max_workers='auto', merge_system_user_message=False, model_dtype='bfloat16', few_shots=5, batch_size=8)
+    exec_run_final_eval_op_args = f"""
+run_final_eval_op(mmlu_branch_output="{MMLU_BRANCH_SCORES_PATH}", mt_bench_branch_output="{MT_BENCH_OUTPUT_PATH}", candidate_model="{CANDIDATE_MODEL_PATH}", taxonomy="{TAXONOMY_PATH}", tasks="{DATA_PVC_SDG_PATH}", base_branch="", candidate_branch="", device=None, base_model_dir="{DATA_PVC_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE}, model_dtype="{MODEL_DTYPE}", few_shots={FEW_SHOTS}, batch_size={BATCH_SIZE})
 """
 
     if eval_type == "mt-bench":
@@ -2439,9 +2480,8 @@ def run_job(namespace: str, job: kubernetes.client.V1Job) -> str:
         except kubernetes.client.exceptions.ApiException as e:
             logger.error("API exception occurred: %s", str(e))
             time.sleep(5)  # Backoff before retrying
-
-        except urllib3.exceptions.InvalidChunkLength as e:
-            logger.error("Connection broken: %s", str(e))
+        except urllib3.exceptions.ProtocolError as e:
+            logger.warning("Connection broken reconnecting the watcher: %s", str(e))
             time.sleep(5)  # Backoff before retrying
 
         finally:
@@ -2504,6 +2544,7 @@ def sdg(
     storage_class = ctx.obj["storage_class"]
     serving_endpoint = ctx.obj["serving_endpoint"]
     serving_model = ctx.obj["serving_model"]
+    num_instructions_to_generate = ctx.obj["num_instructions_to_generate"]
 
     # check in the context
     if not taxonomy_repo_branch and not taxonomy_repo_pr:
@@ -2570,6 +2611,7 @@ def sdg(
         exec_git_clone_op_repo_url=taxonomy_repo_url,
         exec_git_clone_op_repo_branch=taxonomy_repo_branch,
         exec_git_clone_op_repo_pr=taxonomy_repo_pr,
+        num_instructions_to_generate=num_instructions_to_generate,
     )
     run_job(namespace, job)
     logger.info("SDG setup completed.")
@@ -2800,13 +2842,6 @@ def sdg_data_fetch(
                 raise ValueError(
                     f"Secret {judge_serving_model_secret} not found in namespace {namespace}."
                 ) from exc
-    try:
-        v1.create_namespaced_secret(namespace=namespace, body=secret)
-    except kubernetes.client.rest.ApiException as exc:
-        if exc.status == 409:
-            logger.info("Secret '%s' already exists.", secret.metadata.name)
-        else:
-            raise
 
     # list of PVCs to create and their details
     pvcs = [
@@ -2887,6 +2922,8 @@ def train(
             worker_replicas=worker_replicas,
             epoch_num=epoch_num,
             phase_num=training_phase,
+            data_pvc_model_path=DATA_PVC_MODEL_PATH,
+            data_pvc_sdg_path=DATA_PVC_SDG_PATH,
         )
     )
 
@@ -3044,11 +3081,10 @@ def train(
         except kubernetes.client.exceptions.ApiException as e:
             logger.error("API exception occurred: %s", str(e))
             time.sleep(5)  # Backoff before retrying
-
         # Catches the following error:
-        # "InvalidChunkLength(got length b'', 0 bytes read)"
-        except urllib3.exceptions.InvalidChunkLength as e:
-            logger.error("Connection broken: %s", str(e))
+        # urllib3.exceptions.ProtocolError: ("Connection broken: InvalidChunkLength
+        except urllib3.exceptions.ProtocolError as e:
+            logger.warning("Connection broken reconnecting the watcher %s", str(e))
             time.sleep(5)  # Backoff before retrying
 
         finally:
