@@ -1550,6 +1550,7 @@ root:
         dependentTasks:
         - createpvc-3
         - pvc-to-model-op
+        - run-final-eval-op
         inputs:
           parameters:
             pvc_name:
@@ -1566,6 +1567,7 @@ root:
         dependentTasks:
         - createpvc-2
         - pvc-to-model-op
+        - run-final-eval-op
         inputs:
           parameters:
             pvc_name:
@@ -1582,6 +1584,7 @@ root:
         dependentTasks:
         - createpvc
         - pvc-to-model-op
+        - run-final-eval-op
         inputs:
           parameters:
             pvc_name:
