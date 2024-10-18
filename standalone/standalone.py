@@ -805,6 +805,14 @@ def show(
     default=30,
     hidden=True,
 )
+@click.option(
+    "--dry-run",
+    help=(
+        "Print the generated YAML to stdout instead of creating the resources."
+        "**WARNING**: secrets will be printed too!"
+    ),
+    is_flag=True,
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -835,6 +843,7 @@ def run(
     training_1_epoch_num: int = 7,
     training_2_epoch_num: int = 10,
     num_instructions_to_generate: typing.Optional[int] = 30,
+    dry_run: bool = False,
 ):
     """
     Execute the distributed training on Kubernetes.
@@ -872,6 +881,7 @@ def run(
         training_1_epoch_num (int): Number of epochs to train the model for during phase 1.
         training_2_epoch_num (int): Number of epochs to train the model for during phase 2.
         num_instructions_to_generate (int): Number of instructions to generate during SDG.
+        dry_run (bool): Print the generated YAML to stdout instead of creating the resources.
 
     Returns:
         None
@@ -904,6 +914,7 @@ def run(
     ctx.obj["training_1_epoch_num"] = training_1_epoch_num
     ctx.obj["training_2_epoch_num"] = training_2_epoch_num
     ctx.obj["num_instructions_to_generate"] = num_instructions_to_generate
+    ctx.obj["dry_run"] = dry_run
 
     ##########################
     # MAIN WORKFLOW SEQUENCE #
@@ -939,9 +950,10 @@ def run(
         # Evaluation of phase 2 with MT-Bench
         ctx.obj["eval_type"] = EVAL_TYPE_MT_BENCH
         scores = ctx.invoke(evaluation)
-        scores = json.loads(scores)
-        logger.info("Best model: %s", scores.get("best_model"))
-        ctx.obj["candidate_model"] = scores.get("best_model")
+        if not dry_run:
+            scores = json.loads(scores)
+            logger.info("Best model: %s", scores.get("best_model"))
+            ctx.obj["candidate_model"] = scores.get("best_model")
 
         # Final evaluation
         ctx.obj["eval_type"] = EVAL_TYPE_FINAL
@@ -2638,6 +2650,7 @@ def sdg_data_fetch(
     sdg_object_store_verify_tls = ctx.obj["sdg_object_store_verify_tls"]
     sdg_object_store_secret = ctx.obj["sdg_object_store_secret"]
     force_pull = ctx.obj["force_pull"]
+    dry_run = ctx.obj["dry_run"]
 
     # Check if all required arguments are provided for Data Fetch
     if not sdg_object_store_secret:
@@ -2722,7 +2735,12 @@ def sdg_data_fetch(
             secret.string_data["verify_tls"] = "false"
 
         try:
-            v1.create_namespaced_secret(namespace=namespace, body=secret)
+            if dry_run:
+                logger.info(
+                    "Dry run: Secret would be created.\n%s", secret.metadata.name
+                )
+            else:
+                v1.create_namespaced_secret(namespace=namespace, body=secret)
         except kubernetes.client.rest.ApiException as exc:
             if exc.status == 409:
                 logger.info("Secret '%s' already exists.", secret.metadata.name)
@@ -2731,35 +2749,36 @@ def sdg_data_fetch(
 
     # If the secret option is used, verify the presence of the keys and the existence of the secret
     elif sdg_object_store_secret:
-        try:
-            secret = v1.read_namespaced_secret(
-                name=sdg_object_store_secret, namespace=namespace
-            )
-
-            def decode_base64(data):
-                return base64.b64decode(data).decode("utf-8")
-
-            if secret.data.get("endpoint"):
-                endpoint = decode_base64(secret.data.get("endpoint"))
-                validate_url(endpoint)
-
-            if not all(
-                [
-                    secret.data.get("bucket"),
-                    secret.data.get("access_key"),
-                    secret.data.get("secret_key"),
-                    secret.data.get("data_key"),
-                ]
-            ):
-                raise ValueError(
-                    f"The provided secret {sdg_object_store_secret} must contain the keys:"
-                    "'bucket', 'access_key', 'secret_key', 'data_key'.",
+        if not dry_run:
+            try:
+                secret = v1.read_namespaced_secret(
+                    name=sdg_object_store_secret, namespace=namespace
                 )
-        except kubernetes.client.rest.ApiException as exc:
-            if exc.status == 404:
-                raise ValueError(
-                    f"Secret {sdg_object_store_secret} not found in namespace {namespace}."
-                ) from exc
+
+                def decode_base64(data):
+                    return base64.b64decode(data).decode("utf-8")
+
+                if secret.data.get("endpoint"):
+                    endpoint = decode_base64(secret.data.get("endpoint"))
+                    validate_url(endpoint)
+
+                if not all(
+                    [
+                        secret.data.get("bucket"),
+                        secret.data.get("access_key"),
+                        secret.data.get("secret_key"),
+                        secret.data.get("data_key"),
+                    ]
+                ):
+                    raise ValueError(
+                        f"The provided secret {sdg_object_store_secret} must contain the keys:"
+                        "'bucket', 'access_key', 'secret_key', 'data_key'.",
+                    )
+            except kubernetes.client.rest.ApiException as exc:
+                if exc.status == 404:
+                    raise ValueError(
+                        f"Secret {sdg_object_store_secret} not found in namespace {namespace}."
+                    ) from exc
 
     # Judge serving model secret
     if (
@@ -2785,7 +2804,13 @@ def sdg_data_fetch(
         )
 
         try:
-            v1.create_namespaced_secret(namespace=namespace, body=secret)
+            if dry_run:
+                logger.info(
+                    "Dry run: Secret would be created.\n%s", secret.metadata.name
+                )
+                print(secret)
+            else:
+                v1.create_namespaced_secret(namespace=namespace, body=secret)
         except kubernetes.client.rest.ApiException as exc:
             if exc.status == 409:
                 logger.info("Secret '%s' already exists.", secret.metadata.name)
@@ -2794,32 +2819,33 @@ def sdg_data_fetch(
 
     # If the secret option is used, verify the presence of the keys and the existence of the secret
     elif judge_serving_model_secret:
-        try:
-            secret = v1.read_namespaced_secret(
-                name=judge_serving_model_secret, namespace=namespace
-            )
-
-            if not all(
-                [
-                    secret.data.get("JUDGE_API_KEY"),
-                    secret.data.get("JUDGE_ENDPOINT"),
-                    secret.data.get("JUDGE_NAME"),
-                ]
-            ):
-                raise ValueError(
-                    f"The provided secret {judge_serving_model_secret} must contain the keys:"
-                    "'JUDGE_API_KEY', 'JUDGE_ENDPOINT', 'JUDGE_NAME' mind the uppercase.",
+        if not dry_run:
+            try:
+                secret = v1.read_namespaced_secret(
+                    name=judge_serving_model_secret, namespace=namespace
                 )
 
-            judge_serving_model_endpoint = decode_base64(
-                secret.data.get("JUDGE_ENDPOINT")
-            )
-            validate_url(judge_serving_model_endpoint)
-        except kubernetes.client.rest.ApiException as exc:
-            if exc.status == 404:
-                raise ValueError(
-                    f"Secret {judge_serving_model_secret} not found in namespace {namespace}."
-                ) from exc
+                if not all(
+                    [
+                        secret.data.get("JUDGE_API_KEY"),
+                        secret.data.get("JUDGE_ENDPOINT"),
+                        secret.data.get("JUDGE_NAME"),
+                    ]
+                ):
+                    raise ValueError(
+                        f"The provided secret {judge_serving_model_secret} must contain the keys:"
+                        "'JUDGE_API_KEY', 'JUDGE_ENDPOINT', 'JUDGE_NAME' mind the uppercase.",
+                    )
+
+                judge_serving_model_endpoint = decode_base64(
+                    secret.data.get("JUDGE_ENDPOINT")
+                )
+                validate_url(judge_serving_model_endpoint)
+            except kubernetes.client.rest.ApiException as exc:
+                if exc.status == 404:
+                    raise ValueError(
+                        f"Secret {judge_serving_model_secret} not found in namespace {namespace}."
+                    ) from exc
 
     # list of PVCs to create and their details
     pvcs = [
@@ -2833,10 +2859,13 @@ def sdg_data_fetch(
     ]
     for pvc in pvcs:
         try:
-            v1.create_namespaced_persistent_volume_claim(
-                namespace=namespace, body=create_pvc(**pvc)
-            )
-            logger.info("Successfully created PVC '%s' created.", pvc.get("name"))
+            if dry_run:
+                logger.info("Dry run: PVC would be created.\n%s", create_pvc(**pvc))
+            else:
+                v1.create_namespaced_persistent_volume_claim(
+                    namespace=namespace, body=create_pvc(**pvc)
+                )
+                logger.info("Successfully created PVC '%s' created.", pvc.get("name"))
         except kubernetes.client.rest.ApiException as exc:
             if exc.status == 409:
                 logger.info("PVC '%s' already exists.", pvc["name"])
@@ -2851,6 +2880,10 @@ def sdg_data_fetch(
         strategy="download",
         force_pull=force_pull,
     )
+
+    if dry_run:
+        logger.info("Dry run: Job would be created.\n%s", job)
+        return
 
     # Run the job
     run_job(namespace, job)
@@ -2873,6 +2906,7 @@ def train(
     nproc_per_node: int = ctx.obj["nproc_per_node"]
     training_1_epoch_num: int = ctx.obj["training_1_epoch_num"]
     training_2_epoch_num: int = ctx.obj["training_2_epoch_num"]
+    dry_run = ctx.obj["dry_run"]
 
     if training_phase is None:
         raise ValueError("Training phase must be provided with --training-phase=[1|2]")
@@ -2905,6 +2939,12 @@ def train(
             preprocessed_data_path=PREPROCESSED_DATA_PATH,
         )
     )
+
+    if dry_run:
+        logger.info(
+            "Dry run: PytorchJob would be created.\n%s", pytorch_training_job_yaml
+        )
+        return
 
     api = kubernetes.client.CustomObjectsApi()
 
@@ -3063,6 +3103,7 @@ def evaluation(ctx: click.Context) -> str:
     """
     namespace = ctx.obj["namespace"]
     eval_type = ctx.obj["eval_type"]
+    dry_run = ctx.obj["dry_run"]
 
     if eval_type is None:
         raise ValueError(
@@ -3073,6 +3114,11 @@ def evaluation(ctx: click.Context) -> str:
 
     # Create and run the evaluation job
     job = create_eval_job(namespace=namespace, eval_type=eval_type)
+
+    if dry_run:
+        logger.info("Dry run: Job would be created.\n%s", job)
+        return
+
     scores = run_job(namespace, job)
 
     if eval_type == EVAL_TYPE_MT_BENCH:
@@ -3115,6 +3161,7 @@ def upload_trained_model(ctx: click.Context):
     namespace = ctx.obj["namespace"]
     # At this stage the secret is present from previous phases so no need to check
     sdg_object_store_secret = ctx.obj["sdg_object_store_secret"]
+    dry_run = ctx.obj["dry_run"]
 
     logger.info("Uploading the trained model back to the object store.")
     job = create_data_job(
@@ -3123,6 +3170,10 @@ def upload_trained_model(ctx: click.Context):
         sdg_object_store_secret=sdg_object_store_secret,
         strategy="upload",
     )
+
+    if dry_run:
+        logger.info("Dry run: Job would be created.\n%s", job)
+        return
 
     # Run the job
     run_job(namespace, job)

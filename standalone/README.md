@@ -174,7 +174,9 @@ List of available options of the `show` subcommand:
   * Evaluate model by running MT_Bench with `evaluation` subcommand along with `--eval-type mt-bench` option.
   * Final model evaluation with `evaluation` subcommand along with `--eval-type final` option.
       * Final evaluation runs both MT Bench_Branch and MMLU_Branch
-  * Push the final model back to the object store -  same location as the SDG data with `upload-trained-model` subcommand.
+  * Push the final model back to the object store -  same location as the SDG data with
+    `upload-trained-model` subcommand.
+* Dry-run mode to print the generated Kubernetes resources without executing - `--dry-run` option.
 
 > [!NOTE]
 > Read about InstructLab model evaluation in the [instructlab/eval repository](https://github.com/instructlab/eval/blob/main/README.md).
@@ -262,7 +264,9 @@ evaluation
 * `--training-1-epoch-num`: The number of epochs to train the model for phase 1. **Optional** - Default: 7.
 * `--training-2-epoch-num`: The number of epochs to train the model for phase 2. **Optional** -
   Default: 10.
-* `--eval-type`: The evaluation type to use. **Optional** - Default: `mt-bench`. Available options: `mt-bench`, `final`.
+* `--eval-type`: The evaluation type to use. **Optional** - Default: `mt-bench`. Available options:
+  `mt-bench`, `final`.
+* `--dry-run`: Print the generated Kubernetes resources without executing them. **Optional** - Default: false.
 
 
 ## Example Workflow with Synthetic Data Generation (SDG)
