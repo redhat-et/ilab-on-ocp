@@ -75,9 +75,10 @@ MT_BENCH_OUTPUT_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-results.txt")
 MT_BENCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-best.txt")
 MT_BENCH_BRANCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-branch-best.txt")
 MMLU_BRANCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mmlu-branch-best.txt")
-CANDIDATE_MODEL_PATH = path.join(
-    DATA_PVC_MOUNT_PATH, "model/output/phase_2/hf_format/candidate_model"
+CANDIDATE_MODEL_PATH_PREFIX = path.join(
+    DATA_PVC_MOUNT_PATH, "model/output/phase_2/hf_format"
 )
+CANDIDATE_MODEL_PATH = path.join(CANDIDATE_MODEL_PATH_PREFIX, "candidate_model")
 SDG_GENERATED_DATA_PATH = path.join(DATA_PVC_MOUNT_PATH, "generated")
 TAXONOMY_DATA_PATH = path.join(DATA_PVC_MOUNT_PATH, "taxonomy")
 # MMLU_SCORES_PATH = "/output/mmlu-results.txt" - after training phase 1 is done MMLU is not performed anymore
@@ -134,7 +135,7 @@ spec:
                     --rdzv_endpoint $(MASTER_ADDR):$(MASTER_PORT) \
                     -m instructlab.training.main_ds \
                     --model_name_or_path="$PATH_TO_MODEL" \
-                    --data_path=/data/processed_data/data.jsonl \
+                    --data_path=/data/data/processed_data/data.jsonl \
                     --output_dir={path_to_model}/output/phase_{phase_num} \
                     --num_epochs={epoch_num} \
                     --effective_batch_size=3840 \
@@ -206,7 +207,7 @@ spec:
                     --rdzv_endpoint $(MASTER_ADDR):$(MASTER_PORT) \
                     -m instructlab.training.main_ds \
                     --model_name_or_path="$PATH_TO_MODEL" \
-                    --data_path=/data/processed_data/data.jsonl \
+                    --data_path=/data/data/processed_data/data.jsonl \
                     --output_dir="$tmp_model" \
                     --num_epochs={epoch_num} \
                     --effective_batch_size=3840 \
