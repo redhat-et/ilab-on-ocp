@@ -139,6 +139,8 @@ def run_mt_bench_op(
             usable_cpu_count = multiprocessing.cpu_count() // 2
         max_workers = usable_cpu_count
 
+    # modify model_list to ignore any jsonl files present in the directory
+    models_list = [model for model in models_list if not model.endswith(".jsonl")]
     for model_name in models_list:
         print(f"Serving candidate model: {model_name}")
         model_path = f"{models_path_prefix}/{model_name}"
