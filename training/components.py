@@ -16,7 +16,8 @@ from utils.consts import PYTHON_IMAGE
 )
 def data_processing_op(
     sdg: dsl.Input[dsl.Dataset],
-    processed_data: dsl.Output[dsl.Dataset],
+    skills_processed_data: dsl.Output[dsl.Dataset],
+    knowledge_processed_data: dsl.Output[dsl.Dataset],
     model: dsl.Input[dsl.Artifact],
     max_seq_len: Optional[int] = 4096,
     max_batch_len: Optional[int] = 20000,
@@ -30,11 +31,31 @@ def data_processing_op(
     )
 
     # define training-specific arguments
-    training_args = TrainingArgs(
+    skill_training_args = TrainingArgs(
         # define data-specific arguments
         model_path=model.path,
-        data_path=f"{sdg.path}/*_train_msgs*.jsonl",
-        data_output_dir=processed_data.path,
+        data_path=f"{sdg.path}/skills_train_msgs*.jsonl",
+        data_output_dir=skills_processed_data.path,
+        # define model-trianing parameters
+        max_seq_len=max_seq_len,
+        max_batch_len=max_batch_len,
+        # XXX(shanand): We don't need the following arguments
+        # for data processing. Added them for now to avoid
+        # Pydantic validation errors for TrainingArgs
+        ckpt_output_dir="data/saved_checkpoints",
+        num_epochs=2,
+        effective_batch_size=3840,
+        save_samples=0,
+        learning_rate=2e-6,
+        warmup_steps=800,
+        is_padding_free=True,
+    )
+
+    knowledge_training_args = TrainingArgs(
+        # define data-specific arguments
+        model_path=model.path,
+        data_path=f"{sdg.path}/knowledge_train_msgs*.jsonl",
+        data_output_dir=knowledge_processed_data.path,
         # define model-trianing parameters
         max_seq_len=max_seq_len,
         max_batch_len=max_batch_len,
@@ -76,7 +97,8 @@ def data_processing_op(
             )
         )
 
-    data_processing(train_args=training_args)
+    data_processing(train_args=skill_training_args)
+    data_processing(train_args=knowledge_training_args)
 
 
 @dsl.component(base_image=PYTHON_IMAGE)

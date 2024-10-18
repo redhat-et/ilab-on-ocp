@@ -146,12 +146,26 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             size="1Gi",
             storage_class_name=storage_class_name,
         )
-        sdg_to_pvc_task = artifact_to_pvc_op(
-            data=data_processing_task.outputs["processed_data"], pvc_path="/data"
+
+        sdg_skills_to_pvc_task = artifact_to_pvc_op(
+            data=data_processing_task.outputs["skills_processed_data"], pvc_path="/data"
         )
-        sdg_to_pvc_task.set_caching_options(False)
+        sdg_skills_to_pvc_task.set_caching_options(False)
         mount_pvc(
-            task=sdg_to_pvc_task, pvc_name=sdg_input_pvc_task.output, mount_path="/data"
+            task=sdg_skills_to_pvc_task,
+            pvc_name=sdg_input_pvc_task.output,
+            mount_path="/data",
+        )
+
+        sdg_knowledge_to_pvc_task = artifact_to_pvc_op(
+            data=data_processing_task.outputs["knowledge_processed_data"],
+            pvc_path="/data",
+        )
+        sdg_knowledge_to_pvc_task.set_caching_options(False)
+        mount_pvc(
+            task=sdg_knowledge_to_pvc_task,
+            pvc_name=sdg_input_pvc_task.output,
+            mount_path="/data",
         )
 
         output_pvc_task = CreatePVC(
@@ -177,7 +191,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         kubectl_apply_task = kubectl_apply_op(
             manifest=pytorchjob_manifest_task.outputs["manifest"]
         )
-        kubectl_apply_task.after(sdg_to_pvc_task, model_to_pvc_task)
+        kubectl_apply_task.after(sdg_knowledge_to_pvc_task, model_to_pvc_task)
         kubectl_apply_task.set_caching_options(False)
 
         kubectl_wait_task = kubectl_wait_for_op(
@@ -255,7 +269,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         kubectl_apply_2_task = kubectl_apply_op(
             manifest=pytorchjob_manifest_2_task.outputs["manifest"]
         )
-        kubectl_apply_2_task.after(sdg_to_pvc_task, model_to_pvc_task)
+        kubectl_apply_2_task.after(sdg_knowledge_to_pvc_task, model_to_pvc_task)
         kubectl_apply_2_task.set_caching_options(False)
 
         kubectl_wait_2_task = kubectl_wait_for_op(
@@ -445,7 +459,7 @@ def gen_standalone():
 
     # The list of executor names to extract details from to generate the standalone script
     executors = {
-        "exec-data-processing-op": 'data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg="{DATA_PVC_SDG_PATH}", model="{DATA_PVC_MODEL_PATH}", processed_data="{PREPROCESSED_DATA_PATH}")',
+        "exec-data-processing-op": 'data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg="{DATA_PVC_SDG_PATH}", model="{DATA_PVC_MODEL_PATH}", skills_processed_data="{PREPROCESSED_DATA_PATH_SKILLS}", knowledge_processed_data="{PREPROCESSED_DATA_PATH_KNOWLEDGE}")',
         "exec-sdg-op": 'sdg_op(num_instructions_to_generate={num_instructions_to_generate}, repo_branch="{exec_git_clone_op_repo_branch}", repo_pr={exec_git_clone_op_repo_pr}, taxonomy="{TAXONOMY_DATA_PATH}", sdg="{SDG_GENERATED_DATA_PATH}")',
         "exec-git-clone-op": {},
         "exec-huggingface-importer-op": 'huggingface_importer_op(repo_name="{REPO_GRANITE_7B_IMAGE}", model="{DATA_PVC_MODEL_PATH}")',
