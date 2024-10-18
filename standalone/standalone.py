@@ -54,7 +54,6 @@ RHELAI_IMAGE = "registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2"
 
 # SDG
 DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
-K8S_NAME = "kfp-model-server"
 SDG_OBJECT_STORE_SECRET_NAME = "sdg-object-store-credentials"
 REPO_GRANITE_7B_IMAGE = "ibm-granite/granite-7b-base"  # used by HF downloader
 
@@ -98,26 +97,6 @@ FEW_SHOTS = 5
 BATCH_SIZE = 8
 
 # TEMPLATES
-KFP_MODEL_SERVER_CM = """
-# TODO: remove the following line and replace it with the actual ConfigMap/Secret
-kind: ConfigMap
-apiVersion: v1
-metadata:
-  name: kfp-model-server
-data:
-  endpoint: "https://mistral-7b-instruct-v02-sallyom.apps.ocp-beta-test.nerc.mghpcc.org/v1"
-  model: "mistral-7b-instruct-v02"
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: kfp-model-server
-type: Opaque
-stringData:
-  api_key: ""
-
-"""
-
 PYTORCH_TRAINING_JOB = """
 apiVersion: kubeflow.org/v1
 kind: PyTorchJob
@@ -1182,14 +1161,14 @@ data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg
             ],
             volume_mounts=get_vol_mount(),
             security_context=get_security_context(),
-            env_from=[
-                kubernetes.client.V1EnvFromSource(
-                    config_map_ref=kubernetes.client.V1ConfigMapEnvSource(name=K8S_NAME)
-                ),
-                kubernetes.client.V1EnvFromSource(
-                    secret_ref=kubernetes.client.V1SecretEnvSource(name=K8S_NAME)
-                ),
-            ],
+            # env_from=[
+            #     kubernetes.client.V1EnvFromSource(
+            #         config_map_ref=kubernetes.client.V1ConfigMapEnvSource(name=K8S_NAME)
+            #     ),
+            #     kubernetes.client.V1EnvFromSource(
+            #         secret_ref=kubernetes.client.V1SecretEnvSource(name=K8S_NAME)
+            #     ),
+            # ],
         ),
         kubernetes.client.V1Container(
             name="huggingface-importer-op",
@@ -1203,14 +1182,14 @@ data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg
             ],
             volume_mounts=get_vol_mount(),
             security_context=get_security_context(),
-            env_from=[
-                kubernetes.client.V1EnvFromSource(
-                    config_map_ref=kubernetes.client.V1ConfigMapEnvSource(name=K8S_NAME)
-                ),
-                kubernetes.client.V1EnvFromSource(
-                    secret_ref=kubernetes.client.V1SecretEnvSource(name=K8S_NAME)
-                ),
-            ],
+            # env_from=[
+            #     kubernetes.client.V1EnvFromSource(
+            #         config_map_ref=kubernetes.client.V1ConfigMapEnvSource(name=K8S_NAME)
+            #     ),
+            #     kubernetes.client.V1EnvFromSource(
+            #         secret_ref=kubernetes.client.V1SecretEnvSource(name=K8S_NAME)
+            #     ),
+            # ],
         ),
         kubernetes.client.V1Container(
             name="sdg-preprocess",
@@ -1479,14 +1458,6 @@ data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg
         ],
         volume_mounts=get_vol_mount(),
         security_context=get_security_context(),
-        env_from=[
-            kubernetes.client.V1EnvFromSource(
-                config_map_ref=kubernetes.client.V1ConfigMapEnvSource(name=K8S_NAME)
-            ),
-            kubernetes.client.V1EnvFromSource(
-                secret_ref=kubernetes.client.V1SecretEnvSource(name=K8S_NAME)
-            ),
-        ],
     )
 
     main_container = None
@@ -2566,30 +2537,6 @@ def sdg(
         except kubernetes.client.rest.ApiException as exc:
             if exc.status == 409:
                 logger.info("PVC '%s' already exists.", pvc["name"])
-            else:
-                raise
-
-    # Create SDG config map/secret with api_key, serving endpoint
-    cms = list(yaml.safe_load_all(KFP_MODEL_SERVER_CM))
-    for cm in cms:
-        try:
-            # if this is a ConfigMap
-            if cm["kind"] == "ConfigMap":
-                if serving_endpoint:
-                    cm["data"]["endpoint"] = serving_endpoint
-                if serving_model:
-                    cm["data"]["model"] = serving_model
-                v1.create_namespaced_config_map(namespace=namespace, body=cm)
-                logger.info("Successfully created ConfigMap '%s' created.", cm)
-            elif cm["kind"] == "Secret":
-                # if this is a Secret
-                v1.create_namespaced_secret(namespace=namespace, body=cm)
-                logger.info("Successfully created Secret '%s' created.", cm)
-        except kubernetes.client.rest.ApiException as exc:
-            if exc.status == 409:
-                logger.info(
-                    "%s '%s' already exists.", cm["kind"], cm["metadata"]["name"]
-                )
             else:
                 raise
 
