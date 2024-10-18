@@ -2683,8 +2683,7 @@ def sdg_data_fetch(
             # Endpoint is optional if AWS S3 is used
             raise ValueError(
                 "All of '--judge-serving-model-endpoint', "
-                "'--sdg-object-store-access-key', '--judge-serving-model-name', "
-                "'--judge-serving-model-api-key' "
+                "'--judge-serving-model-api-key', '--judge-serving-model-name', "
                 "must be provided to the 'sdg-data-fetch' command. Alternatively, provide "
                 "'--judge-serving-model-secret' to use a Kubernetes Secret."
             )
