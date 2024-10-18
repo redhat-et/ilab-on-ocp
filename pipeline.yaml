@@ -1362,13 +1362,15 @@ deploymentSpec:
           \    if max_workers == \"auto\":\n        try:\n            usable_cpu_count\
           \ = len(os.sched_getaffinity(0)) // 2\n        except AttributeError:\n\
           \            usable_cpu_count = multiprocessing.cpu_count() // 2\n     \
-          \   max_workers = usable_cpu_count\n\n    for model_name in models_list:\n\
-          \        print(f\"Serving candidate model: {model_name}\")\n        model_path\
-          \ = f\"{models_path_prefix}/{model_name}\"\n\n        vllm_process, vllm_server\
-          \ = launch_vllm(model_path, gpu_count)\n\n        # model ID is the model_path\
-          \ value in vLLM\n        evaluator = MTBenchEvaluator(\n            model_name=model_path,\n\
-          \            judge_model_name=judge_model_name,\n            output_dir=\"\
-          /tmp/eval_output\",\n            merge_system_user_message=merge_system_user_message,\n\
+          \   max_workers = usable_cpu_count\n\n    # modify model_list to ignore\
+          \ any jsonl files present in the directory\n    models_list = [model for\
+          \ model in models_list if not model.endswith(\".jsonl\")]\n    for model_name\
+          \ in models_list:\n        print(f\"Serving candidate model: {model_name}\"\
+          )\n        model_path = f\"{models_path_prefix}/{model_name}\"\n\n     \
+          \   vllm_process, vllm_server = launch_vllm(model_path, gpu_count)\n\n \
+          \       # model ID is the model_path value in vLLM\n        evaluator =\
+          \ MTBenchEvaluator(\n            model_name=model_path,\n            judge_model_name=judge_model_name,\n\
+          \            output_dir=\"/tmp/eval_output\",\n            merge_system_user_message=merge_system_user_message,\n\
           \        )\n\n        evaluator.gen_answers(\n            server_url=vllm_server,\n\
           \            serving_gpus=gpu_count,\n            max_workers=max_workers,\n\
           \        )\n\n        shutdown_vllm(vllm_process)\n\n        overall_score,\
@@ -1389,9 +1391,11 @@ deploymentSpec:
           utf-8\") as f:\n            json.dump({\"best_model\": best_model, \"best_score\"\
           : best_score}, f, indent=4)\n\n    # Rename the best model directory to\
           \ \"candidate_model\" for the next step\n    # So we know which model to\
-          \ use for the final evaluation\n    os.rename(\n        os.path.join(models_path_prefix,\
-          \ best_model),\n        os.path.join(models_path_prefix, \"candidate_model\"\
-          ),\n    )\n\n    return outputs(best_model=best_model, best_score=best_score)\n\
+          \ use for the final evaluation\n    if os.path.exists(os.path.join(models_path_prefix,\
+          \ \"candidate_model\")):\n        print(\"candidate_model already exists.\
+          \ Skipping renaming\")\n    else:\n        os.rename(\n            os.path.join(models_path_prefix,\
+          \ best_model),\n            os.path.join(models_path_prefix, \"candidate_model\"\
+          ),\n        )\n\n    return outputs(best_model=best_model, best_score=best_score)\n\
           \n"
         image: quay.io/sallyom/instructlab-ocp:eval-10-8
         resources:
