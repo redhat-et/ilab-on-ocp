@@ -71,6 +71,8 @@ TAXONOMY_PATH = path.join(DATA_PVC_MOUNT_PATH, "taxonomy")
 DATA_PVC_OUTPUT_PATH = path.join(DATA_PVC_MOUNT_PATH, "output")
 DATA_PVC_OUTPUT_DATA_PATH = path.join(DATA_PVC_OUTPUT_PATH, "data")
 PREPROCESSED_DATA_PATH = path.join(DATA_PVC_SDG_PATH, "processed_data")
+PREPROCESSED_DATA_SKILLS_PATH = path.join(PREPROCESSED_DATA_PATH, "skills")
+PREPROCESSED_DATA_KNOWLEDGE_PATH = path.join(PREPROCESSED_DATA_PATH, "knowledge")
 MT_BENCH_OUTPUT_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-results.txt")
 MT_BENCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-best.txt")
 MT_BENCH_BRANCH_SCORES_PATH = path.join(DATA_PVC_MOUNT_PATH, "mt-bench-branch-best.txt")
@@ -117,11 +119,13 @@ spec:
             - args:
                 - |
                   phase_num={phase_num}
-                  processed_data_path={preprocessed_data_path}
+                  PATH_TO_DATA={preprocessed_data_knowledge_path}
+                  if [ "$phase_num" -eq 2 ]; then PATH_TO_DATA="{preprocessed_data_skills_path}"; fi
                   echo "Running phase $phase_num"
                   PATH_TO_MODEL={path_to_model}
                   if [ "$phase_num" -eq 2 ]; then PATH_TO_MODEL="{path_to_model}/output/phase_1/hf_format/$(ls --sort=time {path_to_model}/output/phase_1/hf_format|head -n 1)"; fi
                   echo "Using $PATH_TO_MODEL model for training"
+                  echo "Using $PATH_TO_DATA data for training"
                   mkdir -p {data_pvc_model_path};
                   mkdir -p {data_pvc_sdg_path};
                   mkdir -p {path_to_model}/output/phase_{phase_num}
@@ -131,7 +135,7 @@ spec:
                     --rdzv_endpoint $(MASTER_ADDR):$(MASTER_PORT) \
                     -m instructlab.training.main_ds \
                     --model_name_or_path="$PATH_TO_MODEL" \
-                    --data_path="$processed_data_path"/data.jsonl \
+                    --data_path="$PATH_TO_DATA"/data.jsonl \
                     --output_dir={path_to_model}/output/phase_{phase_num} \
                     --num_epochs={epoch_num} \
                     --effective_batch_size=3840 \
@@ -191,11 +195,13 @@ spec:
             - args:
                 - |
                   phase_num={phase_num}
-                  processed_data_path={preprocessed_data_path}
+                  PATH_TO_DATA={preprocessed_data_knowledge_path}
+                  if [ "$phase_num" -eq 2 ]; then PATH_TO_DATA="{preprocessed_data_skills_path}"; fi
                   echo "Running phase $phase_num"
                   PATH_TO_MODEL={path_to_model}
                   if [ "$phase_num" -eq 2 ]; then PATH_TO_MODEL="{path_to_model}/output/phase_1/hf_format/$(ls --sort=time {path_to_model}/output/phase_1/hf_format|head -n 1)"; fi
                   echo "Using $PATH_TO_MODEL model for training"
+                  echo "Using $PATH_TO_DATA data for training"
                   tmp_model=$(mktemp -d)
                   mkdir -p "$tmp_model";
                   torchrun --nnodes {nnodes} \
@@ -204,7 +210,7 @@ spec:
                     --rdzv_endpoint $(MASTER_ADDR):$(MASTER_PORT) \
                     -m instructlab.training.main_ds \
                     --model_name_or_path="$PATH_TO_MODEL" \
-                    --data_path="$processed_data_path"/data.jsonl \
+                    --data_path="$PATH_TO_DATA"/data.jsonl \
                     --output_dir="$tmp_model" \
                     --num_epochs={epoch_num} \
                     --effective_batch_size=3840 \
@@ -1181,7 +1187,7 @@ def create_data_job(
 {{exec_data_processing_op_command}}
 """
     exec_data_processing_op_args = f"""
-data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg="{DATA_PVC_SDG_PATH}", model="{DATA_PVC_MODEL_PATH}", processed_data="{PREPROCESSED_DATA_PATH}")
+data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg="{DATA_PVC_SDG_PATH}", model="{DATA_PVC_MODEL_PATH}", skills_processed_data="{PREPROCESSED_DATA_SKILLS_PATH}", knowledge_processed_data="{PREPROCESSED_DATA_KNOWLEDGE_PATH}")
 """
 
     data_container = kubernetes.client.V1Container(
@@ -2071,7 +2077,8 @@ def train(
             phase_num=training_phase,
             data_pvc_model_path=DATA_PVC_MODEL_PATH,
             data_pvc_sdg_path=DATA_PVC_SDG_PATH,
-            preprocessed_data_path=PREPROCESSED_DATA_PATH,
+            preprocessed_data_skills_path=PREPROCESSED_DATA_SKILLS_PATH,
+            preprocessed_data_knowledge_path=PREPROCESSED_DATA_KNOWLEDGE_PATH,
         )
     )
 

@@ -39,6 +39,17 @@ components:
       parameters:
         pvc_path:
           parameterType: STRING
+  comp-artifact-to-pvc-op-3:
+    executorLabel: exec-artifact-to-pvc-op-3
+    inputDefinitions:
+      artifacts:
+        data:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+      parameters:
+        pvc_path:
+          parameterType: STRING
   comp-createpvc:
     executorLabel: exec-createpvc
     inputDefinitions:
@@ -245,7 +256,11 @@ components:
           parameterType: NUMBER_INTEGER
     outputDefinitions:
       artifacts:
-        processed_data:
+        knowledge_processed_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        skills_processed_data:
           artifactType:
             schemaTitle: system.Dataset
             schemaVersion: 0.0.1
@@ -539,6 +554,14 @@ deploymentSpec:
         - /bin/sh
         - -c
         image: registry.access.redhat.com/ubi9/toolbox
+    exec-artifact-to-pvc-op-3:
+      container:
+        args:
+        - cp -r {{$.inputs.artifacts['data'].path}} {{$.inputs.parameters['pvc_path']}}
+        command:
+        - /bin/sh
+        - -c
+        image: registry.access.redhat.com/ubi9/toolbox
     exec-createpvc:
       container:
         image: argostub/createpvc
@@ -575,16 +598,26 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef data_processing_op(\n    sdg: dsl.Input[dsl.Dataset],\n    processed_data:\
-          \ dsl.Output[dsl.Dataset],\n    model: dsl.Input[dsl.Artifact],\n    max_seq_len:\
-          \ Optional[int] = 4096,\n    max_batch_len: Optional[int] = 20000,\n):\n\
-          \    import os\n\n    import instructlab.training.data_process as dp\n \
-          \   from instructlab.training import (\n        DataProcessArgs,\n     \
-          \   TrainingArgs,\n    )\n\n    # define training-specific arguments\n \
-          \   training_args = TrainingArgs(\n        # define data-specific arguments\n\
-          \        model_path=model.path,\n        data_path=f\"{sdg.path}/*_train_msgs*.jsonl\"\
-          ,\n        data_output_dir=processed_data.path,\n        # define model-trianing\
-          \ parameters\n        max_seq_len=max_seq_len,\n        max_batch_len=max_batch_len,\n\
+          \ *\n\ndef data_processing_op(\n    sdg: dsl.Input[dsl.Dataset],\n    skills_processed_data:\
+          \ dsl.Output[dsl.Dataset],\n    knowledge_processed_data: dsl.Output[dsl.Dataset],\n\
+          \    model: dsl.Input[dsl.Artifact],\n    max_seq_len: Optional[int] = 4096,\n\
+          \    max_batch_len: Optional[int] = 20000,\n):\n    import os\n\n    import\
+          \ instructlab.training.data_process as dp\n    from instructlab.training\
+          \ import (\n        DataProcessArgs,\n        TrainingArgs,\n    )\n\n \
+          \   # define training-specific arguments\n    skill_training_args = TrainingArgs(\n\
+          \        # define data-specific arguments\n        model_path=model.path,\n\
+          \        data_path=f\"{sdg.path}/skills_train_msgs*.jsonl\",\n        data_output_dir=skills_processed_data.path,\n\
+          \        # define model-trianing parameters\n        max_seq_len=max_seq_len,\n\
+          \        max_batch_len=max_batch_len,\n        # XXX(shanand): We don't\
+          \ need the following arguments\n        # for data processing. Added them\
+          \ for now to avoid\n        # Pydantic validation errors for TrainingArgs\n\
+          \        ckpt_output_dir=\"data/saved_checkpoints\",\n        num_epochs=2,\n\
+          \        effective_batch_size=3840,\n        save_samples=0,\n        learning_rate=2e-6,\n\
+          \        warmup_steps=800,\n        is_padding_free=True,\n    )\n\n   \
+          \ knowledge_training_args = TrainingArgs(\n        # define data-specific\
+          \ arguments\n        model_path=model.path,\n        data_path=f\"{sdg.path}/knowledge_train_msgs*.jsonl\"\
+          ,\n        data_output_dir=knowledge_processed_data.path,\n        # define\
+          \ model-trianing parameters\n        max_seq_len=max_seq_len,\n        max_batch_len=max_batch_len,\n\
           \        # XXX(shanand): We don't need the following arguments\n       \
           \ # for data processing. Added them for now to avoid\n        # Pydantic\
           \ validation errors for TrainingArgs\n        ckpt_output_dir=\"data/saved_checkpoints\"\
@@ -607,8 +640,8 @@ deploymentSpec:
           \               data_output_path=train_args.data_output_dir,\n         \
           \       model_path=train_args.model_path,\n                data_path=train_args.data_path,\n\
           \                max_seq_len=train_args.max_seq_len,\n                chat_tmpl_path=train_args.chat_tmpl_path,\n\
-          \            )\n        )\n\n    data_processing(train_args=training_args)\n\
-          \n"
+          \            )\n        )\n\n    data_processing(train_args=skill_training_args)\n\
+          \    data_processing(train_args=knowledge_training_args)\n\n"
         image: registry.access.redhat.com/ubi9/python-311:latest
     exec-deletepvc:
       container:
@@ -1450,7 +1483,7 @@ root:
           artifacts:
             data:
               taskOutputArtifact:
-                outputArtifactKey: processed_data
+                outputArtifactKey: skills_processed_data
                 producerTask: data-processing-op
           parameters:
             pvc_path:
@@ -1458,6 +1491,25 @@ root:
                 constant: /data
         taskInfo:
           name: artifact-to-pvc-op-2
+      artifact-to-pvc-op-3:
+        cachingOptions: {}
+        componentRef:
+          name: comp-artifact-to-pvc-op-3
+        dependentTasks:
+        - createpvc-2
+        - data-processing-op
+        inputs:
+          artifacts:
+            data:
+              taskOutputArtifact:
+                outputArtifactKey: knowledge_processed_data
+                producerTask: data-processing-op
+          parameters:
+            pvc_path:
+              runtimeValue:
+                constant: /data
+        taskInfo:
+          name: artifact-to-pvc-op-3
       createpvc:
         cachingOptions:
           enableCache: true
@@ -1624,7 +1676,7 @@ root:
           name: comp-kubectl-apply-op
         dependentTasks:
         - artifact-to-pvc-op
-        - artifact-to-pvc-op-2
+        - artifact-to-pvc-op-3
         - pytorchjob-manifest-op
         inputs:
           parameters:
@@ -1640,7 +1692,7 @@ root:
           name: comp-kubectl-apply-op-2
         dependentTasks:
         - artifact-to-pvc-op
-        - artifact-to-pvc-op-2
+        - artifact-to-pvc-op-3
         - pytorchjob-manifest-op-2
         inputs:
           parameters:
@@ -1967,6 +2019,12 @@ platforms:
               outputParameterKey: name
               producerTask: createpvc
         exec-artifact-to-pvc-op-2:
+          pvcMount:
+          - mountPath: /data
+            taskOutputParameter:
+              outputParameterKey: name
+              producerTask: createpvc-2
+        exec-artifact-to-pvc-op-3:
           pvcMount:
           - mountPath: /data
             taskOutputParameter:
