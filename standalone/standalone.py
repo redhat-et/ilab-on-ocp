@@ -138,6 +138,7 @@ spec:
             - args:
                 - |
                   phase_num={phase_num}
+                  processed_data_path={preprocessed_data_path}
                   echo "Running phase $phase_num"
                   PATH_TO_MODEL={path_to_model}
                   if [ "$phase_num" -eq 2 ]; then PATH_TO_MODEL="{path_to_model}/output/phase_1/hf_format/$(ls --sort=time {path_to_model}/output/phase_1/hf_format|head -n 1)"; fi
@@ -151,7 +152,7 @@ spec:
                     --rdzv_endpoint $(MASTER_ADDR):$(MASTER_PORT) \
                     -m instructlab.training.main_ds \
                     --model_name_or_path="$PATH_TO_MODEL" \
-                    --data_path=/data/data/processed_data/data.jsonl \
+                    --data_path="$processed_data_path"/data.jsonl \
                     --output_dir={path_to_model}/output/phase_{phase_num} \
                     --num_epochs={epoch_num} \
                     --effective_batch_size=3840 \
@@ -211,6 +212,7 @@ spec:
             - args:
                 - |
                   phase_num={phase_num}
+                  processed_data_path={preprocessed_data_path}
                   echo "Running phase $phase_num"
                   PATH_TO_MODEL={path_to_model}
                   if [ "$phase_num" -eq 2 ]; then PATH_TO_MODEL="{path_to_model}/output/phase_1/hf_format/$(ls --sort=time {path_to_model}/output/phase_1/hf_format|head -n 1)"; fi
@@ -223,7 +225,7 @@ spec:
                     --rdzv_endpoint $(MASTER_ADDR):$(MASTER_PORT) \
                     -m instructlab.training.main_ds \
                     --model_name_or_path="$PATH_TO_MODEL" \
-                    --data_path=/data/data/processed_data/data.jsonl \
+                    --data_path="$processed_data_path"/data.jsonl \
                     --output_dir="$tmp_model" \
                     --num_epochs={epoch_num} \
                     --effective_batch_size=3840 \
@@ -484,20 +486,14 @@ metadata:
 spec:
   template:
     spec:
-      serviceAccountName: {service_account}
       containers:
       - name: {name}
         image: {image}
         command:
-        - "python3"
-        - "/config/{script_name}"
-        - "run"
-        - "--namespace"
-        - "{namespace_workflow}"
-        - "--storage-class"
-        - "{storage_class}"
-        - "--sdg-object-store-secret"
-        - "{sdg_object_store_secret}"
+          - "python3"
+          - "/config/{script_name}"
+          - "run"
+        args: {args}
         volumeMounts:
         - name: script-config
           mountPath: /config
@@ -550,12 +546,6 @@ def cli():
     help="Kubernetes namespace to run the job",
 )
 @click.option(
-    "--namespace-workflow",
-    type=str,
-    default="default",
-    help="Kubernetes namespace to run the end-to-end workflow that the script will execute",
-)
-@click.option(
     "--name",
     type=str,
     default="distributed-ilab",
@@ -570,7 +560,6 @@ def cli():
 @click.option(
     "--service-account",
     type=str,
-    default="default",
     help="Service account to use for the Job",
 )
 @click.option(
@@ -582,58 +571,44 @@ def cli():
 @click.option(
     "--script-name",
     type=str,
-    help="Name of the standalone script in the ConfigMap",
-    default="standalone.py",
+    help="Name of the standalone script in the ConfigMap (key)",
+    default="standalone",
 )
 @click.option(
-    "--storage-class",
+    "--args",
     type=str,
-    help="Storage class to use for the PersistentVolumeClaim - for SDG only",
-)
-@click.option(
-    "--sdg-object-store-secret",
-    envvar="SDG_OBJECT_STORE_SECRET",
-    help=(
-        "Name of the Kubernetes Secret containing the SDG object store credentials. "
-        "The namespace is inferred from the namespace option. "
-        "The following keys are expected: bucket, access_key, secret_key, data_key. "
-        " (SDG_OBJECT_STORE_SECRET env var)"
-        "If used "
-        "endpoint, bucket, access_key, secret_key, region, data_key, verify_tls will be ignored."
-        "All supported options are: "
-        "endpoint, bucket, access_key, secret_key, region, data_key, verify_tls"
-    ),
-    default=SDG_OBJECT_STORE_SECRET_NAME,
-    type=str,
+    help="Extra arguments to pass to the script",
+    multiple=True,
+    required=True,
 )
 def show(
     namespace: str,
-    namespace_workflow: str,
     name: str,
     image: str,
     script_configmap: str,
     script_name: str,
     service_account: str,
-    storage_class: str,
-    sdg_object_store_secret: str,
+    args: typing.List[str],
 ):
     """
     Print an example Job YAML to stdout to run the script in a Kubernetes cluster.
     The job excepts the standalone.py script to be available in a ConfigMap.
     """
-    print(
+    script = yaml.safe_load(
         JOB_SCRIPT_EXAMPLE.format(
             name=name,
             namespace=namespace,
-            namespace_workflow=namespace_workflow,
             image=image,
             script_configmap=script_configmap,
             script_name=script_name,
-            service_account=service_account,
-            storage_class=storage_class,
-            sdg_object_store_secret=sdg_object_store_secret,
+            args=list(args),
         )
     )
+
+    if service_account:
+        script["spec"]["template"]["spec"]["serviceAccountName"] = service_account
+
+    print(yaml.dump(script))
 
 
 @cli.group(invoke_without_command=True)
@@ -830,6 +805,14 @@ def show(
     default=30,
     hidden=True,
 )
+@click.option(
+    "--dry-run",
+    help=(
+        "Print the generated YAML to stdout instead of creating the resources."
+        "**WARNING**: secrets will be printed too!"
+    ),
+    is_flag=True,
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -860,6 +843,7 @@ def run(
     training_1_epoch_num: int = 7,
     training_2_epoch_num: int = 10,
     num_instructions_to_generate: typing.Optional[int] = 30,
+    dry_run: bool = False,
 ):
     """
     Execute the distributed training on Kubernetes.
@@ -897,6 +881,7 @@ def run(
         training_1_epoch_num (int): Number of epochs to train the model for during phase 1.
         training_2_epoch_num (int): Number of epochs to train the model for during phase 2.
         num_instructions_to_generate (int): Number of instructions to generate during SDG.
+        dry_run (bool): Print the generated YAML to stdout instead of creating the resources.
 
     Returns:
         None
@@ -929,6 +914,7 @@ def run(
     ctx.obj["training_1_epoch_num"] = training_1_epoch_num
     ctx.obj["training_2_epoch_num"] = training_2_epoch_num
     ctx.obj["num_instructions_to_generate"] = num_instructions_to_generate
+    ctx.obj["dry_run"] = dry_run
 
     ##########################
     # MAIN WORKFLOW SEQUENCE #
@@ -964,9 +950,10 @@ def run(
         # Evaluation of phase 2 with MT-Bench
         ctx.obj["eval_type"] = EVAL_TYPE_MT_BENCH
         scores = ctx.invoke(evaluation)
-        scores = json.loads(scores)
-        logger.info("Best model: %s", scores.get("best_model"))
-        ctx.obj["candidate_model"] = scores.get("best_model")
+        if not dry_run:
+            scores = json.loads(scores)
+            logger.info("Best model: %s", scores.get("best_model"))
+            ctx.obj["candidate_model"] = scores.get("best_model")
 
         # Final evaluation
         ctx.obj["eval_type"] = EVAL_TYPE_FINAL
@@ -2236,7 +2223,7 @@ def run_final_eval_op(
         json.dump(mt_bench_branch_data, f, indent=4)
 """
     exec_run_final_eval_op_args = f"""
-run_final_eval_op(mmlu_branch_output="{MMLU_BRANCH_SCORES_PATH}", mt_bench_branch_output="{MT_BENCH_OUTPUT_PATH}", candidate_model="{CANDIDATE_MODEL_PATH}", taxonomy="{TAXONOMY_PATH}", tasks="{DATA_PVC_SDG_PATH}", base_branch="", candidate_branch="", device=None, base_model_dir="{DATA_PVC_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE}, model_dtype="{MODEL_DTYPE}", few_shots={FEW_SHOTS}, batch_size={BATCH_SIZE})
+run_final_eval_op(mmlu_branch_output="{MMLU_BRANCH_SCORES_PATH}", mt_bench_branch_output="{MT_BENCH_BRANCH_SCORES_PATH}", candidate_model="{CANDIDATE_MODEL_PATH}", taxonomy="{TAXONOMY_PATH}", tasks="{DATA_PVC_SDG_PATH}", base_branch="", candidate_branch="", device=None, base_model_dir="{DATA_PVC_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE}, model_dtype="{MODEL_DTYPE}", few_shots={FEW_SHOTS}, batch_size={BATCH_SIZE})
 """
 
     if eval_type == "mt-bench":
@@ -2663,6 +2650,7 @@ def sdg_data_fetch(
     sdg_object_store_verify_tls = ctx.obj["sdg_object_store_verify_tls"]
     sdg_object_store_secret = ctx.obj["sdg_object_store_secret"]
     force_pull = ctx.obj["force_pull"]
+    dry_run = ctx.obj["dry_run"]
 
     # Check if all required arguments are provided for Data Fetch
     if not sdg_object_store_secret:
@@ -2747,7 +2735,12 @@ def sdg_data_fetch(
             secret.string_data["verify_tls"] = "false"
 
         try:
-            v1.create_namespaced_secret(namespace=namespace, body=secret)
+            if dry_run:
+                logger.info(
+                    "Dry run: Secret would be created.\n%s", secret.metadata.name
+                )
+            else:
+                v1.create_namespaced_secret(namespace=namespace, body=secret)
         except kubernetes.client.rest.ApiException as exc:
             if exc.status == 409:
                 logger.info("Secret '%s' already exists.", secret.metadata.name)
@@ -2756,35 +2749,36 @@ def sdg_data_fetch(
 
     # If the secret option is used, verify the presence of the keys and the existence of the secret
     elif sdg_object_store_secret:
-        try:
-            secret = v1.read_namespaced_secret(
-                name=sdg_object_store_secret, namespace=namespace
-            )
-
-            def decode_base64(data):
-                return base64.b64decode(data).decode("utf-8")
-
-            if secret.data.get("endpoint"):
-                endpoint = decode_base64(secret.data.get("endpoint"))
-                validate_url(endpoint)
-
-            if not all(
-                [
-                    secret.data.get("bucket"),
-                    secret.data.get("access_key"),
-                    secret.data.get("secret_key"),
-                    secret.data.get("data_key"),
-                ]
-            ):
-                raise ValueError(
-                    f"The provided secret {sdg_object_store_secret} must contain the keys:"
-                    "'bucket', 'access_key', 'secret_key', 'data_key'.",
+        if not dry_run:
+            try:
+                secret = v1.read_namespaced_secret(
+                    name=sdg_object_store_secret, namespace=namespace
                 )
-        except kubernetes.client.rest.ApiException as exc:
-            if exc.status == 404:
-                raise ValueError(
-                    f"Secret {sdg_object_store_secret} not found in namespace {namespace}."
-                ) from exc
+
+                def decode_base64(data):
+                    return base64.b64decode(data).decode("utf-8")
+
+                if secret.data.get("endpoint"):
+                    endpoint = decode_base64(secret.data.get("endpoint"))
+                    validate_url(endpoint)
+
+                if not all(
+                    [
+                        secret.data.get("bucket"),
+                        secret.data.get("access_key"),
+                        secret.data.get("secret_key"),
+                        secret.data.get("data_key"),
+                    ]
+                ):
+                    raise ValueError(
+                        f"The provided secret {sdg_object_store_secret} must contain the keys:"
+                        "'bucket', 'access_key', 'secret_key', 'data_key'.",
+                    )
+            except kubernetes.client.rest.ApiException as exc:
+                if exc.status == 404:
+                    raise ValueError(
+                        f"Secret {sdg_object_store_secret} not found in namespace {namespace}."
+                    ) from exc
 
     # Judge serving model secret
     if (
@@ -2810,7 +2804,13 @@ def sdg_data_fetch(
         )
 
         try:
-            v1.create_namespaced_secret(namespace=namespace, body=secret)
+            if dry_run:
+                logger.info(
+                    "Dry run: Secret would be created.\n%s", secret.metadata.name
+                )
+                print(secret)
+            else:
+                v1.create_namespaced_secret(namespace=namespace, body=secret)
         except kubernetes.client.rest.ApiException as exc:
             if exc.status == 409:
                 logger.info("Secret '%s' already exists.", secret.metadata.name)
@@ -2819,32 +2819,33 @@ def sdg_data_fetch(
 
     # If the secret option is used, verify the presence of the keys and the existence of the secret
     elif judge_serving_model_secret:
-        try:
-            secret = v1.read_namespaced_secret(
-                name=judge_serving_model_secret, namespace=namespace
-            )
-
-            if not all(
-                [
-                    secret.data.get("JUDGE_API_KEY"),
-                    secret.data.get("JUDGE_ENDPOINT"),
-                    secret.data.get("JUDGE_NAME"),
-                ]
-            ):
-                raise ValueError(
-                    f"The provided secret {judge_serving_model_secret} must contain the keys:"
-                    "'JUDGE_API_KEY', 'JUDGE_ENDPOINT', 'JUDGE_NAME' mind the uppercase.",
+        if not dry_run:
+            try:
+                secret = v1.read_namespaced_secret(
+                    name=judge_serving_model_secret, namespace=namespace
                 )
 
-            judge_serving_model_endpoint = decode_base64(
-                secret.data.get("JUDGE_ENDPOINT")
-            )
-            validate_url(judge_serving_model_endpoint)
-        except kubernetes.client.rest.ApiException as exc:
-            if exc.status == 404:
-                raise ValueError(
-                    f"Secret {judge_serving_model_secret} not found in namespace {namespace}."
-                ) from exc
+                if not all(
+                    [
+                        secret.data.get("JUDGE_API_KEY"),
+                        secret.data.get("JUDGE_ENDPOINT"),
+                        secret.data.get("JUDGE_NAME"),
+                    ]
+                ):
+                    raise ValueError(
+                        f"The provided secret {judge_serving_model_secret} must contain the keys:"
+                        "'JUDGE_API_KEY', 'JUDGE_ENDPOINT', 'JUDGE_NAME' mind the uppercase.",
+                    )
+
+                judge_serving_model_endpoint = decode_base64(
+                    secret.data.get("JUDGE_ENDPOINT")
+                )
+                validate_url(judge_serving_model_endpoint)
+            except kubernetes.client.rest.ApiException as exc:
+                if exc.status == 404:
+                    raise ValueError(
+                        f"Secret {judge_serving_model_secret} not found in namespace {namespace}."
+                    ) from exc
 
     # list of PVCs to create and their details
     pvcs = [
@@ -2858,10 +2859,13 @@ def sdg_data_fetch(
     ]
     for pvc in pvcs:
         try:
-            v1.create_namespaced_persistent_volume_claim(
-                namespace=namespace, body=create_pvc(**pvc)
-            )
-            logger.info("Successfully created PVC '%s' created.", pvc.get("name"))
+            if dry_run:
+                logger.info("Dry run: PVC would be created.\n%s", create_pvc(**pvc))
+            else:
+                v1.create_namespaced_persistent_volume_claim(
+                    namespace=namespace, body=create_pvc(**pvc)
+                )
+                logger.info("Successfully created PVC '%s' created.", pvc.get("name"))
         except kubernetes.client.rest.ApiException as exc:
             if exc.status == 409:
                 logger.info("PVC '%s' already exists.", pvc["name"])
@@ -2876,6 +2880,10 @@ def sdg_data_fetch(
         strategy="download",
         force_pull=force_pull,
     )
+
+    if dry_run:
+        logger.info("Dry run: Job would be created.\n%s", job)
+        return
 
     # Run the job
     run_job(namespace, job)
@@ -2898,6 +2906,7 @@ def train(
     nproc_per_node: int = ctx.obj["nproc_per_node"]
     training_1_epoch_num: int = ctx.obj["training_1_epoch_num"]
     training_2_epoch_num: int = ctx.obj["training_2_epoch_num"]
+    dry_run = ctx.obj["dry_run"]
 
     if training_phase is None:
         raise ValueError("Training phase must be provided with --training-phase=[1|2]")
@@ -2927,8 +2936,15 @@ def train(
             phase_num=training_phase,
             data_pvc_model_path=DATA_PVC_MODEL_PATH,
             data_pvc_sdg_path=DATA_PVC_SDG_PATH,
+            preprocessed_data_path=PREPROCESSED_DATA_PATH,
         )
     )
+
+    if dry_run:
+        logger.info(
+            "Dry run: PytorchJob would be created.\n%s", pytorch_training_job_yaml
+        )
+        return
 
     api = kubernetes.client.CustomObjectsApi()
 
@@ -2958,12 +2974,14 @@ def train(
     # TODO: this block is getting really deep, would be nice to refactor one day
     while not exit_flag:  # Keep the watch active
         try:
+            logger.info("Watching for PytorchJob")
             for event in w.stream(
                 api.list_namespaced_custom_object,
                 group="kubeflow.org",
                 version="v1",
                 namespace=namespace,
                 plural="pytorchjobs",
+                timeout_seconds=60,  # Timeout after 1 minutes
             ):
                 pytorchjob_event = event["object"]
                 if (
@@ -2983,90 +3001,62 @@ def train(
                     pytorchjob_name,
                     pytorchjob_event["status"].get("conditions", "No conditions yet"),
                 )
-
-                master_pod_success = False
-                workers_pod_success = {}
-                # Always start by the last condition so that if the job is completed, we can stop
-                # watching If we don't do this, we might get 'stuck' into the Running condition and
-                # never stop
-                # watching
                 for job_condition in reversed(pytorchjob_event["status"]["conditions"]):
-                    print(job_condition)
                     if job_condition["type"] == "Running":
-                        # now watch for pod event
-                        for event in w.stream(
-                            core_v1.list_namespaced_pod,
-                            namespace=namespace,
-                            label_selector=(
-                                f"training.kubeflow.org/job-name=train-phase-{training_phase}"
-                            ),
-                        ):
-                            pod_event = event["object"]
-                            if pod_event.metadata.name.startswith(pytorchjob_name):
-                                logger.info(
-                                    "Pod: %s - %s",
-                                    pod_event.metadata.name,
-                                    pod_event.status.phase,
-                                )
-                                for (
-                                    container_status
-                                ) in pod_event.status.container_statuses:
-                                    # We fail on CrashLoopBackOff and not on Error, allowing for
-                                    # retries
-                                    if (
-                                        container_status.state.waiting
-                                        and container_status.state.waiting.reason
-                                        == "CrashLoopBackOff"
-                                    ):
+                        try:
+                            # List PytorchJob Pods
+                            pods = core_v1.list_namespaced_pod(
+                                namespace=namespace,
+                                label_selector=(
+                                    f"training.kubeflow.org/job-name=train-phase-{training_phase}"
+                                ),
+                            )
+                            for pod_event in pods.items:
+                                if pod_event.metadata.name.startswith(pytorchjob_name):
+                                    logger.info(
+                                        "Pod: %s - %s",
+                                        pod_event.metadata.name,
+                                        pod_event.status.phase,
+                                    )
+                                    # First look if any container is in CrashLoopBackOff
+                                    for (
+                                        container_status
+                                    ) in pod_event.status.container_statuses:
+                                        # We fail on CrashLoopBackOff and not on Error, allowing
+                                        # for retries
+                                        if (
+                                            container_status.state.waiting
+                                            and container_status.state.waiting.reason
+                                            == "CrashLoopBackOff"
+                                        ):
+                                            log_pod_containers(
+                                                pod_event,
+                                                "init_containers",
+                                                namespace,
+                                            )
+                                            log_pod_containers(
+                                                pod_event, "containers", namespace
+                                            )
+                                            raise RuntimeError(
+                                                f"Pod {pod_event.metadata.name} failed."
+                                            )
+
+                                    # If the pod is in a failed state, log the containers and
+                                    # stop the watcher
+                                    if pod_event.status.phase == "Failed":
                                         log_pod_containers(
                                             pod_event, "init_containers", namespace
                                         )
                                         log_pod_containers(
                                             pod_event, "containers", namespace
                                         )
+                                        w.stop()
                                         raise RuntimeError(
                                             f"Pod {pod_event.metadata.name} failed."
                                         )
-                                if pod_event.status.phase == "Failed":
-                                    log_pod_containers(
-                                        pod_event, "init_containers", namespace
-                                    )
-                                    log_pod_containers(
-                                        pod_event, "containers", namespace
-                                    )
-                                    w.stop()
-                                if pod_event.status.phase == "Succeeded":
-                                    if pod_event.metadata.name.startswith(
-                                        f"{pytorchjob_name}-master"
-                                    ):
-                                        master_pod_success = True
-                                        logger.info(
-                                            "Pod '%s' completed successfully",
-                                            pod_event.metadata.name,
-                                        )
-                                    elif pod_event.metadata.name.startswith(
-                                        f"{pytorchjob_name}-worker"
-                                    ):
-                                        logger.info(
-                                            "Pod '%s' completed successfully",
-                                            pod_event.metadata.name,
-                                        )
-                                        # Add the worker pod to the list of successful pods
-                                        workers_pod_success[pod_event.metadata.name] = (
-                                            True
-                                        )
-                                    if master_pod_success and (
-                                        len(workers_pod_success) == worker_replicas
-                                    ):
-                                        logger.info(
-                                            "All PytorchJob Pods completed successfully"
-                                        )
-                                        w.stop()
-                                        exit_flag = True
-                                        # Break here to avoid going into other conditions, we are
-                                        # done
-                                        break
-                                    continue
+                        except kubernetes.client.exceptions.ApiException as e:
+                            logger.error("API exception occurred: %s", str(e))
+                            time.sleep(5)  # Backoff before retrying
                     elif job_condition["type"] == "Succeeded":
                         logger.info(
                             "PytorchJob '%s' completed successfully: %s",
@@ -3094,7 +3084,6 @@ def train(
         except urllib3.exceptions.ProtocolError as e:
             logger.warning("Connection broken reconnecting the watcher %s", str(e))
             time.sleep(5)  # Backoff before retrying
-
         finally:
             w.stop()
 
@@ -3114,6 +3103,7 @@ def evaluation(ctx: click.Context) -> str:
     """
     namespace = ctx.obj["namespace"]
     eval_type = ctx.obj["eval_type"]
+    dry_run = ctx.obj["dry_run"]
 
     if eval_type is None:
         raise ValueError(
@@ -3124,6 +3114,11 @@ def evaluation(ctx: click.Context) -> str:
 
     # Create and run the evaluation job
     job = create_eval_job(namespace=namespace, eval_type=eval_type)
+
+    if dry_run:
+        logger.info("Dry run: Job would be created.\n%s", job)
+        return
+
     scores = run_job(namespace, job)
 
     if eval_type == EVAL_TYPE_MT_BENCH:
@@ -3166,6 +3161,7 @@ def upload_trained_model(ctx: click.Context):
     namespace = ctx.obj["namespace"]
     # At this stage the secret is present from previous phases so no need to check
     sdg_object_store_secret = ctx.obj["sdg_object_store_secret"]
+    dry_run = ctx.obj["dry_run"]
 
     logger.info("Uploading the trained model back to the object store.")
     job = create_data_job(
@@ -3174,6 +3170,10 @@ def upload_trained_model(ctx: click.Context):
         sdg_object_store_secret=sdg_object_store_secret,
         strategy="upload",
     )
+
+    if dry_run:
+        logger.info("Dry run: Job would be created.\n%s", job)
+        return
 
     # Run the job
     run_job(namespace, job)
