@@ -32,29 +32,35 @@ def run_final_eval_op(
 ):
     import json
     import os
+    import subprocess
 
     import torch
     from instructlab.eval.mmlu import MMLU_TASKS, MMLUBranchEvaluator
     from instructlab.eval.mt_bench import MTBenchBranchEvaluator
     from instructlab.model.evaluate import qa_pairs_to_qna_to_avg_scores, sort_score
 
-    VLLM_SERVER = "http://localhost:8000/v1"
-
     print("Starting Final Eval...")
 
     def launch_vllm(
         model_path: str, gpu_count: int, retries: int = 120, delay: int = 10
-    ):
+    ) -> tuple:
         import subprocess
         import sys
         import time
 
         import requests
+        from instructlab.model.backends.common import free_tcp_ipv4_port
+
+        free_port = free_tcp_ipv4_port("127.0.0.1")
+        port = str(free_port)
+        vllm_server = f"http://127.0.0.1:{port}/v1"
 
         command = [
             sys.executable,
             "-m",
             "vllm.entrypoints.openai.api_server",
+            "--port",
+            port,
             "--model",
             model_path,
         ]
@@ -64,16 +70,16 @@ def run_final_eval_op(
                 str(gpu_count),
             ]
 
-        subprocess.Popen(args=command)
+        process = subprocess.Popen(args=command)
 
-        print(f"Waiting for vLLM server to start at {VLLM_SERVER}...")
+        print(f"Waiting for vLLM server to start at {vllm_server}...")
 
         for attempt in range(retries):
             try:
-                response = requests.get(f"{VLLM_SERVER}/models")
+                response = requests.get(f"{vllm_server}/models")
                 if response.status_code == 200:
-                    print(f"vLLM server is up and running at {VLLM_SERVER}.")
-                    return
+                    print(f"vLLM server is up and running at {vllm_server}.")
+                    return process, vllm_server
             except requests.ConnectionError:
                 pass
 
@@ -83,41 +89,38 @@ def run_final_eval_op(
             time.sleep(delay)
 
         raise RuntimeError(
-            f"Failed to start vLLM server at {VLLM_SERVER} after {retries} retries."
+            f"Failed to start vLLM server at {vllm_server} after {retries} retries."
         )
 
-    # This seems like excessive effort to stop the vllm process, but merely saving & killing the pid doesn't work
-    # Also, the base image does not include 'pkill' cmd, so can't pkill -f vllm.entrypoints.openai.api_server either
-    def stop_vllm():
-        import psutil
+    def shutdown_vllm(process: subprocess.Popen, timeout: int = 20):
+        import subprocess
 
-        for process in psutil.process_iter(attrs=["pid", "name", "cmdline"]):
-            cmdline = process.info.get("cmdline")
-            if cmdline and "vllm.entrypoints.openai.api_server" in cmdline:
-                print(
-                    f"Found vLLM server process with PID: {process.info['pid']}, terminating..."
-                )
-                try:
-                    process.terminate()  # Try graceful termination
-                    process.wait(timeout=5)  # Wait a bit for it to terminate
-                    if process.is_running():
-                        print(
-                            f"Forcefully killing vLLM server process with PID: {process.info['pid']}"
-                        )
-                        process.kill()  # Force kill if it's still running
-                    print(
-                        f"Successfully stopped vLLM server with PID: {process.info['pid']}"
-                    )
-                except psutil.NoSuchProcess:
-                    print(f"Process with PID {process.info['pid']} no longer exists.")
-                except psutil.AccessDenied:
-                    print(
-                        f"Access denied when trying to terminate process with PID {process.info['pid']}."
-                    )
-                except Exception as e:
-                    print(
-                        f"Failed to terminate process with PID {process.info['pid']}. Error: {e}"
-                    )
+        from instructlab.model.backends.vllm import wait_for_stable_vram
+
+        try:
+            process.terminate()
+            process.wait(timeout=timeout)
+
+            if process.poll() is None:
+                print(f"Forcefully killing vLLM server process with PID: {process.pid}")
+                process.kill()
+
+            print(f"Successfully stopped vLLM server with PID: {process.pid}")
+
+        except subprocess.TimeoutExpired:
+            print(
+                f"Timeout expired. Forcefully killing vLLM server with PID: {process.pid}"
+            )
+            process.kill()  # Force kill the process if over timeout
+        except subprocess.NoSuchProcess:
+            print(f"Process with PID {process.pid} no longer exists.")
+        except Exception as e:
+            print(f"Failed to stop process with PID {process.pid}. Error: {e}")
+        # Note from instructlab/model/backends/vllm.py
+        # vLLM relies on stable VRAM,  residual reclamation activity
+        # can lead to crashes on restart. To prevent this add a
+        # short delay (typically ~ 10 seconds, max 30) to verify stability.
+        wait_for_stable_vram(30)
 
     # For standalone mode
     if candidate_model is None:
@@ -279,12 +282,12 @@ def run_final_eval_op(
         for i, evaluator in enumerate(mmlu_branch_evaluators):
             m_path = m_paths[i]
             print("Launching Vllm...")
-            launch_vllm(m_path, gpu_count)
-            overall_score, individual_scores = evaluator.run(VLLM_SERVER)
+            vllm_process, vllm_server = launch_vllm(m_path, gpu_count)
+            overall_score, individual_scores = evaluator.run(vllm_server)
             overall_scores.append(overall_score)
             individual_scores_list.append(individual_scores)
             print("Stopping Vllm")
-            stop_vllm()
+            shutdown_vllm(vllm_process)
 
         # TODO: update instructlab/instructlab model/evaluate.py
         # so this logic can be imported outside of the CLI
@@ -386,15 +389,15 @@ def run_final_eval_op(
         print(
             f"Generating questions and reference answers from qna files for branch {branch}..."
         )
-        launch_vllm(m_path, gpu_count)
+        vllm_process, vllm_server = launch_vllm(m_path, gpu_count)
 
         evaluator.gen_answers(
-            server_url=VLLM_SERVER,
+            server_url=vllm_server,
             serving_gpus=gpu_count,
             max_workers=max_workers,
         )
 
-        stop_vllm()
+        shutdown_vllm(vllm_process)
 
         print(f"Evaluating answers for branch {branch}...")
         overall_score, qa_pairs, error_rate = evaluator.judge_answers(
