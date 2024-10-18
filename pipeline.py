@@ -474,12 +474,6 @@ def gen_standalone():
             click.echo(f"Error: {e}", err=True)
             raise click.exceptions.Exit(1)
 
-    # Populate the KFP model server ConfigMap
-    with open(
-        path.join(path.dirname(__file__), KFP_MODEL_SERVER_CM), encoding="utf-8"
-    ) as f:
-        details["kfp_model_server_cm"] = f.read()
-
     # Open the template file
     try:
         standalone_template_path = path.join(
