@@ -1732,10 +1732,13 @@ def run_mt_bench_op(
 
     # Rename the best model directory to "candidate_model" for the next step
     # So we know which model to use for the final evaluation
-    os.rename(
-        os.path.join(models_path_prefix, best_model),
-        os.path.join(models_path_prefix, "candidate_model"),
-    )
+    if os.path.exists(os.path.join(models_path_prefix, "candidate_model")):
+        print("candidate_model already exists. Skipping renaming")
+    else:
+        os.rename(
+            os.path.join(models_path_prefix, best_model),
+            os.path.join(models_path_prefix, "candidate_model"),
+        )
 
     return outputs(best_model=best_model, best_score=best_score)
 """

@@ -1356,9 +1356,11 @@ deploymentSpec:
           utf-8\") as f:\n            json.dump({\"best_model\": best_model, \"best_score\"\
           : best_score}, f, indent=4)\n\n    # Rename the best model directory to\
           \ \"candidate_model\" for the next step\n    # So we know which model to\
-          \ use for the final evaluation\n    os.rename(\n        os.path.join(models_path_prefix,\
-          \ best_model),\n        os.path.join(models_path_prefix, \"candidate_model\"\
-          ),\n    )\n\n    return outputs(best_model=best_model, best_score=best_score)\n\
+          \ use for the final evaluation\n    if os.path.exists(os.path.join(models_path_prefix,\
+          \ \"candidate_model\")):\n        print(\"candidate_model already exists.\
+          \ Skipping renaming\")\n    else:\n        os.rename(\n            os.path.join(models_path_prefix,\
+          \ best_model),\n            os.path.join(models_path_prefix, \"candidate_model\"\
+          ),\n        )\n\n    return outputs(best_model=best_model, best_score=best_score)\n\
           \n"
         image: quay.io/sallyom/instructlab-ocp:eval-10-8
         resources:
