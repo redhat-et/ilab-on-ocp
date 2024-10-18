@@ -123,6 +123,7 @@ spec:
             - args:
                 - |
                   phase_num={phase_num}
+                  processed_data_path={preprocessed_data_path}
                   echo "Running phase $phase_num"
                   PATH_TO_MODEL={path_to_model}
                   if [ "$phase_num" -eq 2 ]; then PATH_TO_MODEL="{path_to_model}/output/phase_1/hf_format/$(ls --sort=time {path_to_model}/output/phase_1/hf_format|head -n 1)"; fi
@@ -136,7 +137,7 @@ spec:
                     --rdzv_endpoint $(MASTER_ADDR):$(MASTER_PORT) \
                     -m instructlab.training.main_ds \
                     --model_name_or_path="$PATH_TO_MODEL" \
-                    --data_path=/data/data/processed_data/data.jsonl \
+                    --data_path="$processed_data_path"/data.jsonl \
                     --output_dir={path_to_model}/output/phase_{phase_num} \
                     --num_epochs={epoch_num} \
                     --effective_batch_size=3840 \
@@ -196,6 +197,7 @@ spec:
             - args:
                 - |
                   phase_num={phase_num}
+                  processed_data_path={preprocessed_data_path}
                   echo "Running phase $phase_num"
                   PATH_TO_MODEL={path_to_model}
                   if [ "$phase_num" -eq 2 ]; then PATH_TO_MODEL="{path_to_model}/output/phase_1/hf_format/$(ls --sort=time {path_to_model}/output/phase_1/hf_format|head -n 1)"; fi
@@ -208,7 +210,7 @@ spec:
                     --rdzv_endpoint $(MASTER_ADDR):$(MASTER_PORT) \
                     -m instructlab.training.main_ds \
                     --model_name_or_path="$PATH_TO_MODEL" \
-                    --data_path=/data/data/processed_data/data.jsonl \
+                    --data_path="$processed_data_path"/data.jsonl \
                     --output_dir="$tmp_model" \
                     --num_epochs={epoch_num} \
                     --effective_batch_size=3840 \
@@ -591,7 +593,6 @@ def show(
     if service_account:
         script["spec"]["template"]["spec"]["serviceAccountName"] = service_account
 
-    print(script["kind"])
     print(yaml.dump(script))
 
 
@@ -2075,6 +2076,7 @@ def train(
             phase_num=training_phase,
             data_pvc_model_path=DATA_PVC_MODEL_PATH,
             data_pvc_sdg_path=DATA_PVC_SDG_PATH,
+            preprocessed_data_path=PREPROCESSED_DATA_PATH,
         )
     )
 
