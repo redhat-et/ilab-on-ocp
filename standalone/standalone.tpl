@@ -1335,6 +1335,7 @@ data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg
 def create_eval_job(
     namespace: str,
     eval_type: str,
+    judge_serving_model_secret: str,
     nproc_per_node: int = 1,
 ) -> kubernetes.client.V1Job:
     """
@@ -1345,6 +1346,7 @@ def create_eval_job(
     Args:
         namespace (str): The namespace in which the job will be created.
         eval_type (str): The type of evaluation to run.
+        judge_serving_model_secret (str): The name of the Kubernetes Secret containing the judge
         nproc_per_node (int): The number of processes per node.
 
     Returns:
@@ -1409,7 +1411,7 @@ def create_eval_job(
                 env_from=[
                     kubernetes.client.V1EnvFromSource(
                         secret_ref=kubernetes.client.V1SecretEnvSource(
-                            name=JUDGE_SERVING_NAME
+                            name=judge_serving_model_secret
                         )
                     ),
                 ],
@@ -1444,7 +1446,7 @@ def create_eval_job(
                 env_from=[
                     kubernetes.client.V1EnvFromSource(
                         secret_ref=kubernetes.client.V1SecretEnvSource(
-                            name=JUDGE_SERVING_NAME
+                            name=judge_serving_model_secret
                         )
                     ),
                 ],
@@ -1988,6 +1990,9 @@ def sdg_data_fetch(
                         f"Secret {judge_serving_model_secret} not found in namespace {namespace}."
                     ) from exc
 
+    # Set the judge secret in the context for the evaluation job
+    ctx.obj["judge_serving_model_secret"] = judge_serving_model_secret
+
     # list of PVCs to create and their details
     pvcs = [
         {
@@ -2246,6 +2251,13 @@ def evaluation(ctx: click.Context) -> str:
     namespace = ctx.obj["namespace"]
     eval_type = ctx.obj["eval_type"]
     dry_run = ctx.obj["dry_run"]
+    judge_serving_model_secret = ctx.obj["judge_serving_model_secret"]
+
+    # This should only happen if the script is called with the "evaluation" subcommand
+    if not judge_serving_model_secret:
+        raise ValueError(
+            "Judge serving model secret must be provided with --judge-serving-model-secret."
+        )
 
     if eval_type is None:
         raise ValueError(
@@ -2255,7 +2267,11 @@ def evaluation(ctx: click.Context) -> str:
     logger.info("Running %s evaluation.", eval_type)
 
     # Create and run the evaluation job
-    job = create_eval_job(namespace=namespace, eval_type=eval_type)
+    job = create_eval_job(
+        namespace=namespace,
+        eval_type=eval_type,
+        judge_serving_model_secret=judge_serving_model_secret,
+    )
 
     if dry_run:
         logger.info("Dry run: Job would be created.\n%s", job)
