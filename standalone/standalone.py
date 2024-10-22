@@ -28,7 +28,6 @@ import logging
 import os
 import time
 import typing
-from ast import literal_eval
 from os import path
 from urllib.parse import urlparse
 
@@ -54,8 +53,8 @@ DS_IMAGE = "quay.io/opendatahub/workbench-images:jupyter-datascience-ubi9-python
 RHELAI_IMAGE = "registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2"
 
 # SDG
-DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
 SDG_OBJECT_STORE_SECRET_NAME = "sdg-object-store-credentials"
+SDG_SERVING_NAME = "sdg-serving-details"
 REPO_GRANITE_7B_IMAGE = "ibm-granite/granite-7b-base"  # used by HF downloader
 
 # SDG DATA PREPROCESSING (before doing training, data has to be converted)
@@ -82,7 +81,6 @@ CANDIDATE_MODEL_PATH_PREFIX = path.join(
     DATA_PVC_MOUNT_PATH, "model/output/phase_2/hf_format"
 )
 CANDIDATE_MODEL_PATH = path.join(CANDIDATE_MODEL_PATH_PREFIX, "candidate_model")
-SDG_GENERATED_DATA_PATH = path.join(DATA_PVC_MOUNT_PATH, "generated")
 TAXONOMY_DATA_PATH = path.join(DATA_PVC_MOUNT_PATH, "taxonomy")
 # MMLU_SCORES_PATH = "/output/mmlu-results.txt" - after training phase 1 is done MMLU is not performed anymore
 
@@ -267,6 +265,7 @@ spec:
 DATA_SCRIPT = """
 set -e
 
+export SDG_IN_CLUSTER={sdg_in_cluster}
 export STRATEGY={strategy}
 
 if [ -z "$STRATEGY" ] || [ "$STRATEGY" == "None" ]; then
@@ -276,8 +275,8 @@ fi
 
 if [ "$STRATEGY" == "download" ]; then
     FORCE_PULL={force_pull}
-    if [ -s {data_pvc_mount_path}/data.tar.gz ] && [ -d {data_pvc_mount_path}/data ] && [ -d {data_pvc_mount_path}/model ] ; then
-        echo "Data tarball and sdg/model directories already exist in the PVC. Skipping download."
+    if [ -s {data_pvc_mount_path}/data.tar.gz ]; then
+        echo "Data tarball already exists in the PVC. Skipping download and extraction."
         if [ "$FORCE_PULL" == "None" ] || [ "$FORCE_PULL" == "False" ]; then
             echo "'--force-pull' is not set - will not force pull the data from the object store"
             ls -laR {data_pvc_mount_path}
@@ -430,18 +429,32 @@ if [ "$STRATEGY" == "download" ]; then
     shopt -s globstar
 
     # Patterns to match
-    patterns=(
-        "{data_pvc_mount_path}/model/config.json"
-        "{data_pvc_mount_path}/model/tokenizer.json"
-        "{data_pvc_mount_path}/model/tokenizer_config.json"
-        "{data_pvc_mount_path}/model/*.safetensors"
-        "{data_pvc_mount_path}/data/skills_recipe_*.yaml"
-        "{data_pvc_mount_path}/data/knowledge_recipe_*.yaml"
-        "{data_pvc_mount_path}/data/skills_train_*.jsonl"
-        "{data_pvc_mount_path}/data/knowledge_train_*.jsonl"
-        "{data_pvc_mount_path}/taxonomy/knowledge"
-        "{data_pvc_mount_path}/taxonomy/foundational_skills"
-    )
+    if [ "$SDG_IN_CLUSTER" == "True" ]; then
+        # When SDG is in-cluster we will run synthetic data generation in the cluster, so the "data"
+        directory is not needed since it will be generated
+        patterns=(
+            "{data_pvc_mount_path}/model/config.json"
+            "{data_pvc_mount_path}/model/tokenizer.json"
+            "{data_pvc_mount_path}/model/tokenizer_config.json"
+            "{data_pvc_mount_path}/model/*.safetensors"
+            "{data_pvc_mount_path}/taxonomy/knowledge"
+            "{data_pvc_mount_path}/taxonomy/foundational_skills"
+        )
+    # when not in-cluster it is retrieved data must exist
+    else
+        patterns=(
+            "{data_pvc_mount_path}/model/config.json"
+            "{data_pvc_mount_path}/model/tokenizer.json"
+            "{data_pvc_mount_path}/model/tokenizer_config.json"
+            "{data_pvc_mount_path}/model/*.safetensors"
+            "{data_pvc_mount_path}/data/skills_recipe_*.yaml"
+            "{data_pvc_mount_path}/data/knowledge_recipe_*.yaml"
+            "{data_pvc_mount_path}/data/skills_train_*.jsonl"
+            "{data_pvc_mount_path}/data/knowledge_train_*.jsonl"
+            "{data_pvc_mount_path}/taxonomy/knowledge"
+            "{data_pvc_mount_path}/taxonomy/foundational_skills"
+        )
+    fi
 
     match_count=0
 
@@ -603,40 +616,19 @@ def show(
 @cli.group(invoke_without_command=True)
 @click.option("--namespace", type=str, help="Kubernetes namespace to use")
 @click.option(
-    "--taxonomy-repo-url",
-    type=str,
-    default=DEFAULT_REPO_URL,
-    help="URL of the taxonomy repository - for SDG only",
-    hidden=True,
-)
-@click.option(
     "--taxonomy-repo-branch",
     type=str,
     help="Branch of the taxonomy repository - for SDG only",
-    hidden=True,
 )
 @click.option(
     "--taxonomy-repo-pr",
     type=str,
     help="Pull request number of the taxonomy repository - for SDG only",
-    hidden=True,
 )
 @click.option(
     "--storage-class",
     type=str,
     help="Storage class to use for the PersistentVolumeClaim - for SDG only",
-)
-@click.option(
-    "--serving-endpoint",
-    type=str,
-    help="Serving endpoint for SDG - for SDG only",
-    hidden=True,
-)
-@click.option(
-    "--serving-model",
-    type=str,
-    help="Serving model for SDG - for SDG only",
-    hidden=True,
 )
 @click.option(
     "--judge-serving-model-endpoint",
@@ -697,7 +689,6 @@ def show(
     "--eval-type",
     help="Type of evaluation to run",
     type=click.Choice([EVAL_TYPE_MT_BENCH, EVAL_TYPE_FINAL]),
-    hidden=True,
 )
 @click.option(
     "--training-phase",
@@ -787,6 +778,38 @@ def show(
     type=str,
 )
 @click.option(
+    "--sdg-serving-model-endpoint",
+    type=str,
+    help=(
+        "SDG model serving endpoint."
+        "e.g. http://serving.kubeflow.svc.cluster.local:8080/v1"
+    ),
+)
+@click.option(
+    "--sdg-serving-model-name",
+    type=str,
+    help="The name of the model on the serving endpoint.",
+)
+@click.option(
+    "--sdg-serving-model-api-key",
+    type=str,
+    help="Serving model API key for SDG. (SDG_SERVING_MODEL_API_KEY env var)",
+    envvar="SDG_SERVING_MODEL_API_KEY",
+)
+@click.option(
+    "--sdg-serving-model-secret",
+    type=str,
+    envvar="SDG_SERVING_MODEL_SECRET",
+    help=(
+        "Name of the Kubernetes Secret containing the sdg serving model endpoint. "
+        "For SDG only. "
+        "The namespace is inferred from the namespace option. "
+        "The following keys are expected: endpoint, model, api_key "
+        " (SDG_SERVING_MODEL_SECRET env var)"
+        "If used, the --sdg-serving-model-{api-key,endpoint,name} options will be ignored."
+    ),
+)
+@click.option(
     "--force-pull",
     help=(
         "Force pull the data (sdg data and model) from the object store "
@@ -805,9 +828,8 @@ def show(
 )
 @click.option(
     "--num-instructions-to-generate",
-    help="Number of instructions to generate.",
+    help="Number of instructions to generate. For SDG only.",
     default=30,
-    hidden=True,
 )
 @click.option(
     "--dry-run",
@@ -817,16 +839,19 @@ def show(
     ),
     is_flag=True,
 )
+@click.option(
+    "--sdg-in-cluster",
+    help="Run SDG in the cluster. Default is retrieve SDG Data from object store.",
+    default=False,
+    is_flag=True,
+)
 @click.pass_context
 def run(
     ctx: click.Context,
     namespace: typing.Optional[str] = None,
-    taxonomy_repo_url: str = "",
     taxonomy_repo_branch: typing.Optional[str] = "",
     taxonomy_repo_pr: typing.Optional[str] = "",
     storage_class: typing.Optional[str] = None,
-    serving_endpoint: typing.Optional[str] = None,
-    serving_model: typing.Optional[str] = None,
     judge_serving_model_endpoint: typing.Optional[str] = None,
     judge_serving_model_name: typing.Optional[str] = None,
     judge_serving_model_api_key: typing.Optional[str] = None,
@@ -845,23 +870,25 @@ def run(
     sdg_object_store_data_key: typing.Optional[str] = None,
     sdg_object_store_verify_tls: typing.Optional[bool] = None,
     sdg_object_store_secret: typing.Optional[str] = None,
+    sdg_serving_model_secret: typing.Optional[str] = None,
+    sdg_serving_model_endpoint: typing.Optional[str] = None,
+    sdg_serving_model_name: typing.Optional[str] = None,
+    sdg_serving_model_api_key: typing.Optional[str] = None,
     force_pull: typing.Optional[bool] = False,
     training_1_epoch_num: int = 7,
     training_2_epoch_num: int = 10,
     num_instructions_to_generate: typing.Optional[int] = 30,
     dry_run: bool = False,
+    sdg_in_cluster: bool = False,
 ):
     """
     Execute the distributed training on Kubernetes.
 
     Args:
         namespace (str): The namespace to use for the setup process.
-        taxonomy_repo_url (str): The URL of the taxonomy repository. For SDG only.
         taxonomy_repo_branch (str): The branch of the taxonomy repository. For SDG only.
         taxonomy_repo_pr (int): The pull request number of the taxonomy repository. For SDG only.
         storage_class (str): The storage class to use for the PersistentVolumeClaim. For SDG only.
-        serving_endpoint (str): The serving endpoint for SDG. For SDG only.
-        serving_model (str): The serving model for SDG. For SDG only.
         judge_serving_model_endpoint (str): The serving endpoint for evaluation. For Evaluation
         only.
         judge_serving_model_name (str): The serving model name for evaluation. For Evaluation only.
@@ -884,24 +911,26 @@ def run(
         sdg_object_store_verify_tls (bool): Verify TLS for the object store.
         sdg_object_store_secret (str): The name of the Kubernetes Secret containing the SDG object
         store credentials. The namespace is inferred from the namespace option.
+        sdg_serving_model_secret (str): The name of the Kubernetes Secret containing the model
+        serving details. For SDG only.
+        sdg_serving_model_endpoint (str): The serving endpoint for SDG.
+        sdg_serving_model_name (str): The serving model name for SDG.
+        sdg_serving_model_api_key (str): The serving model API key for SDG.
         force_pull (bool): Force pull the data (sdg data and model) from the object store even if it
         already exists in the PVC.
         training_1_epoch_num (int): Number of epochs to train the model for during phase 1.
         training_2_epoch_num (int): Number of epochs to train the model for during phase 2.
         num_instructions_to_generate (int): Number of instructions to generate during SDG.
         dry_run (bool): Print the generated YAML to stdout instead of creating the resources.
-
+        sdg_in_cluster (bool): Run SDG in the cluster. Default is retrieve SDG Data from an object store.
     Returns:
         None
     """
     ctx.ensure_object(dict)
     ctx.obj["namespace"] = namespace
-    ctx.obj["taxonomy_repo_url"] = taxonomy_repo_url
     ctx.obj["taxonomy_repo_branch"] = taxonomy_repo_branch
     ctx.obj["taxonomy_repo_pr"] = taxonomy_repo_pr
     ctx.obj["storage_class"] = storage_class
-    ctx.obj["serving_endpoint"] = serving_endpoint
-    ctx.obj["serving_model"] = serving_model
     ctx.obj["judge_serving_model_endpoint"] = judge_serving_model_endpoint
     ctx.obj["judge_serving_model_name"] = judge_serving_model_name
     ctx.obj["judge_serving_model_api_key"] = judge_serving_model_api_key
@@ -920,11 +949,16 @@ def run(
     ctx.obj["sdg_object_store_data_key"] = sdg_object_store_data_key
     ctx.obj["sdg_object_store_verify_tls"] = sdg_object_store_verify_tls
     ctx.obj["sdg_object_store_secret"] = sdg_object_store_secret
+    ctx.obj["sdg_serving_model_secret"] = sdg_serving_model_secret
+    ctx.obj["sdg_serving_model_endpoint"] = sdg_serving_model_endpoint
+    ctx.obj["sdg_serving_model_name"] = sdg_serving_model_name
+    ctx.obj["sdg_serving_model_api_key"] = sdg_serving_model_api_key
     ctx.obj["force_pull"] = force_pull
     ctx.obj["training_1_epoch_num"] = training_1_epoch_num
     ctx.obj["training_2_epoch_num"] = training_2_epoch_num
     ctx.obj["num_instructions_to_generate"] = num_instructions_to_generate
     ctx.obj["dry_run"] = dry_run
+    ctx.obj["sdg_in_cluster"] = sdg_in_cluster
 
     ##########################
     # MAIN WORKFLOW SEQUENCE #
@@ -932,11 +966,10 @@ def run(
     # When the script is simply called like: 'python standalone.py run'
     # We will run the entire workflow
     if ctx.invoked_subcommand is None:
-        # SDG Full
-        # ctx.invoke(sdg)
-
-        # SDG Data Fetch
-        ctx.invoke(sdg_data_fetch)
+        if sdg_in_cluster:
+            ctx.invoke(sdg)
+        else:
+            ctx.invoke(sdg_data_fetch)
 
         # Begin multi-phased distributed training
         logger.info("Running multi-phased distributed training.")
@@ -1009,37 +1042,26 @@ def get_vol() -> list[kubernetes.client.V1Volume]:
     ]
 
 
-def create_sdg_job(
-    namespace: str,
-    job_name: str,
-    num_instructions_to_generate: int,
-    exec_git_clone_op_repo_url: str = "",
+def create_sdg_container(
+    sdg_serving_model_secret: str,
+    num_instructions_to_generate: int = 30,
     exec_git_clone_op_repo_branch: str = "",
     exec_git_clone_op_repo_pr: str = "",
-) -> kubernetes.client.V1Job:
+) -> kubernetes.client.V1Container:
     """
-    Create a Kubernetes Job object.
+    Creates a Kubernetes V1Job container for generating synthetic data.
 
-    This function generates a Kubernetes Job object configured to run SDG steps.
+    This function configures a Pod template container with the specified
+    command and arguments for executing synthetic data generation operations.
+    It sets up the container with the necessary image, command, arguments,
+    volume mounts, and security context.
 
-    Steps:
-        1. InitContainer to fetch the taxonomy data. - EmptyDir volume to share data between
-           containers.
-        2. InitContainer to generate synthetic data. - Stored on EmptyDir volume. (Option to push to
-           S3?)
-        3. Main container to pre-process the data before training. From the EmptyDir volume and copy
-           the result to the PVC.
     Args:
-        namespace (str): The namespace in which the job will be created.
-        job_name (str): The name of the job.
-        num_instructions_to_generate (int): The number of instructions to generate.
-        exec_git_clone_op_repo_url (str): The URL of the taxonomy repository.
-        exec_git_clone_op_repo_branch (str, optional): The branch of the taxonomy repository.
-        exec_git_clone_op_repo_pr (str, optional): The pull request number of the taxonomy
-        repository.
+        sdg_object_store_secret (str): The name of the Kubernetes Secret containing the SDG object
+        store credentials.
 
     Returns:
-        kubernetes.client.V1Job: A Kubernetes Job object configured with the specified parameters.
+        kubernetes.client.V1Job: A configured Kubernetes V1Job container.
     """
     # Configureate Pod template container
     exec_sdg_op_command = """
@@ -1084,231 +1106,29 @@ def sdg_op(
     )
 """
     exec_sdg_op_args = f"""
-sdg_op(num_instructions_to_generate={num_instructions_to_generate}, repo_branch="{exec_git_clone_op_repo_branch}", repo_pr={exec_git_clone_op_repo_pr}, taxonomy="{TAXONOMY_DATA_PATH}", sdg="{SDG_GENERATED_DATA_PATH}")
+sdg_op(num_instructions_to_generate={num_instructions_to_generate}, repo_branch="{exec_git_clone_op_repo_branch}", repo_pr={exec_git_clone_op_repo_pr}, taxonomy="{TAXONOMY_DATA_PATH}", sdg="{DATA_PVC_SDG_PATH}")
 """
-    exec_huggingface_importer_op_command = """
-from typing import *
 
-def huggingface_importer_op(model: str, repo_name: str):
-    from huggingface_hub import snapshot_download
-
-    snapshot_download(repo_id=repo_name, cache_dir="/tmp", local_dir=model)
-"""
-    exec_huggingface_importer_op_args = f"""
-huggingface_importer_op(repo_name="{REPO_GRANITE_7B_IMAGE}", model="{DATA_PVC_MODEL_PATH}")
-"""
-    exec_data_processing_op_command = """
-from typing import *
-
-def data_processing_op(
-    sdg: str,
-    skills_processed_data: str,
-    knowledge_processed_data: str,
-    model: str,
-    max_seq_len: Optional[int] = 4096,
-    max_batch_len: Optional[int] = 20000,
-):
-    import os
-
-    import instructlab.training.data_process as dp
-    from instructlab.training import (
-        DataProcessArgs,
-        TrainingArgs,
-    )
-
-    # define training-specific arguments
-    skill_training_args = TrainingArgs(
-        # define data-specific arguments
-        model_path=model,
-        data_path=f"{sdg}/skills_train_msgs*.jsonl",
-        data_output_dir=skills_processed_data,
-        # define model-trianing parameters
-        max_seq_len=max_seq_len,
-        max_batch_len=max_batch_len,
-        # XXX(shanand): We don't need the following arguments
-        # for data processing. Added them for now to avoid
-        # Pydantic validation errors for TrainingArgs
-        ckpt_output_dir="data/saved_checkpoints",
-        num_epochs=2,
-        effective_batch_size=3840,
-        save_samples=0,
-        learning_rate=2e-6,
-        warmup_steps=800,
-        is_padding_free=True,
-    )
-
-    knowledge_training_args = TrainingArgs(
-        # define data-specific arguments
-        model_path=model,
-        data_path=f"{sdg}/knowledge_train_msgs*.jsonl",
-        data_output_dir=knowledge_processed_data,
-        # define model-trianing parameters
-        max_seq_len=max_seq_len,
-        max_batch_len=max_batch_len,
-        # XXX(shanand): We don't need the following arguments
-        # for data processing. Added them for now to avoid
-        # Pydantic validation errors for TrainingArgs
-        ckpt_output_dir="data/saved_checkpoints",
-        num_epochs=2,
-        effective_batch_size=3840,
-        save_samples=0,
-        learning_rate=2e-6,
-        warmup_steps=800,
-        is_padding_free=True,
-    )
-
-    def data_processing(train_args: TrainingArgs) -> None:
-        # early validation logic here
-        if train_args.max_batch_len < train_args.max_seq_len:
-            raise ValueError(
-                f"the 'max_batch_len' cannot be less than 'max_seq_len': {train_args.max_batch_len=} < {train_args.max_seq_len=}"
-            )
-
-            # process the training data
-        if not os.path.exists(train_args.data_output_dir):
-            os.makedirs(train_args.data_output_dir, exist_ok=True)
-        dp.main(
-            DataProcessArgs(
-                # XXX(osilkin): make a decision here, either:
-                #   1. the CLI is fully responsible for managing where the data is written
-                #   2. we never cache it and simply write it to a tmp file every time.
-                #
-                # An important reason for why #1 would be preferable is in the case of OpenShift/SELinux
-                # where the user has a defined place for new temporary data to be written.
-                data_output_path=train_args.data_output_dir,
-                model_path=train_args.model_path,
-                data_path=train_args.data_path,
-                max_seq_len=train_args.max_seq_len,
-                chat_tmpl_path=train_args.chat_tmpl_path,
-            )
-        )
-
-    data_processing(train_args=skill_training_args)
-    data_processing(train_args=knowledge_training_args)
-"""
-    exec_data_processing_op_args = f"""
-data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg="{DATA_PVC_SDG_PATH}", model="{DATA_PVC_MODEL_PATH}", skills_processed_data="{PREPROCESSED_DATA_PATH_SKILLS}", knowledge_processed_data="{PREPROCESSED_DATA_PATH_KNOWLEDGE}")
-"""
-    exec_git_clone_op_args = literal_eval("""
-['git clone {exec_git_clone_op_repo_url} {TAXONOMY_PATH} && cd {TAXONOMY_PATH} && if [ -n "{exec_git_clone_op_repo_branch}" ]; then git fetch origin {exec_git_clone_op_repo_branch} && git checkout {exec_git_clone_op_repo_branch}; elif [ -n "{exec_git_clone_op_repo_pr}" ] && [ {exec_git_clone_op_repo_pr} -gt 0 ]; then git fetch origin pull/{exec_git_clone_op_repo_pr}/head:{exec_git_clone_op_repo_pr} && git checkout {exec_git_clone_op_repo_pr}; fi ']
-""")
-
-    init_containers = [
-        kubernetes.client.V1Container(
-            name="sdg-op-fetch-taxonomy-data",
-            image=DS_IMAGE,
-            command=["/bin/sh", "-c"],
-            args=exec_git_clone_op_args,
-            volume_mounts=get_vol_mount(),
-            security_context=get_security_context(),
-        ),
-        kubernetes.client.V1Container(
-            name="sdg-op-generate-synthetic-data",
-            image=RHELAI_IMAGE,
-            command=["/bin/sh", "-ce"],
-            args=[
-                PYTHON_EXECUTOR.format(
-                    python_code=exec_sdg_op_command,
-                    python_main=exec_sdg_op_args.strip(),
-                ),
-            ],
-            volume_mounts=get_vol_mount(),
-            security_context=get_security_context(),
-            # env_from=[
-            #     kubernetes.client.V1EnvFromSource(
-            #         config_map_ref=kubernetes.client.V1ConfigMapEnvSource(name=K8S_NAME)
-            #     ),
-            #     kubernetes.client.V1EnvFromSource(
-            #         secret_ref=kubernetes.client.V1SecretEnvSource(name=K8S_NAME)
-            #     ),
-            # ],
-        ),
-        kubernetes.client.V1Container(
-            name="huggingface-importer-op",
-            image=RHELAI_IMAGE,
-            command=["/bin/sh", "-ce"],
-            args=[
-                PYTHON_EXECUTOR.format(
-                    python_code=exec_huggingface_importer_op_command,
-                    python_main=exec_huggingface_importer_op_args.strip(),
-                ),
-            ],
-            volume_mounts=get_vol_mount(),
-            security_context=get_security_context(),
-            # env_from=[
-            #     kubernetes.client.V1EnvFromSource(
-            #         config_map_ref=kubernetes.client.V1ConfigMapEnvSource(name=K8S_NAME)
-            #     ),
-            #     kubernetes.client.V1EnvFromSource(
-            #         secret_ref=kubernetes.client.V1SecretEnvSource(name=K8S_NAME)
-            #     ),
-            # ],
-        ),
-        kubernetes.client.V1Container(
-            name="sdg-preprocess",
-            image=RHELAI_IMAGE,
-            command=["/bin/sh", "-ce"],
-            args=[
-                PYTHON_EXECUTOR.format(
-                    python_code=exec_data_processing_op_command,
-                    python_main=exec_data_processing_op_args.strip(),
-                ),
-            ],
-            volume_mounts=get_vol_mount(),
-            security_context=get_security_context(),
-        ),
-    ]
-
-    # Format each string in the args list of each init container
-    for container in init_containers:
-        if container.name == "sdg-op-fetch-taxonomy-data":
-            container.args = [
-                arg.format(
-                    exec_git_clone_op_repo_url=exec_git_clone_op_repo_url or "",
-                    exec_git_clone_op_repo_branch=exec_git_clone_op_repo_branch or "",
-                    exec_git_clone_op_repo_pr=exec_git_clone_op_repo_pr or "",
-                    TAXONOMY_PATH=TAXONOMY_PATH,
-                )
-                for arg in container.args
-            ]
-
-    container = kubernetes.client.V1Container(
-        name="copy-model-to-pvc",
-        image=DS_IMAGE,
-        command=["/bin/sh", "-c"],
+    return kubernetes.client.V1Container(
+        name="sdg-op-generate-synthetic-data",
+        image=RHELAI_IMAGE,
+        command=["/bin/sh", "-ce"],
         args=[
-            f"cp -r -v {DATA_PVC_MOUNT_PATH} {DATA_PVC_MOUNT_PATH}"
-        ],  # TODO: fix me, dumb line to pass linter, this feat is unused anyway
+            PYTHON_EXECUTOR.format(
+                python_code=exec_sdg_op_command,
+                python_main=exec_sdg_op_args.strip(),
+            ),
+        ],
         volume_mounts=get_vol_mount(),
+        security_context=get_security_context(),
+        env_from=[
+            kubernetes.client.V1EnvFromSource(
+                secret_ref=kubernetes.client.V1SecretEnvSource(
+                    name=sdg_serving_model_secret
+                )
+            ),
+        ],
     )
-
-    volumes = get_vol()
-
-    # Create and configure a spec section
-    template = kubernetes.client.V1PodTemplateSpec(
-        metadata=kubernetes.client.V1ObjectMeta(labels={"app": "sdg"}),
-        spec=kubernetes.client.V1PodSpec(
-            restart_policy="Never",
-            init_containers=init_containers,
-            containers=[container],
-            volumes=volumes,
-        ),
-    )
-
-    # Create the specification of deployment
-    spec = kubernetes.client.V1JobSpec(
-        template=template,
-    )
-
-    # Instantiate the job object
-    job = kubernetes.client.V1Job(
-        api_version="batch/v1",
-        kind="Job",
-        metadata=kubernetes.client.V1ObjectMeta(name=job_name, namespace=namespace),
-        spec=spec,
-    )
-
-    return job
 
 
 def create_data_job(
@@ -1316,7 +1136,12 @@ def create_data_job(
     job_name: str,
     sdg_object_store_secret: str,
     strategy: str,
+    sdg_serving_model_secret: str = None,
     force_pull: bool = False,
+    sdg_in_cluster: bool = False,
+    num_instructions_to_generate: int = 30,
+    taxonomy_repo_pr: str = "",
+    taxonomy_repo_branch: str = "",
 ) -> kubernetes.client.V1Job:
     """
     Create a Kubernetes Job object.
@@ -1329,6 +1154,8 @@ def create_data_job(
         job_name (str): The name of the job.
         sdg_object_store_secret (str): The name of the Kubernetes Secret containing the SDG object
         store credentials.
+        sdg_serving_model_secret (str): The name of the Kubernetes Secret containing the SDG
+        serving endpoint details.
         strategy (str): The strategy to use to fetch the data. Either "download" or "upload".
         force_pull (bool): Force pull the data from the object store even if it already exists in
         the PVC.
@@ -1336,6 +1163,10 @@ def create_data_job(
     Returns:
         kubernetes.client.V1Job: A Kubernetes Job object configured with the specified parameters.
     """
+
+    labels = {"app": "data-" + strategy}
+    if sdg_in_cluster:
+        labels["app"] = "sdg"
 
     exec_data_processing_op_command = """
 from typing import *
@@ -1444,6 +1275,7 @@ data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg
                 mt_bench_branch_scores_path=MT_BENCH_BRANCH_SCORES_PATH,
                 mmlu_branch_scores_path=MMLU_BRANCH_SCORES_PATH,
                 candidate_model_path=CANDIDATE_MODEL_PATH,
+                sdg_in_cluster=sdg_in_cluster,
             )
         ],
         volume_mounts=get_vol_mount(),
@@ -1545,7 +1377,7 @@ data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg
 
     # Create and configure a spec section
     template = kubernetes.client.V1PodTemplateSpec(
-        metadata=kubernetes.client.V1ObjectMeta(labels={"app": "data-" + strategy}),
+        metadata=kubernetes.client.V1ObjectMeta(labels=labels),
         spec=kubernetes.client.V1PodSpec(
             restart_policy="Never",
             containers=[main_container],
@@ -1554,7 +1386,19 @@ data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg
     )
 
     if strategy == "download":
-        template.spec.init_containers = [data_container]
+        init_containers = [data_container]
+        # If sdg_in_cluster is True, we append the create_sdg_container to the init_containers so
+        # the sequence will be: download data (model and taxonomy) -> generate synthetic data
+        if sdg_in_cluster:
+            init_containers.append(
+                create_sdg_container(
+                    sdg_serving_model_secret,
+                    num_instructions_to_generate=num_instructions_to_generate,
+                    exec_git_clone_op_repo_branch=taxonomy_repo_branch,
+                    exec_git_clone_op_repo_pr=taxonomy_repo_pr,
+                )
+            )
+        template.spec.init_containers = init_containers
 
     # Create the specification of deployment
     spec = kubernetes.client.V1JobSpec(
@@ -2623,102 +2467,22 @@ def create_pvc(
     )
 
 
-@run.command(name="sdg")
-@click.pass_context
-def sdg(
-    ctx: click.Context,
-) -> None:
+def initial_setup(ctx: click.Context) -> None:
     """
-    Preprocesses SDG data by creating a Persistent Volume Claim (PVC) and
-    initiating a job to run a pod for SDG data preprocessing.
+    Perform the initial setup for SDG data fetch and judge serving model.
 
-    Steps:
-        1. Creates a PVC to hold SDG data and transformed SDG data.
-        2. Initiates a job to run a pod for SDG data preprocessing.
-    """
-    # Populate variables from context
-    namespace = ctx.obj["namespace"]
-    taxonomy_repo_url = ctx.obj["taxonomy_repo_url"]
-    taxonomy_repo_branch = ctx.obj["taxonomy_repo_branch"]
-    taxonomy_repo_pr = ctx.obj["taxonomy_repo_pr"]
-    storage_class = ctx.obj["storage_class"]
-    serving_endpoint = ctx.obj["serving_endpoint"]
-    serving_model = ctx.obj["serving_model"]
-    num_instructions_to_generate = ctx.obj["num_instructions_to_generate"]
-
-    # check in the context
-    if not taxonomy_repo_branch and not taxonomy_repo_pr:
-        raise ValueError(
-            "Either '--taxonomy-repo-branch' or '--taxonomy-repo-pr' "
-            "must be provided to the 'run' command."
-        )
-
-    logger.info("Running setup for SDG.")
-    # Request the Kubernetes API
-    v1 = kubernetes.client.CoreV1Api()
-
-    # list of PVCs to create and their details
-    pvcs = [
-        {
-            "name": DATA_PVC_NAME,
-            "namespace": namespace,
-            "storage_class": storage_class,
-            "access_modes": ["ReadWriteMany"],
-            "size": "200Gi",
-        },
-    ]
-    for pvc in pvcs:
-        try:
-            v1.create_namespaced_persistent_volume_claim(
-                namespace=namespace, body=create_pvc(**pvc)
-            )
-            logger.info("Successfully created PVC '%s' created.", pvc.get("name"))
-        except kubernetes.client.rest.ApiException as exc:
-            if exc.status == 409:
-                logger.info("PVC '%s' already exists.", pvc["name"])
-            else:
-                raise
-
-    # Create the job to run the pod to execute the SDG data preprocessing
-    # Example usage
-    job = create_sdg_job(
-        namespace=namespace,
-        job_name="sdg",
-        exec_git_clone_op_repo_url=taxonomy_repo_url,
-        exec_git_clone_op_repo_branch=taxonomy_repo_branch,
-        exec_git_clone_op_repo_pr=taxonomy_repo_pr,
-        num_instructions_to_generate=num_instructions_to_generate,
-    )
-    run_job(namespace, job)
-    logger.info("SDG setup completed.")
-
-
-def validate_url(url: str) -> str:
-    """
-    Validate if the given string is a valid URL.
+    This function initializes the necessary Kubernetes secrets and Persistent Volume Claims (PVCs)
+    based on the provided context. It validates the required parameters and either creates or
+    verifies
 
     Args:
-        url (str): The URL string to validate.
-
-    Returns:
-        str: The original URL if valid.
+        ctx (click.Context): The Click context object containing the necessary parameters.
 
     Raises:
-        ValueError: If the URL is not valid.
-    """
-    parsed = urlparse(url)
-    if not all([parsed.scheme, parsed.netloc]):
-        raise ValueError(f"Invalid URL: {url}")
-    return url
-
-
-@run.command(name="sdg-data-fetch")
-@click.pass_context
-def sdg_data_fetch(
-    ctx: click.Context,
-) -> None:
-    """
-    Fetches SDG data from an object store and put in a Persistent Volume Claim (PVC)
+        ValueError: If required parameters are missing or if the provided secrets do not contain the
+                    necessary keys.
+        kubernetes.client.rest.ApiException: If there is an error interacting with the Kubernetes
+        API.
     """
     # Populate variables from context
     namespace = ctx.obj["namespace"]
@@ -2737,7 +2501,6 @@ def sdg_data_fetch(
     sdg_object_store_data_key = ctx.obj["sdg_object_store_data_key"]
     sdg_object_store_verify_tls = ctx.obj["sdg_object_store_verify_tls"]
     sdg_object_store_secret = ctx.obj["sdg_object_store_secret"]
-    force_pull = ctx.obj["force_pull"]
     dry_run = ctx.obj["dry_run"]
 
     # Check if all required arguments are provided for Data Fetch
@@ -2963,6 +2726,8 @@ def sdg_data_fetch(
                     f"ConfigMap {judge_serving_model_ca_cert} not found in namespace {namespace}."
                 ) from exc
 
+    # Assign sdg_object_store_secret and judge_serving_model_secret to the context
+    ctx.obj["sdg_object_store_secret"] = sdg_object_store_secret
     # Set the judge secret in the context for the evaluation job
     ctx.obj["judge_serving_model_secret"] = judge_serving_model_secret
 
@@ -2995,6 +2760,186 @@ def sdg_data_fetch(
                 logger.info("PVC '%s' already exists.", pvc["name"])
             else:
                 raise
+
+
+@run.command(name="sdg")
+@click.pass_context
+def sdg(
+    ctx: click.Context,
+) -> None:
+    """
+    Preprocesses SDG data by creating a Persistent Volume Claim (PVC) and
+    initiating a job to run a pod for SDG data preprocessing.
+
+    Steps:
+        1. Creates a PVC to hold SDG data and transformed SDG data.
+        2. Initiates a job to run a pod for SDG data preprocessing.
+    """
+    # Populate variables from context
+    namespace = ctx.obj["namespace"]
+    dry_run = ctx.obj["dry_run"]
+    force_pull = ctx.obj["force_pull"]
+    sdg_object_store_secret = ctx.obj["sdg_object_store_secret"]
+    sdg_serving_model_secret = ctx.obj["sdg_serving_model_secret"]
+    sdg_serving_model_endpoint = ctx.obj["sdg_serving_model_endpoint"]
+    sdg_serving_model_name = ctx.obj["sdg_serving_model_name"]
+    sdg_serving_model_api_key = ctx.obj["sdg_serving_model_api_key"]
+    num_instructions_to_generate = ctx.obj["num_instructions_to_generate"]
+    taxonomy_repo_pr = ctx.obj["taxonomy_repo_pr"]
+    taxonomy_repo_branch = ctx.obj["taxonomy_repo_branch"]
+
+    v1 = kubernetes.client.CoreV1Api()
+    # Secret details validation here!
+    # Check if all required arguments are provided for Data Fetch
+    if not sdg_serving_model_secret:
+        if not all(
+            [
+                sdg_serving_model_endpoint,
+                sdg_serving_model_name,
+                sdg_serving_model_api_key,
+            ]
+        ):
+            # Endpoint is optional if AWS S3 is used
+            raise ValueError(
+                "All of '--sdg-serving-model-endpoint', "
+                "'--sdg-serving-model-name', '--sdg-serving-model-api-key', "
+                "must be provided to the 'sdg' command. Alternatively, provide "
+                "'--sdg-serving-model-secret' to use a Kubernetes Secret."
+            )
+
+    # SDG secret
+    if (
+        # Endpoint (if AWS S3 is used) and Region are optional
+        all(
+            [
+                sdg_serving_model_endpoint,
+                sdg_serving_model_name,
+                sdg_serving_model_api_key,
+            ]
+        )
+        and not sdg_serving_model_secret
+    ):
+        validate_url(sdg_serving_model_endpoint)
+        sdg_serving_model_secret = SDG_SERVING_NAME
+        secret = kubernetes.client.V1Secret(
+            metadata=kubernetes.client.V1ObjectMeta(
+                name=sdg_serving_model_secret, namespace=namespace
+            ),
+            string_data={
+                "api_key": sdg_serving_model_api_key,
+                "endpoint": sdg_serving_model_endpoint,
+                "model": sdg_serving_model_name,
+            },
+        )
+
+        try:
+            if dry_run:
+                logger.info(
+                    "Dry run: Secret would be created.\n%s", secret.metadata.name
+                )
+            else:
+                v1.create_namespaced_secret(namespace=namespace, body=secret)
+        except kubernetes.client.rest.ApiException as exc:
+            if exc.status == 409:
+                logger.info("Secret '%s' already exists.", secret.metadata.name)
+            else:
+                raise
+
+    # If the secret option is used, verify the presence of the keys and the existence of the secret
+    elif sdg_serving_model_secret:
+        if not dry_run:
+            try:
+                secret = v1.read_namespaced_secret(
+                    name=sdg_serving_model_secret, namespace=namespace
+                )
+
+                def decode_base64(data):
+                    return base64.b64decode(data).decode("utf-8")
+
+                if not all(
+                    [
+                        secret.data.get("api_key"),
+                        secret.data.get("model"),
+                        secret.data.get("endpoint"),
+                    ]
+                ):
+                    raise ValueError(
+                        f"The provided secret {sdg_serving_model_secret} must contain the keys:"
+                        "'api_key', 'endpoint', 'model'.",
+                    )
+
+                # Validate the endpoint
+                endpoint = decode_base64(secret.data.get("endpoint"))
+                validate_url(endpoint)
+            except kubernetes.client.rest.ApiException as exc:
+                if exc.status == 404:
+                    raise ValueError(
+                        f"Secret {sdg_serving_model_secret} not found in namespace {namespace}."
+                    ) from exc
+
+    logger.info("Initial configuration.")
+    initial_setup(ctx)
+
+    logger.info("Running setup for SDG.")
+
+    # Create the job to run the pod to execute the SDG data fetch
+    job = create_data_job(
+        namespace=namespace,
+        job_name="sdg",
+        sdg_object_store_secret=sdg_object_store_secret,
+        sdg_serving_model_secret=sdg_serving_model_secret,
+        strategy="download",
+        force_pull=force_pull,
+        sdg_in_cluster=True,
+        num_instructions_to_generate=num_instructions_to_generate,
+        taxonomy_repo_pr=taxonomy_repo_pr,
+        taxonomy_repo_branch=taxonomy_repo_branch,
+    )
+
+    if dry_run:
+        logger.info("Dry run: Job would be created.\n%s", job)
+        return
+
+    # Run the job
+    run_job(namespace, job)
+    logger.info("SDG setup completed.")
+
+
+def validate_url(url: str) -> str:
+    """
+    Validate if the given string is a valid URL.
+
+    Args:
+        url (str): The URL string to validate.
+
+    Returns:
+        str: The original URL if valid.
+
+    Raises:
+        ValueError: If the URL is not valid.
+    """
+    parsed = urlparse(url)
+    if not all([parsed.scheme, parsed.netloc]):
+        raise ValueError(f"Invalid URL: {url}")
+    return url
+
+
+@run.command(name="sdg-data-fetch")
+@click.pass_context
+def sdg_data_fetch(
+    ctx: click.Context,
+) -> None:
+    """
+    Fetches SDG data from an object store and put in a Persistent Volume Claim (PVC)
+    """
+    # Populate variables from context
+    namespace = ctx.obj["namespace"]
+    sdg_object_store_secret = ctx.obj["sdg_object_store_secret"]
+    force_pull = ctx.obj["force_pull"]
+    dry_run = ctx.obj["dry_run"]
+
+    logger.info("Initial configuration.")
+    initial_setup(ctx)
 
     # Create the job to run the pod to execute the SDG data fetch
     job = create_data_job(
@@ -3302,6 +3247,11 @@ def upload_trained_model(ctx: click.Context):
     # At this stage the secret is present from previous phases so no need to check
     sdg_object_store_secret = ctx.obj["sdg_object_store_secret"]
     dry_run = ctx.obj["dry_run"]
+
+    if not sdg_object_store_secret:
+        raise ValueError(
+            "SDG object store secret must be provided with --sdg-object-store-secret."
+        )
 
     logger.info("Uploading the trained model back to the object store.")
     job = create_data_job(
