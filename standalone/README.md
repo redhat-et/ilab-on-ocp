@@ -156,7 +156,11 @@ The `standalone.py` script is designed to run within a Kubernetes environment. T
   * A [StorageClass](https://kubernetes.io/docs/concepts/storage/storage-classes/) that supports dynamic provisioning with [ReadWriteMany](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes) access mode.
 * A Kubernetes configuration that allows access to the Kubernetes cluster.
   * Both cluster and in-cluster configurations are supported.
-* SDG data generated and uploaded to an object store.
+* SDG data [generated](https://docs.instructlab.ai/adding-data-to-model/creating_new_knowledge_or_skills/#generate-a-synthetic-dataset) and uploaded to an object store.
+* Serving endpoint available for the
+  [evaluation](https://docs.instructlab.ai/adding-data-to-model/creating_new_knowledge_or_skills/#evaluate-the-newly-trained-model)
+  phase (judge model). Using
+  [prometheus-8x7b-v2.0](https://huggingface.co/prometheus-eval/prometheus-8x7b-v2.0) as a model is recommended.
 
 > [!NOTE]
 > The script can be run outside of the cluster from the command-line, but it requires that the user is currently logged into a Kubernetes cluster.
