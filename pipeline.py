@@ -182,7 +182,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             input_pvc_name=sdg_input_pvc_task.output,
             name_suffix=sdg_input_pvc_task.output,
             output_pvc_name=output_pvc_task.output,
-            phase_name="first",
+            phase_num=1,
             nproc_per_node=nproc_per_node,
             nnodes=nnodes,
         )
@@ -252,7 +252,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             input_pvc_name=sdg_input_pvc_task.output,
             name_suffix=sdg_input_pvc_task.output,
             output_pvc_name=output_pvc_task.output,
-            phase_name="second",
+            phase_num=2,
             nproc_per_node=nproc_per_node,
             nnodes=nnodes,
         )

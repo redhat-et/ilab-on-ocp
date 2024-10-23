@@ -108,9 +108,16 @@ def pytorchjob_manifest_op(
     output_pvc_name: str,
     name_suffix: str,
     # path_to_model: str,
-    phase_name: str,
+    phase_num: int,
     nproc_per_node: int = 3,
     nnodes: int = 2,
+    num_epochs: int = 2,
+    effective_batch_size: int = 3840,
+    learning_rate: float = 1e-4,
+    num_warmup_steps: int = 800,
+    save_samples: int = 0,
+    max_batch_len: int = 20000,
+    seed: int = 42,
 ) -> NamedTuple("outputs", manifest=str, name=str):
     import inspect
     import os
@@ -126,11 +133,15 @@ def pytorchjob_manifest_op(
         return f"{model_dir}/{newest_model}"
 
     Outputs = NamedTuple("outputs", manifest=str, name=str)
-    name = f"train-{phase_name}-{name_suffix.rstrip('-sdg')}"
-    if phase_name == "first":
+    name = f"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}"
+
+    if phase_num == 1:
         path_to_model = "/input_model/model"
-    elif phase_name == "second":
+        path_to_data = "/input_data/knowledge_processed_data/data.jsonl"
+    elif phase_num == 2:
         path_to_model = list_phase1_final_model()
+        path_to_data = "/input_data/skills_processed_data/data.jsonl"
+
     image = "registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2"
 
     manifest = inspect.cleandoc(
@@ -153,13 +164,32 @@ def pytorchjob_manifest_op(
                   containers:
                     - args:
                         - |
+                          echo "Running phase {phase_num}"
+                          echo "Using {path_to_model} model for training"
+                          echo "Using {path_to_data} data for training"
                           mkdir -p /output/model;
                           mkdir -p /output/data;
-                          export XDG_CACHE_HOME=/tmp
-                          export TRITON_CACHE_DIR=/tmp
-                          export HF_HOME=/tmp
-                          export TRANSFORMERS_CACHE=/tmp
-                          torchrun --nnodes {nnodes} --nproc_per_node {nproc_per_node} --node_rank \$(RANK) --rdzv_endpoint \$(MASTER_ADDR):\$(MASTER_PORT) -m instructlab.training.main_ds --model_name_or_path={path_to_model} --data_path=/input_data/processed_data/data.jsonl --output_dir=/output/model --num_epochs=2 --effective_batch_size=3840 --learning_rate=1e-4 --num_warmup_steps=800 --save_samples=0 --log_level=INFO --max_batch_len=20000 --seed=42 --cpu_offload_optimizer --distributed_training_framework fsdp --is_granite --checkpoint_at_epoch
+                          torchrun --nnodes {nnodes} \
+                              --nproc_per_node {nproc_per_node} \
+                              --node_rank \$(RANK) \
+                              --rdzv_endpoint \$(MASTER_ADDR):\$(MASTER_PORT) \
+                              -m instructlab.training.main_ds \
+                              --model_name_or_path={path_to_model} \
+                              --data_path={path_to_data} \
+                              --output_dir=/output/model \
+                              --num_epochs={num_epochs} \
+                              --effective_batch_size={effective_batch_size} \
+                              --learning_rate={learning_rate} \
+                              --num_warmup_steps={num_warmup_steps} \
+                              --save_samples={save_samples} \
+                              --log_level=INFO \
+                              --max_batch_len={max_batch_len} \
+                              --seed={seed} \
+                              --cpu_offload_optimizer \
+                              --cpu_offload_params \
+                              --distributed_training_framework fsdp \
+                              --is_granite \
+                              --checkpoint_at_epoch
                       command:
                         - /bin/bash
                         - '-c'
@@ -180,12 +210,20 @@ def pytorchjob_manifest_op(
                           value: \\"{nnodes}\\"
                         - name: NPROC_PER_NODE
                           value: \\"{nproc_per_node}\\"
+                        - name: XDG_CACHE_HOME
+                          value: /tmp
+                        - name: TRITON_CACHE_DIR
+                          value: /tmp
+                        - name: HF_HOME
+                          value: /tmp
+                        - name: TRANSFORMERS_CACHE
+                          value: /tmp
                       resources:
                         requests:
-                          cpu: 2
+                          cpu: 8
                           "nvidia.com/gpu": {nproc_per_node}
                         limits:
-                          cpu: 2
+                          cpu: 8
                           "nvidia.com/gpu": {nproc_per_node}
                   volumes:
                     - name: input-data
@@ -208,12 +246,31 @@ def pytorchjob_manifest_op(
                   containers:
                     - args:
                         - |
+                          echo "Running phase {phase_num}"
+                          echo "Using {path_to_model} model for training"
+                          echo "Using {path_to_data} data for training"
                           mkdir -p /tmp/model;
-                          export TRITON_CACHE_DIR=/tmp
-                          export XDG_CACHE_HOME=/tmp
-                          export HF_HOME=/tmp
-                          export TRANSFORMERS_CACHE=/tmp
-                          torchrun --nnodes {nnodes} --nproc_per_node {nproc_per_node} --node_rank \$(RANK) --rdzv_endpoint \$(MASTER_ADDR):\$(MASTER_PORT) -m instructlab.training.main_ds --model_name_or_path={path_to_model}  --data_path=/input_data/processed_data/data.jsonl --output_dir=/tmp/model --num_epochs=2 --effective_batch_size=3840 --learning_rate=1e-4 --num_warmup_steps=800 --save_samples=0 --log_level=INFO --max_batch_len=20000 --seed=42 --cpu_offload_optimizer --distributed_training_framework fsdp --is_granite --checkpoint_at_epoch
+                          torchrun --nnodes {nnodes} \
+                            --nproc_per_node {nproc_per_node} \
+                            --node_rank \$(RANK) \
+                            --rdzv_endpoint \$(MASTER_ADDR):\$(MASTER_PORT) \
+                            -m instructlab.training.main_ds \
+                            --model_name_or_path={path_to_model} \
+                            --data_path={path_to_data} \
+                            --output_dir=/tmp/model \
+                            --num_epochs={num_epochs} \
+                            --effective_batch_size={effective_batch_size} \
+                            --learning_rate={learning_rate} \
+                            --num_warmup_steps={num_warmup_steps} \
+                            --save_samples={save_samples} \
+                            --log_level=INFO \
+                            --max_batch_len={max_batch_len} \
+                            --seed={seed} \
+                            --cpu_offload_optimizer \
+                            --cpu_offload_params \
+                            --distributed_training_framework fsdp \
+                            --is_granite \
+                            --checkpoint_at_epoch
                       command:
                         - /bin/bash
                         - '-c'
@@ -235,12 +292,20 @@ def pytorchjob_manifest_op(
                           value: \\"{nnodes}\\"
                         - name: NPROC_PER_NODE
                           value: \\"{nproc_per_node}\\"
+                        - name: XDG_CACHE_HOME
+                          value: /tmp
+                        - name: TRITON_CACHE_DIR
+                          value: /tmp
+                        - name: HF_HOME
+                          value: /tmp
+                        - name: TRANSFORMERS_CACHE
+                          value: /tmp
                       resources:
                         requests:
-                          cpu: 2
+                          cpu: 8
                           "nvidia.com/gpu": {nproc_per_node}
                         limits:
-                          cpu: 2
+                          cpu: 8
                           "nvidia.com/gpu": {nproc_per_node}
                   volumes:
                     - name: input-data
