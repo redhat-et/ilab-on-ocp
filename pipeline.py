@@ -32,6 +32,16 @@ BATCH_SIZE = 8
 MAX_WORKERS = "auto"
 MERGE_SYSTEM_USER_MESSAGE = False
 
+# training args
+NUM_EPOCHS_PHASE_1 = 2
+NUM_EPOCHS_PHASE_2 = 2
+EFFECTIVE_BATCH_SIZE = 3840
+LEARNING_RATE = 1e-4
+NUM_WARMUP_STEPS = 800
+SAVE_SAMPLES = 0
+MAX_BATCH_LEN = 20000
+SEED = 42
+
 
 def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
     """Wrapper for KFP pipeline, which allows for mocking individual stages."""
@@ -94,6 +104,14 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         device: str = None,
         nproc_per_node: int = 3,
         nnodes: int = 2,
+        num_epochs_phase_1: int = NUM_EPOCHS_PHASE_1,
+        num_epochs_phase_2: int = NUM_EPOCHS_PHASE_2,
+        effective_batch_size: int = EFFECTIVE_BATCH_SIZE,
+        learning_rate: float = LEARNING_RATE,
+        num_warmup_steps: int = NUM_WARMUP_STEPS,
+        save_samples: int = SAVE_SAMPLES,
+        max_batch_len: int = MAX_BATCH_LEN,
+        seed: int = SEED,
     ):
         # SDG stage
         git_clone_task = git_clone_op(
@@ -185,6 +203,13 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             phase_num=1,
             nproc_per_node=nproc_per_node,
             nnodes=nnodes,
+            num_epochs=num_epochs_phase_1,
+            effective_batch_size=effective_batch_size,
+            learning_rate=learning_rate,
+            num_warmup_steps=num_warmup_steps,
+            save_samples=save_samples,
+            max_batch_len=max_batch_len,
+            seed=seed,
         )
         pytorchjob_manifest_task.set_caching_options(False)
 
@@ -255,6 +280,13 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             phase_num=2,
             nproc_per_node=nproc_per_node,
             nnodes=nnodes,
+            num_epochs=num_epochs_phase_2,
+            effective_batch_size=effective_batch_size,
+            learning_rate=learning_rate,
+            num_warmup_steps=num_warmup_steps,
+            save_samples=save_samples,
+            max_batch_len=max_batch_len,
+            seed=seed,
         )
 
         pytorchjob_manifest_2_task.set_caching_options(False)
