@@ -491,7 +491,17 @@ The list of all supported keys:
 * `endpoint`: The endpoint of the object store, e.g: https://s3.openshift-storage.svc:443 - **Optional**
 * `region`: The region of the object store - **Optional**
 
-A similar operation can be performed for the evaluation judge model serving service. Currently, the script expects the Judge serving service to be running and accessible from within the cluster. If it is not present, the script will not create this resource.
+### Judge Model Server Details
+
+A judge model is assumed to be running external to the script. This is used for model evaluation.
+
+The simplest way to provide details about a judge model server is with a Kubernetes secret. An example of how to serve a judge model can be found in
+the [kubernetes-yaml](../kubernetes_yaml) folder. This folder contains an example for serving a model and also for downloading a model to an S3
+bucket.
+
+#### Creating the Kubernetes Secret for Judge Server Details
+
+Currently, the script expects the Judge serving service to be running and accessible from within the cluster. If it is not present, the script will not create this resource.
 
 ```bash
 cat <<EOF | kubectl create -f -
@@ -525,6 +535,15 @@ Optional keys:
 > [!WARNING]
 > Make sure the endpoint URL ends with /v1
 
+If the details are not provided via a secret, you must provide the details as CLI parameters or as environment variables. A secret will be created
+from CLI parameters in the same namespace as the resources the script interacts with, so on subsequent runs in the same namespace,
+these values do not need to be provided.
+
+* `--judge-serving-model-endpoint` and `--judge-serving-model-name` values will be stored in a secret named `judge-serving-details`.
+* `--judge-serving-model-api-key` or environment variable `JUDGE_SERVING_MODEL_API_KEY` value will also be stored in a secret named `judge-serving-details`.
+* In all examples, the `JUDGE_SERVING_MODEL_API_KEY` environment variable is exported rather than setting the CLI option.
+
+
 #### Running the Script Without Kubernetes Secret
 
 Alternatively, you can provide the necessary information directly via CLI options or environment,
@@ -544,13 +563,6 @@ export JUDGE_SERVING_MODEL_API_KEY=********
   --sdg-object-store-data-key data.tar.gz
 ```
 
-### Judge Model Details
-
-A judge model is assumed to be running external to the script. This is used for model evaluation.
-
-* The `--judge-serving-model-endpoint` and `--judge-serving-model-name` values will be stored in a ConfigMap named `judge-serving-details` in the same namespace as the resources that the script interacts with.
-* `--judge-serving-model-api-key` or environment variable `JUDGE_SERVING_MODEL_API_KEY` value will be stored in a secret named `judge-serving-details` in the same namespace as the resources that the script interacts with.
-* In all examples, the `JUDGE_SERVING_MODEL_API_KEY` environment variable is exported rather than setting the CLI option.
 
 #### Advanced Configuration Using an S3-Compatible Object Store
 
