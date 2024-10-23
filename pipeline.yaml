@@ -5,16 +5,24 @@
 #    base_model: str [Default: 'ibm-granite/granite-7b-base']
 #    batch_size: int [Default: 8.0]
 #    device: str
+#    effective_batch_size: int [Default: 3840.0]
 #    few_shots: int [Default: 5.0]
+#    learning_rate: float [Default: 0.0001]
+#    max_batch_len: int [Default: 20000.0]
 #    max_workers: str [Default: 'auto']
 #    merge_system_user_message: bool [Default: False]
 #    model_dtype: str [Default: 'bfloat16']
 #    nnodes: int [Default: 2.0]
 #    nproc_per_node: int [Default: 3.0]
+#    num_epochs_phase_1: int [Default: 2.0]
+#    num_epochs_phase_2: int [Default: 2.0]
 #    num_instructions_to_generate: int [Default: 2.0]
+#    num_warmup_steps: int [Default: 800.0]
 #    repo_branch: str
 #    repo_pr: int
 #    repo_url: str [Default: 'https://github.com/instructlab/taxonomy.git']
+#    save_samples: int [Default: 0.0]
+#    seed: int [Default: 42.0]
 #    storage_class_name: str [Default: 'nfs-csi']
 components:
   comp-artifact-to-pvc-op:
@@ -1931,10 +1939,16 @@ root:
         - createpvc-3
         inputs:
           parameters:
+            effective_batch_size:
+              componentInputParameter: effective_batch_size
             input_pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
                 producerTask: createpvc-2
+            learning_rate:
+              componentInputParameter: learning_rate
+            max_batch_len:
+              componentInputParameter: max_batch_len
             model_pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
@@ -1947,6 +1961,10 @@ root:
               componentInputParameter: nnodes
             nproc_per_node:
               componentInputParameter: nproc_per_node
+            num_epochs:
+              componentInputParameter: num_epochs_phase_1
+            num_warmup_steps:
+              componentInputParameter: num_warmup_steps
             output_pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
@@ -1954,6 +1972,10 @@ root:
             phase_num:
               runtimeValue:
                 constant: 1.0
+            save_samples:
+              componentInputParameter: save_samples
+            seed:
+              componentInputParameter: seed
         taskInfo:
           name: pytorchjob-manifest-op
       pytorchjob-manifest-op-2:
@@ -1967,10 +1989,16 @@ root:
         - kubectl-wait-for-op
         inputs:
           parameters:
+            effective_batch_size:
+              componentInputParameter: effective_batch_size
             input_pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
                 producerTask: createpvc-2
+            learning_rate:
+              componentInputParameter: learning_rate
+            max_batch_len:
+              componentInputParameter: max_batch_len
             model_pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
@@ -1983,6 +2011,10 @@ root:
               componentInputParameter: nnodes
             nproc_per_node:
               componentInputParameter: nproc_per_node
+            num_epochs:
+              componentInputParameter: num_epochs_phase_2
+            num_warmup_steps:
+              componentInputParameter: num_warmup_steps
             output_pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
@@ -1990,6 +2022,10 @@ root:
             phase_num:
               runtimeValue:
                 constant: 2.0
+            save_samples:
+              componentInputParameter: save_samples
+            seed:
+              componentInputParameter: seed
         taskInfo:
           name: pytorchjob-manifest-op-2
       run-final-eval-op:
@@ -2097,8 +2133,20 @@ root:
       device:
         isOptional: true
         parameterType: STRING
+      effective_batch_size:
+        defaultValue: 3840.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
       few_shots:
         defaultValue: 5.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      learning_rate:
+        defaultValue: 0.0001
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      max_batch_len:
+        defaultValue: 20000.0
         isOptional: true
         parameterType: NUMBER_INTEGER
       max_workers:
@@ -2121,8 +2169,20 @@ root:
         defaultValue: 3.0
         isOptional: true
         parameterType: NUMBER_INTEGER
+      num_epochs_phase_1:
+        defaultValue: 2.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      num_epochs_phase_2:
+        defaultValue: 2.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
       num_instructions_to_generate:
         defaultValue: 2.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      num_warmup_steps:
+        defaultValue: 800.0
         isOptional: true
         parameterType: NUMBER_INTEGER
       repo_branch:
@@ -2135,6 +2195,14 @@ root:
         defaultValue: https://github.com/instructlab/taxonomy.git
         isOptional: true
         parameterType: STRING
+      save_samples:
+        defaultValue: 0.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      seed:
+        defaultValue: 42.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
       storage_class_name:
         defaultValue: nfs-csi
         isOptional: true
