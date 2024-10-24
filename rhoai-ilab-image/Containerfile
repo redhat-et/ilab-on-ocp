@@ -1,0 +1,5 @@
+FROM registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2
+
+RUN pip install kfp==2.9.0
+
+CMD ["python3.11"]
