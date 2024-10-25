@@ -13,7 +13,6 @@ from kfp.kubernetes import (
     use_secret_as_env,
 )
 
-# For now, all external models are the same mistral, but won't be always
 K8S_NAME = "kfp-model-server"
 JUDGE_CONFIG_MAP = "kfp-model-server"
 JUDGE_SECRET = "judge-server"
@@ -23,12 +22,15 @@ STANDALONE_TEMPLATE_FILE_NAME = "standalone.tpl"
 GENERATED_STANDALONE_FILE_NAME = "standalone.py"
 DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
 KFP_MODEL_SERVER_CM = "sdg/kfp-model-server.yaml"
-BASE_MODE = "ibm-granite/granite-7b-base"
+BASE_MODEL = "ibm-granite/granite-7b-base"
 BASE_MODEL_DIR = "/data/model/"  # <- "model ID for vLLM chat/completions - corresponds to path within pvc"
+
+# eval args
 MMLU_TASKS_LIST = "mmlu_anatomy,mmlu_astronomy"
 MODEL_DTYPE = "bfloat16"
 FEW_SHOTS = 5
-BATCH_SIZE = 8
+# BATCH_SIZE can also be an int, for example "8" is converted to an int in eval/final
+BATCH_SIZE = "auto"
 MAX_WORKERS = "auto"
 MERGE_SYSTEM_USER_MESSAGE = False
 
@@ -93,12 +95,12 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         repo_branch: Optional[str] = None,
         repo_pr: Optional[int] = None,
         storage_class_name: str = "nfs-csi",
-        base_model: str = BASE_MODE,
+        base_model: str = BASE_MODEL,
         # minimal subset of MMLU_TASKS
         # mmlu_tasks_list: str = MMLU_TASKS_LIST,
         model_dtype: str = MODEL_DTYPE,
         few_shots: int = FEW_SHOTS,
-        batch_size: int = BATCH_SIZE,
+        batch_size: str = BATCH_SIZE,
         max_workers: str = MAX_WORKERS,
         merge_system_user_message: bool = MERGE_SYSTEM_USER_MESSAGE,
         device: str = None,
@@ -402,7 +404,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         output_model_task = pvc_to_artifact_op(
             pvc_path="/output/data",
         )
-        output_model_task.after(run_mt_bench_task)
+        output_model_task.after(final_eval_task)
         output_model_task.set_caching_options(False)
 
         mount_pvc(
@@ -414,7 +416,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         output_data_task = pvc_to_model_op(
             pvc_path="/output/model",
         )
-        output_data_task.after(run_mt_bench_task)
+        output_data_task.after(final_eval_task)
 
         mount_pvc(
             task=output_data_task,
@@ -423,13 +425,13 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
 
         output_pvc_delete_task = DeletePVC(pvc_name=output_pvc_task.output)
-        output_pvc_delete_task.after(final_eval_task, output_data_task)
+        output_pvc_delete_task.after(output_data_task, output_model_task)
 
         sdg_pvc_delete_task = DeletePVC(pvc_name=sdg_input_pvc_task.output)
-        sdg_pvc_delete_task.after(final_eval_task, output_data_task)
+        sdg_pvc_delete_task.after(output_data_task, output_model_task)
 
         model_pvc_delete_task = DeletePVC(pvc_name=model_pvc_task.output)
-        model_pvc_delete_task.after(final_eval_task, output_data_task)
+        model_pvc_delete_task.after(output_data_task, output_model_task)
 
         return
 
@@ -496,7 +498,7 @@ def gen_standalone():
         "exec-git-clone-op": {},
         "exec-huggingface-importer-op": 'huggingface_importer_op(repo_name="{REPO_GRANITE_7B_IMAGE}", model="{DATA_PVC_MODEL_PATH}")',
         "exec-run-mt-bench-op": 'run_mt_bench_op(best_score_file="{MT_BENCH_SCORES_PATH}",mt_bench_output="{MT_BENCH_OUTPUT_PATH}",models_folder="{CANDIDATE_MODEL_PATH_PREFIX}",models_path_prefix="{CANDIDATE_MODEL_PATH_PREFIX}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE})',
-        "exec-run-final-eval-op": 'run_final_eval_op(mmlu_branch_output="{MMLU_BRANCH_SCORES_PATH}", mt_bench_branch_output="{MT_BENCH_BRANCH_SCORES_PATH}", candidate_model="{CANDIDATE_MODEL_PATH}", taxonomy="{TAXONOMY_PATH}", tasks="{DATA_PVC_SDG_PATH}", base_branch="", candidate_branch="", device=None, base_model_dir="{DATA_PVC_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE}, model_dtype="{MODEL_DTYPE}", few_shots={FEW_SHOTS}, batch_size={BATCH_SIZE})',
+        "exec-run-final-eval-op": 'run_final_eval_op(mmlu_branch_output="{MMLU_BRANCH_SCORES_PATH}", mt_bench_branch_output="{MT_BENCH_BRANCH_SCORES_PATH}", candidate_model="{CANDIDATE_MODEL_PATH}", taxonomy="{TAXONOMY_PATH}", tasks="{DATA_PVC_SDG_PATH}", base_branch="", candidate_branch="", device=None, base_model_dir="{DATA_PVC_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE}, model_dtype="{MODEL_DTYPE}", few_shots={FEW_SHOTS}, batch_size="{BATCH_SIZE}")',
     }
 
     details = {}

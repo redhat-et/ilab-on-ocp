@@ -26,7 +26,7 @@ def run_final_eval_op(
     device: str,
     model_dtype: str,
     few_shots: int,
-    batch_size: int,
+    batch_size: str,
     merge_system_user_message: bool,
     candidate_model: str = None,
 ):
@@ -215,6 +215,9 @@ def run_final_eval_op(
     gpu_count = torch.cuda.device_count() if gpu_available else 0
 
     print(f"GPU Available: {gpu_available}, Using: {gpu_name}")
+
+    if batch_size.isdigit():
+        batch_size = int(batch_size)
 
     # MMLU_BRANCH
 
