@@ -425,6 +425,7 @@ evaluation
 * `--dry-run`: Print the generated Kubernetes resources without executing them. **Optional** -
   Default: false.
 * `--sdg-in-cluster`: Run the SDG process inside the cluster. **Optional** - Default: false.
+* `--sdg-pipeline-type`: The pipeline type used for SDG, value must be 'simple', 'full', or a valid path to a directory. **Optional** - Default: simple
 * `--num-instructions-to-generate`: Number of instructions to generate. For SDG only. **Optional** - Default: 30.
 * `--taxonomy-repo-branch`: The branch of the taxonomy repository to use. **Optional** - Default: none.
 * `--taxonomy-repo-pr`: The PR number of the taxonomy repository to use. **Optional** - Default: none.
@@ -617,6 +618,7 @@ stringData:
   api_key: ********
   endpoint: https://mistral-sallyom.apps.ocp-beta-test.nerc.mghpcc.org/v1
   model: mistral
+  sdg_pipeline: simple
 EOF
 ```
 
@@ -625,6 +627,7 @@ The list of all mandatory keys:
 * `api_key`: The API key for the model serving endpoint - **Required**
 * `endpoint`: Serving endpoint for evaluation - **Required**
 * `model`: The name of the model to use for SDG - **Required**
+* `sdg_pipeline`: The pipeline type used for SDG, value must be 'simple', 'full', or a valid path to a directory. - **Optional**
 
 ```bash
 ./standalone.py run \

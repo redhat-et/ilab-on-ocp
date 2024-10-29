@@ -45,6 +45,7 @@ def sdg_op(
     model = getenv("model")
     endpoint = getenv("endpoint")
     client = openai.OpenAI(base_url=endpoint, api_key=api_key)
+    sdg_pipeline = getenv("sdg_pipeline", "simple")
 
     taxonomy_base = "main" if repo_branch or (repo_pr and int(repo_pr) > 0) else "empty"
 
@@ -64,4 +65,5 @@ def sdg_op(
         model_name=model,
         chunk_word_count=1000,
         server_ctx_size=4096,
+        pipeline=sdg_pipeline,
     )
