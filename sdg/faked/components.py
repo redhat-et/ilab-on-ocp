@@ -32,6 +32,7 @@ def git_clone_op(
     packages_to_install=[
         "git+https://github.com/redhat-et/ilab-on-ocp.git#subdirectory=sdg/faked/fixtures"
     ],
+    use_venv=True,
 )
 def sdg_op(
     num_instructions_to_generate: int,

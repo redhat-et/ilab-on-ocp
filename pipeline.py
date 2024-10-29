@@ -15,6 +15,8 @@ from kfp.kubernetes import (
     use_secret_as_env,
 )
 
+# TODO: remove me once the KFP package is part of the RHELAI image
+RHELAI_SITE_PACKAGES = "/opt/app-root/lib64/python3.11/site-packages/"
 K8S_NAME = "kfp-model-server"
 JUDGE_CONFIG_MAP = "kfp-model-server"
 JUDGE_SECRET = "judge-server"
@@ -164,6 +166,11 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
         sdg_task.set_env_variable("HOME", "/tmp")
         sdg_task.set_env_variable("HF_HOME", "/tmp")
+        # TODO: remove this once the KFP package is part of the RHELAI image
+        sdg_task.set_env_variable(
+            name="PYTHONPATH",
+            value=f"$PYTHONPATH:{RHELAI_SITE_PACKAGES}",
+        )
         use_config_map_as_env(
             sdg_task, K8S_NAME, dict(endpoint="endpoint", model="model")
         )
@@ -210,6 +217,11 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             storage_class_name=storage_class_name,
         )
         model_to_pvc_task = huggingface_importer_op(repo_name=base_model)
+        # TODO: remove this once the KFP package is part of the RHELAI image
+        model_to_pvc_task.set_env_variable(
+            name="PYTHONPATH",
+            value=f"$PYTHONPATH:{RHELAI_SITE_PACKAGES}",
+        )
         model_to_pvc_task.set_caching_options(False)
         mount_pvc(
             task=model_to_pvc_task, pvc_name=model_pvc_task.output, mount_path="/model"
@@ -217,6 +229,11 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
         # Data processing
         data_processing_task = data_processing_op()
+        # TODO: remove this once the KFP package is part of the RHELAI image
+        data_processing_task.set_env_variable(
+            name="PYTHONPATH",
+            value=f"$PYTHONPATH:{RHELAI_SITE_PACKAGES}",
+        )
         mount_pvc(
             task=data_processing_task,
             pvc_name=model_pvc_task.output,
@@ -274,6 +291,11 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             save_samples=save_samples,
             max_batch_len=max_batch_len,
             seed=seed,
+        )
+        # TODO: remove this once the KFP package is part of the RHELAI image
+        pytorchjob_manifest_task.set_env_variable(
+            name="PYTHONPATH",
+            value=f"$PYTHONPATH:{RHELAI_SITE_PACKAGES}",
         )
         pytorchjob_manifest_task.set_caching_options(False)
 
@@ -352,6 +374,11 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             max_batch_len=max_batch_len,
             seed=seed,
         )
+        # TODO: remove this once the KFP package is part of the RHELAI image
+        pytorchjob_manifest_2_task.set_env_variable(
+            name="PYTHONPATH",
+            value=f"$PYTHONPATH:{RHELAI_SITE_PACKAGES}",
+        )
 
         pytorchjob_manifest_2_task.set_caching_options(False)
         pytorchjob_manifest_2_task.after(kubectl_wait_task)
@@ -380,6 +407,11 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         models_list_2_task = list_models_in_directory_op(
             models_folder="/output/phase_2/model/hf_format",
         )
+        # TODO: remove this once the KFP package is part of the RHELAI image
+        models_list_2_task.set_env_variable(
+            name="PYTHONPATH",
+            value=f"$PYTHONPATH:{RHELAI_SITE_PACKAGES}",
+        )
         models_list_2_task.set_caching_options(False)
         models_list_2_task.after(kubectl_wait_2_task)
         mount_pvc(
@@ -399,6 +431,12 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             merge_system_user_message=merge_system_user_message,
             device=device,
         )
+        # TODO: remove this once the KFP package is part of the RHELAI image
+        run_mt_bench_task.set_env_variable(
+            name="PYTHONPATH",
+            value=f"$PYTHONPATH:{RHELAI_SITE_PACKAGES}",
+        )
+
         mount_pvc(
             task=run_mt_bench_task,
             pvc_name=output_pvc_task.output,
@@ -433,6 +471,12 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             few_shots=few_shots,
             batch_size=batch_size,
         )
+        # TODO: remove this once the KFP package is part of the RHELAI image
+        final_eval_task.set_env_variable(
+            name="PYTHONPATH",
+            value=f"$PYTHONPATH:{RHELAI_SITE_PACKAGES}",
+        )
+
         mount_pvc(
             task=final_eval_task, pvc_name=output_pvc_task.output, mount_path="/output"
         )

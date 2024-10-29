@@ -4,7 +4,8 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-kfp = {extras = ["kubernetes"], version = "*"}
+kfp = {git = "https://github.com/kubeflow/pipelines.git", ref = "df28e891c4374f7eac98cc6a4892b6e6c35a43f2", subdirectory = "sdk/python"}
+kfp-kubernetes = "*"
 click = "*"
 ruff = "*"
 pyyaml = "*"

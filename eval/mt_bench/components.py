@@ -7,7 +7,7 @@ from kfp.dsl import component
 from utils.consts import RHELAI_IMAGE
 
 
-@component(base_image=RHELAI_IMAGE)
+@component(base_image=RHELAI_IMAGE, packages_to_install=["vllm"], use_venv=True)
 def run_mt_bench_op(
     models_path_prefix: str,
     merge_system_user_message: bool,

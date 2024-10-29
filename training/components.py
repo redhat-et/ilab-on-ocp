@@ -13,6 +13,7 @@ from utils.consts import PYTHON_IMAGE, TOOLBOX_IMAGE
     packages_to_install=[
         "instructlab-training@git+https://github.com/instructlab/training.git"
     ],
+    use_venv=True,
 )
 def data_processing_op(
     model_path: str = "/model",
@@ -125,7 +126,7 @@ def knowledge_processed_data_to_artifact_op(
     )
 
 
-@dsl.component(base_image=PYTHON_IMAGE)
+@dsl.component(base_image=PYTHON_IMAGE, use_venv=True)
 def pytorchjob_manifest_op(
     model_pvc_name: str,
     input_pvc_name: str,

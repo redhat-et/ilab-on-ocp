@@ -51,7 +51,7 @@ def pvc_to_model_op(model: dsl.Output[dsl.Model], pvc_path: str):
     )
 
 
-@dsl.component
+@dsl.component(use_venv=True)
 def list_models_in_directory_op(models_folder: str) -> List[str]:
     import os
 
@@ -59,7 +59,9 @@ def list_models_in_directory_op(models_folder: str) -> List[str]:
     return models
 
 
-@dsl.component(base_image=PYTHON_IMAGE, packages_to_install=["huggingface_hub"])
+@dsl.component(
+    base_image=PYTHON_IMAGE, packages_to_install=["huggingface_hub"], use_venv=True
+)
 def huggingface_importer_op(repo_name: str, model_path: str = "/model"):
     from huggingface_hub import snapshot_download
 

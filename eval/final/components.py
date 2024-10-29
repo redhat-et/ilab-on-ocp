@@ -9,6 +9,10 @@ from utils.consts import PYTHON_IMAGE, RHELAI_IMAGE
 
 @component(
     base_image=RHELAI_IMAGE,
+    packages_to_install=[
+        "vllm",
+    ],
+    use_venv=True,
 )
 def run_final_eval_op(
     mmlu_branch_output: Output[Artifact],

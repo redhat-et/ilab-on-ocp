@@ -9,7 +9,7 @@ from utils.consts import PYTHON_IMAGE
 EVAL_IMAGE = "quay.io/sallyom/instructlab-ocp:eval"
 
 
-@component(base_image=EVAL_IMAGE)
+@component(base_image=EVAL_IMAGE, use_venv=True)
 def run_mmlu_op(
     mmlu_output: Output[Artifact],
     models_path_prefix: str,
@@ -93,7 +93,7 @@ def run_mmlu_op(
     return outputs(best_model=best_model, best_score=best_score)
 
 
-@component(base_image=PYTHON_IMAGE)
+@component(base_image=PYTHON_IMAGE, use_venv=True)
 def load_mmlu_results_op(mmlu_output: Input[Artifact]) -> list:
     import json
 

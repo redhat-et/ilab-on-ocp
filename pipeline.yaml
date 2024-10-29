@@ -637,7 +637,9 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ \nexport PIP_DISABLE_PIP_VERSION_CHECK=1\ntmp=$(mktemp -d)\npython3 -m\
+          \ venv \"$tmp/venv\" --system-site-packages\n. \"$tmp/venv/bin/activate\"\
+          \n python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
           \  python3 -m pip install --quiet --no-warn-script-location 'instructlab-training@git+https://github.com/instructlab/training.git'\
           \ && \"$0\" \"$@\"\n"
@@ -696,6 +698,9 @@ deploymentSpec:
           \                max_seq_len=train_args.max_seq_len,\n                chat_tmpl_path=train_args.chat_tmpl_path,\n\
           \            )\n        )\n\n    data_processing(train_args=skill_training_args)\n\
           \    data_processing(train_args=knowledge_training_args)\n\n"
+        env:
+        - name: PYTHONPATH
+          value: $PYTHONPATH:/opt/app-root/lib64/python3.11/site-packages/
         image: registry.access.redhat.com/ubi9/python-311:latest
     exec-deletepvc:
       container:
@@ -732,7 +737,9 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ \nexport PIP_DISABLE_PIP_VERSION_CHECK=1\ntmp=$(mktemp -d)\npython3 -m\
+          \ venv \"$tmp/venv\" --system-site-packages\n. \"$tmp/venv/bin/activate\"\
+          \n python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
           \  python3 -m pip install --quiet --no-warn-script-location 'huggingface_hub'\
           \ && \"$0\" \"$@\"\n"
@@ -750,6 +757,9 @@ deploymentSpec:
           \ *\n\ndef huggingface_importer_op(repo_name: str, model_path: str = \"\
           /model\"):\n    from huggingface_hub import snapshot_download\n\n    snapshot_download(repo_id=repo_name,\
           \ cache_dir=\"/tmp\", local_dir=model_path)\n\n"
+        env:
+        - name: PYTHONPATH
+          value: $PYTHONPATH:/opt/app-root/lib64/python3.11/site-packages/
         image: registry.access.redhat.com/ubi9/python-311:latest
     exec-knowledge-processed-data-to-artifact-op:
       container:
@@ -805,7 +815,9 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ \nexport PIP_DISABLE_PIP_VERSION_CHECK=1\ntmp=$(mktemp -d)\npython3 -m\
+          \ venv \"$tmp/venv\" --system-site-packages\n. \"$tmp/venv/bin/activate\"\
+          \n python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
           $0\" \"$@\"\n"
         - sh
@@ -822,7 +834,10 @@ deploymentSpec:
           \ *\n\ndef list_models_in_directory_op(models_folder: str) -> List[str]:\n\
           \    import os\n\n    models = os.listdir(models_folder)\n    return models\n\
           \n"
-        image: python:3.8
+        env:
+        - name: PYTHONPATH
+          value: $PYTHONPATH:/opt/app-root/lib64/python3.11/site-packages/
+        image: python:3.9
     exec-pvc-to-model-op:
       container:
         args:
@@ -851,7 +866,9 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ \nexport PIP_DISABLE_PIP_VERSION_CHECK=1\ntmp=$(mktemp -d)\npython3 -m\
+          \ venv \"$tmp/venv\" --system-site-packages\n. \"$tmp/venv/bin/activate\"\
+          \n python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
           $0\" \"$@\"\n"
         - sh
@@ -995,6 +1012,9 @@ deploymentSpec:
           \   - name: output\n                      persistentVolumeClaim:\n     \
           \                   claimName: {output_pvc_name}\n        \"\"\"\n    )\n\
           \n    return Outputs(manifest, name)\n\n"
+        env:
+        - name: PYTHONPATH
+          value: $PYTHONPATH:/opt/app-root/lib64/python3.11/site-packages/
         image: registry.access.redhat.com/ubi9/python-311:latest
     exec-pytorchjob-manifest-op-2:
       container:
@@ -1008,7 +1028,9 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ \nexport PIP_DISABLE_PIP_VERSION_CHECK=1\ntmp=$(mktemp -d)\npython3 -m\
+          \ venv \"$tmp/venv\" --system-site-packages\n. \"$tmp/venv/bin/activate\"\
+          \n python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
           $0\" \"$@\"\n"
         - sh
@@ -1152,6 +1174,9 @@ deploymentSpec:
           \   - name: output\n                      persistentVolumeClaim:\n     \
           \                   claimName: {output_pvc_name}\n        \"\"\"\n    )\n\
           \n    return Outputs(manifest, name)\n\n"
+        env:
+        - name: PYTHONPATH
+          value: $PYTHONPATH:/opt/app-root/lib64/python3.11/site-packages/
         image: registry.access.redhat.com/ubi9/python-311:latest
     exec-run-final-eval-op:
       container:
@@ -1165,8 +1190,11 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          \ \nexport PIP_DISABLE_PIP_VERSION_CHECK=1\ntmp=$(mktemp -d)\npython3 -m\
+          \ venv \"$tmp/venv\" --system-site-packages\n. \"$tmp/venv/bin/activate\"\
+          \n python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'vllm' && \"\
           $0\" \"$@\"\n"
         - sh
         - -ec
@@ -1414,6 +1442,8 @@ deploymentSpec:
           : summary,\n    }\n\n    with open(mt_bench_branch_output.path, \"w\") as\
           \ f:\n        json.dump(mt_bench_branch_data, f, indent=4)\n\n"
         env:
+        - name: PYTHONPATH
+          value: $PYTHONPATH:/opt/app-root/lib64/python3.11/site-packages/
         - name: HOME
           value: /tmp
         - name: HF_HOME
@@ -1421,8 +1451,8 @@ deploymentSpec:
         image: quay.io/redhat-et/ilab:1.2
         resources:
           accelerator:
-            count: '1'
-            type: nvidia.com/gpu
+            resourceCount: '1'
+            resourceType: nvidia.com/gpu
     exec-run-mt-bench-op:
       container:
         args:
@@ -1435,8 +1465,11 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          \ \nexport PIP_DISABLE_PIP_VERSION_CHECK=1\ntmp=$(mktemp -d)\npython3 -m\
+          \ venv \"$tmp/venv\" --system-site-packages\n. \"$tmp/venv/bin/activate\"\
+          \n python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'vllm' && \"\
           $0\" \"$@\"\n"
         - sh
         - -ec
@@ -1560,6 +1593,8 @@ deploymentSpec:
           ),\n        )\n\n    return outputs(best_model=best_model, best_score=best_score)\n\
           \n"
         env:
+        - name: PYTHONPATH
+          value: $PYTHONPATH:/opt/app-root/lib64/python3.11/site-packages/
         - name: HOME
           value: /tmp
         - name: HF_HOME
@@ -1567,8 +1602,8 @@ deploymentSpec:
         image: quay.io/redhat-et/ilab:1.2
         resources:
           accelerator:
-            count: '1'
-            type: nvidia.com/gpu
+            resourceCount: '1'
+            resourceType: nvidia.com/gpu
     exec-sdg-op:
       container:
         args:
@@ -1581,7 +1616,9 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ \nexport PIP_DISABLE_PIP_VERSION_CHECK=1\ntmp=$(mktemp -d)\npython3 -m\
+          \ venv \"$tmp/venv\" --system-site-packages\n. \"$tmp/venv/bin/activate\"\
+          \n python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
           $0\" \"$@\"\n"
         - sh
@@ -1626,6 +1663,8 @@ deploymentSpec:
           value: /tmp
         - name: HF_HOME
           value: /tmp
+        - name: PYTHONPATH
+          value: $PYTHONPATH:/opt/app-root/lib64/python3.11/site-packages/
         image: quay.io/redhat-et/ilab:1.2
     exec-sdg-to-artifact-op:
       container:
