@@ -1,0 +1,57 @@
+apiVersion: serving.kserve.io/v1alpha1
+kind: ServingRuntime
+metadata:
+  annotations:
+    opendatahub.io/accelerator-name: migrated-gpu
+    opendatahub.io/apiProtocol: REST
+    opendatahub.io/recommended-accelerators: '["nvidia.com/gpu"]'
+    opendatahub.io/template-display-name: vLLM ServingRuntime for KServe
+    opendatahub.io/template-name: vllm-runtime
+    openshift.io/display-name: mixtral
+  creationTimestamp: "2024-10-25T15:59:12Z"
+  generation: 3
+  labels:
+    opendatahub.io/dashboard: "true"
+  name: mixtral
+  namespace: labels
+spec:
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8080"
+  containers:
+  - args:
+    - --port=8080
+    - --model=/mnt/model
+    - --served-model-name={{.Name}}
+    - --distributed-executor-backend=mp
+    command:
+    - python
+    - -m
+    - vllm.entrypoints.openai.api_server
+    env:
+    - name: HF_HOME
+      value: /tmp/hf_home
+    image: quay.io/modh/vllm@sha256:3c56d4c2a5a9565e8b07ba17a6624290c4fb39ac9097b99b946326c09a8b40c8
+    name: kserve-container
+    ports:
+    - containerPort: 8080
+      protocol: TCP
+    volumeMounts:
+    - mountPath: /dev/shm
+      name: shm
+    - mountPath: /mnt
+      name: mixtral-serve
+  multiModel: false
+  storageHelper:
+    disabled: true
+  supportedModelFormats:
+  - autoSelect: true
+    name: vLLM
+  volumes:
+  - name: mixtral-serve
+    persistentVolumeClaim:
+      claimName: mixtral-serving-ilab
+  - emptyDir:
+      medium: Memory
+      sizeLimit: 2Gi
+    name: shm
