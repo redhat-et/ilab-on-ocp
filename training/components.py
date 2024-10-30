@@ -142,7 +142,7 @@ def pytorchjob_manifest_op(
         path_to_model = list_phase1_final_model()
         path_to_data = "/input_data/skills_processed_data/data.jsonl"
 
-    image = "registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2"
+    image = "quay.io/redhat-et/ilab:1.2"
 
     manifest = inspect.cleandoc(
         f"""

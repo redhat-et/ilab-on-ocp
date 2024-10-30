@@ -1099,7 +1099,7 @@ def sdg_op(
 
     taxonomy_base = "main" if repo_branch or (repo_pr and int(repo_pr) > 0) else "empty"
 
-    print("Generating syntetic dataset for:")
+    print("Generating synthetic dataset for:")
     print()
     print(read_taxonomy(taxonomy, taxonomy_base))
 

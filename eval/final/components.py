@@ -4,15 +4,11 @@ from typing import List, NamedTuple
 
 from kfp.dsl import Artifact, Dataset, Input, Model, Output, component, importer
 
-from utils.consts import EVAL_IMAGE, PYTHON_IMAGE
+from utils.consts import PYTHON_IMAGE, RHELAI_IMAGE
 
 
-# TODO: update to ilab image, already has vLLM installed
 @component(
-    base_image=EVAL_IMAGE,
-    packages_to_install=[
-        "vllm",
-    ],
+    base_image=RHELAI_IMAGE,
 )
 def run_final_eval_op(
     mmlu_branch_output: Output[Artifact],

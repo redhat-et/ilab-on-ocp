@@ -4,7 +4,7 @@ from typing import Optional
 
 from kfp import dsl
 
-IMAGE = "quay.io/tcoufal/ilab-sdg:latest"
+from utils.consts import RHELAI_IMAGE
 
 
 @dsl.container_component
@@ -27,7 +27,7 @@ def git_clone_op(
     )
 
 
-@dsl.component(base_image=IMAGE)
+@dsl.component(base_image=RHELAI_IMAGE)
 def sdg_op(
     num_instructions_to_generate: int,
     pipeline: str,
@@ -63,7 +63,7 @@ def sdg_op(
 
     taxonomy_base = "main" if repo_branch or (repo_pr and int(repo_pr) > 0) else "empty"
 
-    print("Generating syntetic dataset for:")
+    print("Generating synthetic dataset for:")
     print()
     print(read_taxonomy(taxonomy.path, taxonomy_base))
 
