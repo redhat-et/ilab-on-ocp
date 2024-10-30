@@ -1191,15 +1191,26 @@ deploymentSpec:
           \ os\n    import subprocess\n\n    import torch\n    from instructlab.eval.mmlu\
           \ import MMLU_TASKS, MMLUBranchEvaluator\n    from instructlab.eval.mt_bench\
           \ import MTBenchBranchEvaluator\n    from instructlab.model.evaluate import\
-          \ qa_pairs_to_qna_to_avg_scores, sort_score\n\n    print(\"Starting Final\
-          \ Eval...\")\n\n    def launch_vllm(\n        model_path: str, gpu_count:\
-          \ int, retries: int = 120, delay: int = 10\n    ) -> tuple:\n        import\
-          \ subprocess\n        import sys\n        import time\n\n        import\
-          \ requests\n        from instructlab.model.backends.common import free_tcp_ipv4_port\n\
-          \n        free_port = free_tcp_ipv4_port(\"127.0.0.1\")\n        port =\
-          \ str(free_port)\n        vllm_server = f\"http://127.0.0.1:{port}/v1\"\n\
-          \n        command = [\n            sys.executable,\n            \"-m\",\n\
-          \            \"vllm.entrypoints.openai.api_server\",\n            \"--port\"\
+          \ qa_pairs_to_qna_to_avg_scores, sort_score\n\n    if judge_ca_cert := os.getenv(\"\
+          JUDGE_CA_CERT_PATH\"):\n        import httpx\n        import openai\n\n\
+          \        # Create a custom HTTP client\n        class CustomHttpClient(httpx.Client):\n\
+          \            def __init__(self, *args, **kwargs):\n                # Use\
+          \ the custom CA certificate\n                kwargs.setdefault(\"verify\"\
+          , judge_ca_cert)\n                super().__init__(*args, **kwargs)\n\n\
+          \        # Create a new OpenAI class that uses the custom HTTP client\n\
+          \        class CustomOpenAI(openai.OpenAI):\n            def __init__(self,\
+          \ *args, **kwargs):\n                custom_client = CustomHttpClient()\n\
+          \                super().__init__(http_client=custom_client, *args, **kwargs)\n\
+          \n        # Monkey patch the OpenAI class in the openai module, so that\
+          \ the eval lib can use it\n        openai.OpenAI = CustomOpenAI\n\n    print(\"\
+          Starting Final Eval...\")\n\n    def launch_vllm(\n        model_path: str,\
+          \ gpu_count: int, retries: int = 120, delay: int = 10\n    ) -> tuple:\n\
+          \        import subprocess\n        import sys\n        import time\n\n\
+          \        import requests\n        from instructlab.model.backends.common\
+          \ import free_tcp_ipv4_port\n\n        free_port = free_tcp_ipv4_port(\"\
+          127.0.0.1\")\n        port = str(free_port)\n        vllm_server = f\"http://127.0.0.1:{port}/v1\"\
+          \n\n        command = [\n            sys.executable,\n            \"-m\"\
+          ,\n            \"vllm.entrypoints.openai.api_server\",\n            \"--port\"\
           ,\n            port,\n            \"--model\",\n            model_path,\n\
           \        ]\n        if gpu_count > 0:\n            command += [\n      \
           \          \"--tensor-parallel-size\",\n                str(gpu_count),\n\
@@ -1446,26 +1457,38 @@ deploymentSpec:
           \ Optional[str] = None,\n    device: str = None,\n    best_score_file: Optional[str]\
           \ = None,\n) -> NamedTuple(\"outputs\", best_model=str, best_score=float):\n\
           \    import json\n    import os\n    import subprocess\n\n    import torch\n\
-          \    from instructlab.eval.mt_bench import MTBenchEvaluator\n\n    def launch_vllm(\n\
-          \        model_path: str, gpu_count: int, retries: int = 120, delay: int\
-          \ = 10\n    ) -> tuple:\n        import subprocess\n        import sys\n\
-          \        import time\n\n        import requests\n        from instructlab.model.backends.common\
-          \ import free_tcp_ipv4_port\n\n        free_port = free_tcp_ipv4_port(\"\
-          127.0.0.1\")\n        port = str(free_port)\n        vllm_server = f\"http://127.0.0.1:{port}/v1\"\
-          \n\n        command = [\n            sys.executable,\n            \"-m\"\
-          ,\n            \"vllm.entrypoints.openai.api_server\",\n            \"--port\"\
-          ,\n            port,\n            \"--model\",\n            model_path,\n\
-          \        ]\n        if gpu_count > 0:\n            command += [\n      \
-          \          \"--tensor-parallel-size\",\n                str(gpu_count),\n\
-          \            ]\n\n        process = subprocess.Popen(args=command)\n\n \
-          \       print(f\"Waiting for vLLM server to start at {vllm_server}...\"\
-          )\n\n        for attempt in range(retries):\n            try:\n        \
-          \        response = requests.get(f\"{vllm_server}/models\")\n          \
-          \      if response.status_code == 200:\n                    print(f\"vLLM\
-          \ server is up and running at {vllm_server}.\")\n                    return\
-          \ process, vllm_server\n            except requests.ConnectionError:\n \
-          \               pass\n\n            print(\n                f\"Server not\
-          \ available yet, retrying in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\
+          \    from instructlab.eval.mt_bench import MTBenchEvaluator\n\n    if judge_ca_cert\
+          \ := os.getenv(\"JUDGE_CA_CERT_PATH\"):\n        import httpx\n        import\
+          \ openai\n\n        # Create a custom HTTP client\n        class CustomHttpClient(httpx.Client):\n\
+          \            def __init__(self, *args, **kwargs):\n                # Use\
+          \ the custom CA certificate\n                kwargs.setdefault(\"verify\"\
+          , judge_ca_cert)\n                super().__init__(*args, **kwargs)\n\n\
+          \        # Create a new OpenAI class that uses the custom HTTP client\n\
+          \        class CustomOpenAI(openai.OpenAI):\n            def __init__(self,\
+          \ *args, **kwargs):\n                custom_client = CustomHttpClient()\n\
+          \                super().__init__(http_client=custom_client, *args, **kwargs)\n\
+          \n        # Monkey patch the OpenAI class in the openai module, so that\
+          \ the eval lib can use it\n        openai.OpenAI = CustomOpenAI\n\n    def\
+          \ launch_vllm(\n        model_path: str, gpu_count: int, retries: int =\
+          \ 120, delay: int = 10\n    ) -> tuple:\n        import subprocess\n   \
+          \     import sys\n        import time\n\n        import requests\n     \
+          \   from instructlab.model.backends.common import free_tcp_ipv4_port\n\n\
+          \        free_port = free_tcp_ipv4_port(\"127.0.0.1\")\n        port = str(free_port)\n\
+          \        vllm_server = f\"http://127.0.0.1:{port}/v1\"\n\n        command\
+          \ = [\n            sys.executable,\n            \"-m\",\n            \"\
+          vllm.entrypoints.openai.api_server\",\n            \"--port\",\n       \
+          \     port,\n            \"--model\",\n            model_path,\n       \
+          \ ]\n        if gpu_count > 0:\n            command += [\n             \
+          \   \"--tensor-parallel-size\",\n                str(gpu_count),\n     \
+          \       ]\n\n        process = subprocess.Popen(args=command)\n\n      \
+          \  print(f\"Waiting for vLLM server to start at {vllm_server}...\")\n\n\
+          \        for attempt in range(retries):\n            try:\n            \
+          \    response = requests.get(f\"{vllm_server}/models\")\n              \
+          \  if response.status_code == 200:\n                    print(f\"vLLM server\
+          \ is up and running at {vllm_server}.\")\n                    return process,\
+          \ vllm_server\n            except requests.ConnectionError:\n          \
+          \      pass\n\n            print(\n                f\"Server not available\
+          \ yet, retrying in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\
           \n            )\n            time.sleep(delay)\n\n        raise RuntimeError(\n\
           \            f\"Failed to start vLLM server at {vllm_server} after {retries}\
           \ retries.\"\n        )\n\n    def shutdown_vllm(process: subprocess.Popen,\
