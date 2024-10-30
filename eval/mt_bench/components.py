@@ -28,6 +28,26 @@ def run_mt_bench_op(
     import torch
     from instructlab.eval.mt_bench import MTBenchEvaluator
 
+    if judge_ca_cert := os.getenv("JUDGE_CA_CERT_PATH"):
+        import httpx
+        import openai
+
+        # Create a custom HTTP client
+        class CustomHttpClient(httpx.Client):
+            def __init__(self, *args, **kwargs):
+                # Use the custom CA certificate
+                kwargs.setdefault("verify", judge_ca_cert)
+                super().__init__(*args, **kwargs)
+
+        # Create a new OpenAI class that uses the custom HTTP client
+        class CustomOpenAI(openai.OpenAI):
+            def __init__(self, *args, **kwargs):
+                custom_client = CustomHttpClient()
+                super().__init__(http_client=custom_client, *args, **kwargs)
+
+        # Monkey patch the OpenAI class in the openai module, so that the eval lib can use it
+        openai.OpenAI = CustomOpenAI
+
     def launch_vllm(
         model_path: str, gpu_count: int, retries: int = 120, delay: int = 10
     ) -> tuple:
