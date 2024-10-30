@@ -315,7 +315,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         ###
 
         models_list_2_task = list_models_in_directory_op(
-            models_folder="/output/model/model/hf_format",
+            models_folder="/output/phase_2/model/hf_format",
         )
         models_list_2_task.set_caching_options(False)
 
@@ -324,7 +324,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         mount_pvc(
             task=models_list_2_task,
             pvc_name=output_pvc_task.output,
-            mount_path="/output/model",
+            mount_path="/output",
         )
 
         ###
@@ -333,7 +333,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
         run_mt_bench_task = run_mt_bench_op(
             models_list=models_list_2_task.output,
-            models_path_prefix="/output/model/hf_format",
+            models_path_prefix="/output/phase_2/model/hf_format",
             max_workers=max_workers,
             merge_system_user_message=merge_system_user_message,
             device=device,
@@ -360,7 +360,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         use_secret_as_env(run_mt_bench_task, JUDGE_SECRET, {"api_key": "JUDGE_API_KEY"})
 
         final_eval_task = run_final_eval_op(
-            candidate_model="/output/model/hf_format/candidate_model",
+            candidate_model="/output/phase_2/model/hf_format/candidate_model",
             taxonomy=git_clone_task.outputs["taxonomy"],
             tasks=sdg_task.outputs["sdg"],
             # TODO: DO we need both candidate_branch and base_branch

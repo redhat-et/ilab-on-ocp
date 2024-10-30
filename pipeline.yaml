@@ -875,7 +875,7 @@ deploymentSpec:
           \  save_samples: int = 0,\n    max_batch_len: int = 20000,\n    seed: int\
           \ = 42,\n) -> NamedTuple(\"outputs\", manifest=str, name=str):\n    import\
           \ inspect\n    import os\n\n    def list_phase1_final_model():\n       \
-          \ model_dir = \"/output/model/hf_format\"\n        models = os.listdir(model_dir)\n\
+          \ model_dir = \"/output/phase_1/model/hf_format\"\n        models = os.listdir(model_dir)\n\
           \        newest_idx = max(\n            (os.path.getmtime(f\"{model_dir}/{model}\"\
           ), i)\n            for i, model in enumerate(models)\n        )[-1]\n  \
           \      newest_model = models[newest_idx]\n        return f\"{model_dir}/{newest_model}\"\
@@ -897,69 +897,69 @@ deploymentSpec:
           \          - |\n                          echo \"Running phase {phase_num}\"\
           \n                          echo \"Using {path_to_model} model for training\"\
           \n                          echo \"Using {path_to_data} data for training\"\
-          \n                          mkdir -p /output/model;\n                  \
-          \        mkdir -p /output/data;\n                          torchrun --nnodes\
-          \ {nnodes} \\\n                              --nproc_per_node {nproc_per_node}\
-          \ \\\n                              --node_rank \\$(RANK) \\\n         \
-          \                     --rdzv_endpoint \\$(MASTER_ADDR):\\$(MASTER_PORT)\
-          \ \\\n                              -m instructlab.training.main_ds \\\n\
-          \                              --model_name_or_path={path_to_model} \\\n\
-          \                              --data_path={path_to_data} \\\n         \
-          \                     --output_dir=/output/model \\\n                  \
-          \            --num_epochs={num_epochs} \\\n                            \
-          \  --effective_batch_size={effective_batch_size} \\\n                  \
-          \            --learning_rate={learning_rate} \\\n                      \
-          \        --num_warmup_steps={num_warmup_steps} \\\n                    \
-          \          --save_samples={save_samples} \\\n                          \
-          \    --log_level=INFO \\\n                              --max_batch_len={max_batch_len}\
-          \ \\\n                              --seed={seed} \\\n                 \
-          \             --cpu_offload_optimizer \\\n                             \
-          \ --cpu_offload_params \\\n                              --distributed_training_framework\
-          \ fsdp \\\n                              --is_granite \\\n             \
-          \                 --checkpoint_at_epoch\n                      command:\n\
-          \                        - /bin/bash\n                        - '-c'\n \
-          \                       - '--'\n                      image: {image}\n \
-          \                     name: pytorch\n                      volumeMounts:\n\
-          \                        - mountPath: /input_data\n                    \
-          \      name: input-data\n                          readOnly: true\n    \
-          \                    - mountPath: /input_model\n                       \
-          \   name: model\n                          readOnly: true\n            \
-          \            - mountPath: /output\n                          name: output\n\
-          \                      env:\n                        - name: NNODES\n  \
-          \                        value: \\\\\"{nnodes}\\\\\"\n                 \
-          \       - name: NPROC_PER_NODE\n                          value: \\\\\"\
-          {nproc_per_node}\\\\\"\n                        - name: XDG_CACHE_HOME\n\
-          \                          value: /tmp\n                        - name:\
-          \ TRITON_CACHE_DIR\n                          value: /tmp\n            \
-          \            - name: HF_HOME\n                          value: /tmp\n  \
-          \                      - name: TRANSFORMERS_CACHE\n                    \
-          \      value: /tmp\n                      resources:\n                 \
-          \       requests:\n                          cpu: 8\n                  \
-          \        \"nvidia.com/gpu\": {nproc_per_node}\n                        limits:\n\
-          \                          cpu: 8\n                          \"nvidia.com/gpu\"\
-          : {nproc_per_node}\n                  volumes:\n                    - name:\
-          \ input-data\n                      persistentVolumeClaim:\n           \
-          \             claimName: {input_pvc_name}\n                    - name: model\n\
-          \                      persistentVolumeClaim:\n                        claimName:\
-          \ {model_pvc_name}\n                    - name: output\n               \
-          \       persistentVolumeClaim:\n                        claimName: {output_pvc_name}\n\
-          \            Worker:\n              replicas: {nnodes-1}\n             \
-          \ restartPolicy: OnFailure\n              template:\n                metadata:\n\
-          \                  annotations:\n                    sidecar.istio.io/inject:\
-          \ 'false'\n                spec:\n                  containers:\n      \
-          \              - args:\n                        - |\n                  \
-          \        echo \"Running phase {phase_num}\"\n                          echo\
-          \ \"Using {path_to_model} model for training\"\n                       \
-          \   echo \"Using {path_to_data} data for training\"\n                  \
-          \        mkdir -p /tmp/model;\n                          torchrun --nnodes\
-          \ {nnodes} \\\n                            --nproc_per_node {nproc_per_node}\
-          \ \\\n                            --node_rank \\$(RANK) \\\n           \
-          \                 --rdzv_endpoint \\$(MASTER_ADDR):\\$(MASTER_PORT) \\\n\
-          \                            -m instructlab.training.main_ds \\\n      \
-          \                      --model_name_or_path={path_to_model} \\\n       \
-          \                     --data_path={path_to_data} \\\n                  \
-          \          --output_dir=/tmp/model \\\n                            --num_epochs={num_epochs}\
-          \ \\\n                            --effective_batch_size={effective_batch_size}\
+          \n                          mkdir -p /output/phase_{phase_num}/model;\n\
+          \                          mkdir -p /output/data;\n                    \
+          \      torchrun --nnodes {nnodes} \\\n                              --nproc_per_node\
+          \ {nproc_per_node} \\\n                              --node_rank \\$(RANK)\
+          \ \\\n                              --rdzv_endpoint \\$(MASTER_ADDR):\\\
+          $(MASTER_PORT) \\\n                              -m instructlab.training.main_ds\
+          \ \\\n                              --model_name_or_path={path_to_model}\
+          \ \\\n                              --data_path={path_to_data} \\\n    \
+          \                          --output_dir=/output/phase_{phase_num}/model\
+          \ \\\n                              --num_epochs={num_epochs} \\\n     \
+          \                         --effective_batch_size={effective_batch_size}\
+          \ \\\n                              --learning_rate={learning_rate} \\\n\
+          \                              --num_warmup_steps={num_warmup_steps} \\\n\
+          \                              --save_samples={save_samples} \\\n      \
+          \                        --log_level=INFO \\\n                         \
+          \     --max_batch_len={max_batch_len} \\\n                             \
+          \ --seed={seed} \\\n                              --cpu_offload_optimizer\
+          \ \\\n                              --cpu_offload_params \\\n          \
+          \                    --distributed_training_framework fsdp \\\n        \
+          \                      --is_granite \\\n                              --checkpoint_at_epoch\n\
+          \                      command:\n                        - /bin/bash\n \
+          \                       - '-c'\n                        - '--'\n       \
+          \               image: {image}\n                      name: pytorch\n  \
+          \                    volumeMounts:\n                        - mountPath:\
+          \ /input_data\n                          name: input-data\n            \
+          \              readOnly: true\n                        - mountPath: /input_model\n\
+          \                          name: model\n                          readOnly:\
+          \ true\n                        - mountPath: /output\n                 \
+          \         name: output\n                      env:\n                   \
+          \     - name: NNODES\n                          value: \\\\\"{nnodes}\\\\\
+          \"\n                        - name: NPROC_PER_NODE\n                   \
+          \       value: \\\\\"{nproc_per_node}\\\\\"\n                        - name:\
+          \ XDG_CACHE_HOME\n                          value: /tmp\n              \
+          \          - name: TRITON_CACHE_DIR\n                          value: /tmp\n\
+          \                        - name: HF_HOME\n                          value:\
+          \ /tmp\n                        - name: TRANSFORMERS_CACHE\n           \
+          \               value: /tmp\n                      resources:\n        \
+          \                requests:\n                          cpu: 8\n         \
+          \                 \"nvidia.com/gpu\": {nproc_per_node}\n               \
+          \         limits:\n                          cpu: 8\n                  \
+          \        \"nvidia.com/gpu\": {nproc_per_node}\n                  volumes:\n\
+          \                    - name: input-data\n                      persistentVolumeClaim:\n\
+          \                        claimName: {input_pvc_name}\n                 \
+          \   - name: model\n                      persistentVolumeClaim:\n      \
+          \                  claimName: {model_pvc_name}\n                    - name:\
+          \ output\n                      persistentVolumeClaim:\n               \
+          \         claimName: {output_pvc_name}\n            Worker:\n          \
+          \    replicas: {nnodes-1}\n              restartPolicy: OnFailure\n    \
+          \          template:\n                metadata:\n                  annotations:\n\
+          \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
+          \                  containers:\n                    - args:\n          \
+          \              - |\n                          echo \"Running phase {phase_num}\"\
+          \n                          echo \"Using {path_to_model} model for training\"\
+          \n                          echo \"Using {path_to_data} data for training\"\
+          \n                          mkdir -p /tmp/model;\n                     \
+          \     torchrun --nnodes {nnodes} \\\n                            --nproc_per_node\
+          \ {nproc_per_node} \\\n                            --node_rank \\$(RANK)\
+          \ \\\n                            --rdzv_endpoint \\$(MASTER_ADDR):\\$(MASTER_PORT)\
+          \ \\\n                            -m instructlab.training.main_ds \\\n \
+          \                           --model_name_or_path={path_to_model} \\\n  \
+          \                          --data_path={path_to_data} \\\n             \
+          \               --output_dir=/tmp/model \\\n                           \
+          \ --num_epochs={num_epochs} \\\n                            --effective_batch_size={effective_batch_size}\
           \ \\\n                            --learning_rate={learning_rate} \\\n \
           \                           --num_warmup_steps={num_warmup_steps} \\\n \
           \                           --save_samples={save_samples} \\\n         \
@@ -1032,7 +1032,7 @@ deploymentSpec:
           \  save_samples: int = 0,\n    max_batch_len: int = 20000,\n    seed: int\
           \ = 42,\n) -> NamedTuple(\"outputs\", manifest=str, name=str):\n    import\
           \ inspect\n    import os\n\n    def list_phase1_final_model():\n       \
-          \ model_dir = \"/output/model/hf_format\"\n        models = os.listdir(model_dir)\n\
+          \ model_dir = \"/output/phase_1/model/hf_format\"\n        models = os.listdir(model_dir)\n\
           \        newest_idx = max(\n            (os.path.getmtime(f\"{model_dir}/{model}\"\
           ), i)\n            for i, model in enumerate(models)\n        )[-1]\n  \
           \      newest_model = models[newest_idx]\n        return f\"{model_dir}/{newest_model}\"\
@@ -1054,69 +1054,69 @@ deploymentSpec:
           \          - |\n                          echo \"Running phase {phase_num}\"\
           \n                          echo \"Using {path_to_model} model for training\"\
           \n                          echo \"Using {path_to_data} data for training\"\
-          \n                          mkdir -p /output/model;\n                  \
-          \        mkdir -p /output/data;\n                          torchrun --nnodes\
-          \ {nnodes} \\\n                              --nproc_per_node {nproc_per_node}\
-          \ \\\n                              --node_rank \\$(RANK) \\\n         \
-          \                     --rdzv_endpoint \\$(MASTER_ADDR):\\$(MASTER_PORT)\
-          \ \\\n                              -m instructlab.training.main_ds \\\n\
-          \                              --model_name_or_path={path_to_model} \\\n\
-          \                              --data_path={path_to_data} \\\n         \
-          \                     --output_dir=/output/model \\\n                  \
-          \            --num_epochs={num_epochs} \\\n                            \
-          \  --effective_batch_size={effective_batch_size} \\\n                  \
-          \            --learning_rate={learning_rate} \\\n                      \
-          \        --num_warmup_steps={num_warmup_steps} \\\n                    \
-          \          --save_samples={save_samples} \\\n                          \
-          \    --log_level=INFO \\\n                              --max_batch_len={max_batch_len}\
-          \ \\\n                              --seed={seed} \\\n                 \
-          \             --cpu_offload_optimizer \\\n                             \
-          \ --cpu_offload_params \\\n                              --distributed_training_framework\
-          \ fsdp \\\n                              --is_granite \\\n             \
-          \                 --checkpoint_at_epoch\n                      command:\n\
-          \                        - /bin/bash\n                        - '-c'\n \
-          \                       - '--'\n                      image: {image}\n \
-          \                     name: pytorch\n                      volumeMounts:\n\
-          \                        - mountPath: /input_data\n                    \
-          \      name: input-data\n                          readOnly: true\n    \
-          \                    - mountPath: /input_model\n                       \
-          \   name: model\n                          readOnly: true\n            \
-          \            - mountPath: /output\n                          name: output\n\
-          \                      env:\n                        - name: NNODES\n  \
-          \                        value: \\\\\"{nnodes}\\\\\"\n                 \
-          \       - name: NPROC_PER_NODE\n                          value: \\\\\"\
-          {nproc_per_node}\\\\\"\n                        - name: XDG_CACHE_HOME\n\
-          \                          value: /tmp\n                        - name:\
-          \ TRITON_CACHE_DIR\n                          value: /tmp\n            \
-          \            - name: HF_HOME\n                          value: /tmp\n  \
-          \                      - name: TRANSFORMERS_CACHE\n                    \
-          \      value: /tmp\n                      resources:\n                 \
-          \       requests:\n                          cpu: 8\n                  \
-          \        \"nvidia.com/gpu\": {nproc_per_node}\n                        limits:\n\
-          \                          cpu: 8\n                          \"nvidia.com/gpu\"\
-          : {nproc_per_node}\n                  volumes:\n                    - name:\
-          \ input-data\n                      persistentVolumeClaim:\n           \
-          \             claimName: {input_pvc_name}\n                    - name: model\n\
-          \                      persistentVolumeClaim:\n                        claimName:\
-          \ {model_pvc_name}\n                    - name: output\n               \
-          \       persistentVolumeClaim:\n                        claimName: {output_pvc_name}\n\
-          \            Worker:\n              replicas: {nnodes-1}\n             \
-          \ restartPolicy: OnFailure\n              template:\n                metadata:\n\
-          \                  annotations:\n                    sidecar.istio.io/inject:\
-          \ 'false'\n                spec:\n                  containers:\n      \
-          \              - args:\n                        - |\n                  \
-          \        echo \"Running phase {phase_num}\"\n                          echo\
-          \ \"Using {path_to_model} model for training\"\n                       \
-          \   echo \"Using {path_to_data} data for training\"\n                  \
-          \        mkdir -p /tmp/model;\n                          torchrun --nnodes\
-          \ {nnodes} \\\n                            --nproc_per_node {nproc_per_node}\
-          \ \\\n                            --node_rank \\$(RANK) \\\n           \
-          \                 --rdzv_endpoint \\$(MASTER_ADDR):\\$(MASTER_PORT) \\\n\
-          \                            -m instructlab.training.main_ds \\\n      \
-          \                      --model_name_or_path={path_to_model} \\\n       \
-          \                     --data_path={path_to_data} \\\n                  \
-          \          --output_dir=/tmp/model \\\n                            --num_epochs={num_epochs}\
-          \ \\\n                            --effective_batch_size={effective_batch_size}\
+          \n                          mkdir -p /output/phase_{phase_num}/model;\n\
+          \                          mkdir -p /output/data;\n                    \
+          \      torchrun --nnodes {nnodes} \\\n                              --nproc_per_node\
+          \ {nproc_per_node} \\\n                              --node_rank \\$(RANK)\
+          \ \\\n                              --rdzv_endpoint \\$(MASTER_ADDR):\\\
+          $(MASTER_PORT) \\\n                              -m instructlab.training.main_ds\
+          \ \\\n                              --model_name_or_path={path_to_model}\
+          \ \\\n                              --data_path={path_to_data} \\\n    \
+          \                          --output_dir=/output/phase_{phase_num}/model\
+          \ \\\n                              --num_epochs={num_epochs} \\\n     \
+          \                         --effective_batch_size={effective_batch_size}\
+          \ \\\n                              --learning_rate={learning_rate} \\\n\
+          \                              --num_warmup_steps={num_warmup_steps} \\\n\
+          \                              --save_samples={save_samples} \\\n      \
+          \                        --log_level=INFO \\\n                         \
+          \     --max_batch_len={max_batch_len} \\\n                             \
+          \ --seed={seed} \\\n                              --cpu_offload_optimizer\
+          \ \\\n                              --cpu_offload_params \\\n          \
+          \                    --distributed_training_framework fsdp \\\n        \
+          \                      --is_granite \\\n                              --checkpoint_at_epoch\n\
+          \                      command:\n                        - /bin/bash\n \
+          \                       - '-c'\n                        - '--'\n       \
+          \               image: {image}\n                      name: pytorch\n  \
+          \                    volumeMounts:\n                        - mountPath:\
+          \ /input_data\n                          name: input-data\n            \
+          \              readOnly: true\n                        - mountPath: /input_model\n\
+          \                          name: model\n                          readOnly:\
+          \ true\n                        - mountPath: /output\n                 \
+          \         name: output\n                      env:\n                   \
+          \     - name: NNODES\n                          value: \\\\\"{nnodes}\\\\\
+          \"\n                        - name: NPROC_PER_NODE\n                   \
+          \       value: \\\\\"{nproc_per_node}\\\\\"\n                        - name:\
+          \ XDG_CACHE_HOME\n                          value: /tmp\n              \
+          \          - name: TRITON_CACHE_DIR\n                          value: /tmp\n\
+          \                        - name: HF_HOME\n                          value:\
+          \ /tmp\n                        - name: TRANSFORMERS_CACHE\n           \
+          \               value: /tmp\n                      resources:\n        \
+          \                requests:\n                          cpu: 8\n         \
+          \                 \"nvidia.com/gpu\": {nproc_per_node}\n               \
+          \         limits:\n                          cpu: 8\n                  \
+          \        \"nvidia.com/gpu\": {nproc_per_node}\n                  volumes:\n\
+          \                    - name: input-data\n                      persistentVolumeClaim:\n\
+          \                        claimName: {input_pvc_name}\n                 \
+          \   - name: model\n                      persistentVolumeClaim:\n      \
+          \                  claimName: {model_pvc_name}\n                    - name:\
+          \ output\n                      persistentVolumeClaim:\n               \
+          \         claimName: {output_pvc_name}\n            Worker:\n          \
+          \    replicas: {nnodes-1}\n              restartPolicy: OnFailure\n    \
+          \          template:\n                metadata:\n                  annotations:\n\
+          \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
+          \                  containers:\n                    - args:\n          \
+          \              - |\n                          echo \"Running phase {phase_num}\"\
+          \n                          echo \"Using {path_to_model} model for training\"\
+          \n                          echo \"Using {path_to_data} data for training\"\
+          \n                          mkdir -p /tmp/model;\n                     \
+          \     torchrun --nnodes {nnodes} \\\n                            --nproc_per_node\
+          \ {nproc_per_node} \\\n                            --node_rank \\$(RANK)\
+          \ \\\n                            --rdzv_endpoint \\$(MASTER_ADDR):\\$(MASTER_PORT)\
+          \ \\\n                            -m instructlab.training.main_ds \\\n \
+          \                           --model_name_or_path={path_to_model} \\\n  \
+          \                          --data_path={path_to_data} \\\n             \
+          \               --output_dir=/tmp/model \\\n                           \
+          \ --num_epochs={num_epochs} \\\n                            --effective_batch_size={effective_batch_size}\
           \ \\\n                            --learning_rate={learning_rate} \\\n \
           \                           --num_warmup_steps={num_warmup_steps} \\\n \
           \                           --save_samples={save_samples} \\\n         \
@@ -1920,7 +1920,7 @@ root:
           parameters:
             models_folder:
               runtimeValue:
-                constant: /output/model/model/hf_format
+                constant: /output/phase_2/model/hf_format
         taskInfo:
           name: list-models-in-directory-op
       pvc-to-artifact-op:
@@ -2084,7 +2084,7 @@ root:
               componentInputParameter: repo_branch
             candidate_model:
               runtimeValue:
-                constant: /output/model/hf_format/candidate_model
+                constant: /output/phase_2/model/hf_format/candidate_model
             device:
               componentInputParameter: device
             few_shots:
@@ -2118,7 +2118,7 @@ root:
                 producerTask: list-models-in-directory-op
             models_path_prefix:
               runtimeValue:
-                constant: /output/model/hf_format
+                constant: /output/phase_2/model/hf_format
         taskInfo:
           name: run-mt-bench-op
       sdg-op:
@@ -2257,7 +2257,7 @@ platforms:
               producerTask: createpvc-2
         exec-list-models-in-directory-op:
           pvcMount:
-          - mountPath: /output/model
+          - mountPath: /output
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-3

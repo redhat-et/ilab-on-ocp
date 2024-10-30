@@ -123,7 +123,7 @@ def pytorchjob_manifest_op(
     import os
 
     def list_phase1_final_model():
-        model_dir = "/output/model/hf_format"
+        model_dir = "/output/phase_1/model/hf_format"
         models = os.listdir(model_dir)
         newest_idx = max(
             (os.path.getmtime(f"{model_dir}/{model}"), i)
@@ -167,7 +167,7 @@ def pytorchjob_manifest_op(
                           echo "Running phase {phase_num}"
                           echo "Using {path_to_model} model for training"
                           echo "Using {path_to_data} data for training"
-                          mkdir -p /output/model;
+                          mkdir -p /output/phase_{phase_num}/model;
                           mkdir -p /output/data;
                           torchrun --nnodes {nnodes} \
                               --nproc_per_node {nproc_per_node} \
@@ -176,7 +176,7 @@ def pytorchjob_manifest_op(
                               -m instructlab.training.main_ds \
                               --model_name_or_path={path_to_model} \
                               --data_path={path_to_data} \
-                              --output_dir=/output/model \
+                              --output_dir=/output/phase_{phase_num}/model \
                               --num_epochs={num_epochs} \
                               --effective_batch_size={effective_batch_size} \
                               --learning_rate={learning_rate} \
