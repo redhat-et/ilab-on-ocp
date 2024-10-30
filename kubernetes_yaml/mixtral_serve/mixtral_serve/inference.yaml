@@ -1,0 +1,51 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  annotations:
+    openshift.io/display-name: mixtral
+    security.opendatahub.io/enable-auth: "true"
+    serving.knative.openshift.io/enablePassthrough: "true"
+    sidecar.istio.io/inject: "true"
+    sidecar.istio.io/rewriteAppHTTPProbers: "true"
+  creationTimestamp: "2024-10-29T19:14:46Z"
+  finalizers:
+  - inferenceservice.finalizers
+  generation: 5
+  labels:
+    opendatahub.io/dashboard: "true"
+  name: mixtral
+  namespace: labels
+  resourceVersion: "8869282"
+  uid: 433d76da-6c52-4b47-a3cd-ba3765e7b5bf
+spec:
+  predictor:
+    maxReplicas: 1
+    minReplicas: 1
+    model:
+      args:
+      - --dtype=bfloat16
+      - --tensor-parallel-size=4
+      - --enable-lora
+      - --max-lora-rank=64
+      - --lora-dtype=bfloat16
+      - --fully-sharded-loras
+      - --lora-modules
+      - skill-classifier-v3-clm=/mnt/skills
+      - text-classifier-knowledge-v3-clm=/mnt/knowledge
+      modelFormat:
+        name: vLLM
+      name: ""
+      resources:
+        limits:
+          cpu: "4"
+          memory: 40Gi
+          nvidia.com/gpu: "4"
+        requests:
+          cpu: "4"
+          memory: 40Gi
+          nvidia.com/gpu: "4"
+      runtime: mixtral
+    tolerations:
+    - effect: NoSchedule
+      key: nvidia.com/gpu
+      operator: Exists

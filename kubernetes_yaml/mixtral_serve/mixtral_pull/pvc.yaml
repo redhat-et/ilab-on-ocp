@@ -1,0 +1,11 @@
+## PVC to be used for model storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mixtral-serving-ilab
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Gi

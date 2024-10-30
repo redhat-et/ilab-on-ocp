@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: oras-copy-job
+spec:
+  template:
+    spec:
+      containers:
+      - name: oras-copy-knowledge
+        image: ghcr.io/oras-project/oras:v1.2.0
+        command: ["oras", "pull", "registry.redhat.io/rhelai1/knowledge-adapter-v3:1.2-1728663941", "--output", "/mnt/knowledge", "--registry-config", "/workspace/.docker"]
+        volumeMounts:
+        - name: docker-config
+          mountPath: /workspace/.docker
+          subPath: .dockerconfigjson  # Mount the Docker config as config.json
+        - name: model-pvc
+          mountPath: /mnt
+      - name: oras-copy-skills
+        image: ghcr.io/oras-project/oras:v1.2.0
+        command: ["oras", "pull", "registry.redhat.io/rhelai1/skills-adapter-v3:1.2-1728663941", "--output", "/mnt/skills", "--registry-config", "/workspace/.docker"]
+        volumeMounts:
+        - name: docker-config
+          mountPath: /workspace/.docker
+          subPath: .dockerconfigjson  # Mount the Docker config as config.json
+        - name: model-pvc
+          mountPath: /mnt
+      - name: oras-copy-model
+        image: ghcr.io/oras-project/oras:v1.2.0
+        command: ["oras", "pull", "registry.redhat.io/rhelai1/mixtral-8x7b-instruct-v0-1:1.2-1728663941", "--output", "/mnt/model", "--registry-config", "/workspace/.docker"]
+        volumeMounts:
+        - name: docker-config
+          mountPath: /workspace/.docker
+          subPath: .dockerconfigjson  # Mount the Docker config as config.json
+        - name: model-pvc
+          mountPath: /mnt
+      restartPolicy: Never
+      volumes:
+      - name: model-pvc
+        persistentVolumeClaim:
+          claimName: mixtral-serving-ilab
+      - name: docker-config
+        secret:
+          secretName: 7033380-ilab-pull-secret
+  backoffLimit: 4
