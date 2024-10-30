@@ -42,4 +42,3 @@ spec:
         secret:
           secretName: 7033380-ilab-pull-secret
   backoffLimit: 4
-
