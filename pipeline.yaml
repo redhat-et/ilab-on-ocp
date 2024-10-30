@@ -2302,6 +2302,8 @@ platforms:
               envVar: JUDGE_ENDPOINT
             - configMapKey: model
               envVar: JUDGE_NAME
+          imagePullSecret:
+          - secretName: redhat-et-ilab-botty-pull-secret
           pvcMount:
           - mountPath: /output
             taskOutputParameter:
@@ -2324,6 +2326,8 @@ platforms:
               envVar: JUDGE_ENDPOINT
             - configMapKey: model
               envVar: JUDGE_NAME
+          imagePullSecret:
+          - secretName: redhat-et-ilab-botty-pull-secret
           pvcMount:
           - mountPath: /output
             taskOutputParameter:
@@ -2342,6 +2346,8 @@ platforms:
               envVar: endpoint
             - configMapKey: model
               envVar: model
+          imagePullSecret:
+          - secretName: redhat-et-ilab-botty-pull-secret
           secretAsEnv:
           - keyToEnv:
             - envVar: api_key
