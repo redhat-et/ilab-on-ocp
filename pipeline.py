@@ -31,6 +31,7 @@ FEW_SHOTS = 5
 BATCH_SIZE = 8
 MAX_WORKERS = "auto"
 MERGE_SYSTEM_USER_MESSAGE = False
+KFP_PIPELINE_CACHE = False
 
 # training args
 NUM_EPOCHS_PHASE_1 = 2
@@ -113,6 +114,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         max_batch_len: int = MAX_BATCH_LEN,
         seed: int = SEED,
     ):
+        kfp_pipeline_cache = KFP_PIPELINE_CACHE
+
         # SDG stage
         git_clone_task = git_clone_op(
             repo_branch=repo_branch,
@@ -147,7 +150,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         model_to_pvc_task = artifact_to_pvc_op(
             data=model_to_artifact.outputs["model"], pvc_path="/model"
         )
-        model_to_pvc_task.set_caching_options(False)
+        model_to_pvc_task.set_caching_options(kfp_pipeline_cache)
         model_to_pvc_task.set_retry(3)
         mount_pvc(
             task=model_to_pvc_task, pvc_name=model_pvc_task.output, mount_path="/model"
@@ -168,7 +171,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         sdg_skills_to_pvc_task = artifact_to_pvc_op(
             data=data_processing_task.outputs["skills_processed_data"], pvc_path="/data"
         )
-        sdg_skills_to_pvc_task.set_caching_options(False)
+        sdg_skills_to_pvc_task.set_caching_options(kfp_pipeline_cache)
         mount_pvc(
             task=sdg_skills_to_pvc_task,
             pvc_name=sdg_input_pvc_task.output,
@@ -179,7 +182,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             data=data_processing_task.outputs["knowledge_processed_data"],
             pvc_path="/data",
         )
-        sdg_knowledge_to_pvc_task.set_caching_options(False)
+        sdg_knowledge_to_pvc_task.set_caching_options(kfp_pipeline_cache)
         mount_pvc(
             task=sdg_knowledge_to_pvc_task,
             pvc_name=sdg_input_pvc_task.output,
@@ -211,13 +214,13 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             max_batch_len=max_batch_len,
             seed=seed,
         )
-        pytorchjob_manifest_task.set_caching_options(False)
+        pytorchjob_manifest_task.set_caching_options(kfp_pipeline_cache)
 
         kubectl_apply_task = kubectl_apply_op(
             manifest=pytorchjob_manifest_task.outputs["manifest"]
         )
         kubectl_apply_task.after(sdg_knowledge_to_pvc_task, model_to_pvc_task)
-        kubectl_apply_task.set_caching_options(False)
+        kubectl_apply_task.set_caching_options(kfp_pipeline_cache)
 
         kubectl_wait_task = kubectl_wait_for_op(
             condition="condition=Succeeded",
@@ -225,7 +228,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             name=pytorchjob_manifest_task.outputs["name"],
         )
         kubectl_wait_task.after(kubectl_apply_task)
-        kubectl_wait_task.set_caching_options(False)
+        kubectl_wait_task.set_caching_options(kfp_pipeline_cache)
 
         # # MMLU Evaluation of models
 
@@ -289,7 +292,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             seed=seed,
         )
 
-        pytorchjob_manifest_2_task.set_caching_options(False)
+        pytorchjob_manifest_2_task.set_caching_options(kfp_pipeline_cache)
         pytorchjob_manifest_2_task.after(kubectl_wait_task)
 
         mount_pvc(
@@ -302,7 +305,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             manifest=pytorchjob_manifest_2_task.outputs["manifest"]
         )
         kubectl_apply_2_task.after(sdg_knowledge_to_pvc_task, model_to_pvc_task)
-        kubectl_apply_2_task.set_caching_options(False)
+        kubectl_apply_2_task.set_caching_options(kfp_pipeline_cache)
 
         kubectl_wait_2_task = kubectl_wait_for_op(
             condition="condition=Succeeded",
@@ -310,14 +313,14 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             name=pytorchjob_manifest_2_task.outputs["name"],
         )
         kubectl_wait_2_task.after(kubectl_apply_2_task)
-        kubectl_wait_2_task.set_caching_options(False)
+        kubectl_wait_2_task.set_caching_options(kfp_pipeline_cache)
 
         ###
 
         models_list_2_task = list_models_in_directory_op(
             models_folder="/output/model/model/hf_format",
         )
-        models_list_2_task.set_caching_options(False)
+        models_list_2_task.set_caching_options(kfp_pipeline_cache)
 
         models_list_2_task.after(kubectl_wait_2_task)
 
@@ -349,7 +352,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
         run_mt_bench_task.set_accelerator_type("nvidia.com/gpu")
         run_mt_bench_task.set_accelerator_limit(1)
-        run_mt_bench_task.set_caching_options(False)
+        run_mt_bench_task.set_caching_options(kfp_pipeline_cache)
 
         use_config_map_as_env(
             run_mt_bench_task,
@@ -403,7 +406,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             pvc_path="/output/data",
         )
         output_model_task.after(run_mt_bench_task)
-        output_model_task.set_caching_options(False)
+        output_model_task.set_caching_options(kfp_pipeline_cache)
 
         mount_pvc(
             task=output_model_task,
