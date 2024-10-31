@@ -3,7 +3,7 @@
 # Description: InstructLab pipeline
 # Inputs:
 #    base_model: str [Default: 'ibm-granite/granite-7b-base']
-#    batch_size: int [Default: 8.0]
+#    batch_size: str [Default: 'auto']
 #    device: str
 #    effective_batch_size: int [Default: 3840.0]
 #    few_shots: int [Default: 5.0]
@@ -520,7 +520,7 @@ components:
         base_model_dir:
           parameterType: STRING
         batch_size:
-          parameterType: NUMBER_INTEGER
+          parameterType: STRING
         candidate_branch:
           parameterType: STRING
         candidate_model:
@@ -1186,7 +1186,7 @@ deploymentSpec:
           \    mt_bench_branch_output: Output[Artifact],\n    base_model_dir: str,\n\
           \    tasks: Input[Dataset],\n    taxonomy: Input[Dataset],\n    base_branch:\
           \ str,\n    candidate_branch: str,\n    max_workers: str,\n    device: str,\n\
-          \    model_dtype: str,\n    few_shots: int,\n    batch_size: int,\n    merge_system_user_message:\
+          \    model_dtype: str,\n    few_shots: int,\n    batch_size: str,\n    merge_system_user_message:\
           \ bool,\n    candidate_model: str = None,\n):\n    import json\n    import\
           \ os\n    import subprocess\n\n    import torch\n    from instructlab.eval.mmlu\
           \ import MMLU_TASKS, MMLUBranchEvaluator\n    from instructlab.eval.mt_bench\
@@ -1279,25 +1279,25 @@ deploymentSpec:
           \    gpu_name = (\n        torch.cuda.get_device_name(torch.cuda.current_device())\n\
           \        if gpu_available\n        else \"No GPU available\"\n    )\n  \
           \  gpu_count = torch.cuda.device_count() if gpu_available else 0\n\n   \
-          \ print(f\"GPU Available: {gpu_available}, Using: {gpu_name}\")\n\n    #\
-          \ MMLU_BRANCH\n\n    # This is very specific to 'ilab generate', necessary\
-          \ because the data generation and\n    # model evaluation are taking place\
-          \ in separate environments.\n    def update_test_lines_in_files(base_dir):\n\
-          \        import os\n\n        import yaml\n\n        for root, dirs, files\
-          \ in os.walk(base_dir):\n            for file_name in files:\n         \
-          \       if file_name.startswith(\"knowledge_\") and file_name.endswith(\n\
-          \                    \"_task.yaml\"\n                ):\n              \
-          \      file_path = os.path.join(root, file_name)\n\n                   \
-          \ with open(file_path, \"r\") as file:\n                        task_yaml\
-          \ = yaml.load(file, Loader=yaml.Loader)\n\n                    current_test_file_path\
-          \ = task_yaml[\"dataset_kwargs\"][\"data_files\"][\n                   \
-          \     \"test\"\n                    ]\n                    current_test_file_path_parts\
-          \ = current_test_file_path.split(\"/\")\n                    new_test_file_path\
-          \ = f\"{root}/{current_test_file_path_parts[-1]}\"\n                   \
-          \ task_yaml[\"dataset_kwargs\"][\"data_files\"][\"test\"] = (\n        \
-          \                new_test_file_path\n                    )\n           \
-          \         with open(file_path, \"w\", encoding=\"utf-8\") as file:\n   \
-          \                     yaml.dump(task_yaml, file)\n\n    # find_node_dataset_directories\
+          \ print(f\"GPU Available: {gpu_available}, Using: {gpu_name}\")\n\n    if\
+          \ batch_size.isdigit():\n        batch_size = int(batch_size)\n\n    # MMLU_BRANCH\n\
+          \n    # This is very specific to 'ilab generate', necessary because the\
+          \ data generation and\n    # model evaluation are taking place in separate\
+          \ environments.\n    def update_test_lines_in_files(base_dir):\n       \
+          \ import os\n\n        import yaml\n\n        for root, dirs, files in os.walk(base_dir):\n\
+          \            for file_name in files:\n                if file_name.startswith(\"\
+          knowledge_\") and file_name.endswith(\n                    \"_task.yaml\"\
+          \n                ):\n                    file_path = os.path.join(root,\
+          \ file_name)\n\n                    with open(file_path, \"r\") as file:\n\
+          \                        task_yaml = yaml.load(file, Loader=yaml.Loader)\n\
+          \n                    current_test_file_path = task_yaml[\"dataset_kwargs\"\
+          ][\"data_files\"][\n                        \"test\"\n                 \
+          \   ]\n                    current_test_file_path_parts = current_test_file_path.split(\"\
+          /\")\n                    new_test_file_path = f\"{root}/{current_test_file_path_parts[-1]}\"\
+          \n                    task_yaml[\"dataset_kwargs\"][\"data_files\"][\"test\"\
+          ] = (\n                        new_test_file_path\n                    )\n\
+          \                    with open(file_path, \"w\", encoding=\"utf-8\") as\
+          \ file:\n                        yaml.dump(task_yaml, file)\n\n    # find_node_dataset_directories\
           \ to find sdg output node_datasets_*\n    def find_node_dataset_directories(base_dir:\
           \ str):\n        import os\n        import re\n\n        # This is specific\
           \ to ilab/eval output\n        pattern = r\"node_datasets_\"\n        matching_dirs\
@@ -1765,8 +1765,8 @@ root:
           name: comp-deletepvc
         dependentTasks:
         - createpvc-3
+        - pvc-to-artifact-op
         - pvc-to-model-op
-        - run-final-eval-op
         inputs:
           parameters:
             pvc_name:
@@ -1782,8 +1782,8 @@ root:
           name: comp-deletepvc-2
         dependentTasks:
         - createpvc-2
+        - pvc-to-artifact-op
         - pvc-to-model-op
-        - run-final-eval-op
         inputs:
           parameters:
             pvc_name:
@@ -1799,8 +1799,8 @@ root:
           name: comp-deletepvc-3
         dependentTasks:
         - createpvc
+        - pvc-to-artifact-op
         - pvc-to-model-op
-        - run-final-eval-op
         inputs:
           parameters:
             pvc_name:
@@ -1929,7 +1929,7 @@ root:
           name: comp-pvc-to-artifact-op
         dependentTasks:
         - createpvc-3
-        - run-mt-bench-op
+        - run-final-eval-op
         inputs:
           parameters:
             pvc_path:
@@ -1944,7 +1944,7 @@ root:
           name: comp-pvc-to-model-op
         dependentTasks:
         - createpvc-3
-        - run-mt-bench-op
+        - run-final-eval-op
         inputs:
           parameters:
             pvc_path:
@@ -2150,9 +2150,9 @@ root:
         isOptional: true
         parameterType: STRING
       batch_size:
-        defaultValue: 8.0
+        defaultValue: auto
         isOptional: true
-        parameterType: NUMBER_INTEGER
+        parameterType: STRING
       device:
         isOptional: true
         parameterType: STRING

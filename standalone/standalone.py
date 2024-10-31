@@ -95,7 +95,7 @@ MODEL_DTYPE = "bfloat16"
 MAX_WORKERS = "auto"
 MERGE_SYSTEM_USER_MESSAGE = False
 FEW_SHOTS = 5
-BATCH_SIZE = 8
+BATCH_SIZE = "auto"
 JUDGE_CA_CERT_ENV_VAR_NAME = "JUDGE_CA_CERT_PATH"
 JUDGE_CA_CERT_PATH = "/tmp/cert"
 JUDGE_CA_CERT_CM_KEY = "ca-bundle.crt"
@@ -1705,7 +1705,7 @@ def run_final_eval_op(
     device: str,
     model_dtype: str,
     few_shots: int,
-    batch_size: int,
+    batch_size: str,
     merge_system_user_message: bool,
     candidate_model: str = None,
 ):
@@ -1894,6 +1894,9 @@ def run_final_eval_op(
     gpu_count = torch.cuda.device_count() if gpu_available else 0
 
     print(f"GPU Available: {gpu_available}, Using: {gpu_name}")
+
+    if batch_size.isdigit():
+        batch_size = int(batch_size)
 
     # MMLU_BRANCH
 
@@ -2168,7 +2171,7 @@ def run_final_eval_op(
         json.dump(mt_bench_branch_data, f, indent=4)
 """
     exec_run_final_eval_op_args = f"""
-run_final_eval_op(mmlu_branch_output="{MMLU_BRANCH_SCORES_PATH}", mt_bench_branch_output="{MT_BENCH_BRANCH_SCORES_PATH}", candidate_model="{CANDIDATE_MODEL_PATH}", taxonomy="{TAXONOMY_PATH}", tasks="{DATA_PVC_SDG_PATH}", base_branch="", candidate_branch="", device=None, base_model_dir="{DATA_PVC_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE}, model_dtype="{MODEL_DTYPE}", few_shots={FEW_SHOTS}, batch_size={BATCH_SIZE})
+run_final_eval_op(mmlu_branch_output="{MMLU_BRANCH_SCORES_PATH}", mt_bench_branch_output="{MT_BENCH_BRANCH_SCORES_PATH}", candidate_model="{CANDIDATE_MODEL_PATH}", taxonomy="{TAXONOMY_PATH}", tasks="{DATA_PVC_SDG_PATH}", base_branch="", candidate_branch="", device=None, base_model_dir="{DATA_PVC_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE}, model_dtype="{MODEL_DTYPE}", few_shots={FEW_SHOTS}, batch_size="{BATCH_SIZE}")
 """
 
     eval_container = kubernetes.client.V1Container(
