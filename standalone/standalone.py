@@ -1069,6 +1069,7 @@ from typing import *
 
 def sdg_op(
     num_instructions_to_generate: int,
+    pipeline: str,
     taxonomy: str,
     sdg: str,
     repo_branch: Optional[str],
@@ -1101,12 +1102,13 @@ def sdg_op(
         taxonomy=taxonomy,
         taxonomy_base=taxonomy_base,
         model_name=model,
+        pipeline=pipeline,
         chunk_word_count=1000,
         server_ctx_size=4096,
     )
 """
     exec_sdg_op_args = f"""
-sdg_op(num_instructions_to_generate={num_instructions_to_generate}, repo_branch="{exec_git_clone_op_repo_branch}", repo_pr={exec_git_clone_op_repo_pr}, taxonomy="{TAXONOMY_DATA_PATH}", sdg="{DATA_PVC_SDG_PATH}")
+sdg_op(num_instructions_to_generate={num_instructions_to_generate}, pipeline="{SDG_PIPELINE}", repo_branch="{exec_git_clone_op_repo_branch}", repo_pr={exec_git_clone_op_repo_pr}, taxonomy="{TAXONOMY_DATA_PATH}", sdg="{DATA_PVC_SDG_PATH}")
 """
 
     return kubernetes.client.V1Container(
