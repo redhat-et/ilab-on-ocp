@@ -13,7 +13,6 @@ metadata:
   labels:
     opendatahub.io/dashboard: "true"
   name: mixtral
-  namespace: labels
 spec:
   annotations:
     prometheus.io/path: /metrics
