@@ -1501,14 +1501,14 @@ def create_eval_job(
             mount_path=JUDGE_CA_CERT_PATH,  # Path where the Secret will be mounted
         )
         # Add an env var to the container to specify the path to the CA cert
-        eval_container.env.append(
+        eval_container.env = [
             kubernetes.client.V1EnvVar(
                 name=JUDGE_CA_CERT_ENV_VAR_NAME,
                 value=os.path.join(
                     JUDGE_CA_CERT_PATH, judge_serving_model_ca_cert_cm_key
                 ),
             )
-        )
+        ]
         # Add the volume to the Pod spec
         eval_container.volume_mounts.append(cm_volume_mount)
         # Add the volume mount to the container
