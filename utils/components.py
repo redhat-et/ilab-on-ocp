@@ -28,7 +28,7 @@ def kubectl_wait_for_op(
         OC_IMAGE,
         ["/bin/sh", "-c"],
         [
-            f"kubectl wait --for={condition} {kind}/{name} --timeout=2h",
+            f"kubectl wait --for={condition} {kind}/{name} --timeout=24h",
         ],
     )
 
