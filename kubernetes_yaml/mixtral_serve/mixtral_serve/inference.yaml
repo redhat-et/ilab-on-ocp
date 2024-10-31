@@ -14,7 +14,6 @@ metadata:
   labels:
     opendatahub.io/dashboard: "true"
   name: mixtral
-  namespace: labels
   resourceVersion: "8869282"
   uid: 433d76da-6c52-4b47-a3cd-ba3765e7b5bf
 spec:

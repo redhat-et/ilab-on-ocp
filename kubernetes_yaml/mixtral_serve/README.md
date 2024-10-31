@@ -44,6 +44,14 @@ kubectl create -f ./mixtral_pull
 
 This will create 3 different containers downloading various things using oras.
 
+## Knative
+The `knative-serving` configMap may need to be updated to ensure that pvcs can be used. It appears in newer versions of knative this is resolved. Ensure the following values are set in the knative-serving configMap.
+
+```
+  kubernetes.podspec-persistent-volume-claim: enabled
+  kubernetes.podspec-persistent-volume-write: enabled
+```
+
 ### Mixtral serving
 This will make no sense but it is the only way discovered so far to ensure that a token is generated to work with the model. Using the RHODS model serving UI define a model to be served named mixtral. Ensure external access and token are selected as the TOKEN is the piece not yet discovered when using just the CLI.
 
@@ -102,7 +110,6 @@ INFO: Waiting for application startup.
 INFO: Application startup complete.
 INFO: Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
 ```
-
 
 ### Testing
 To interact with the model grab the inference endpoint from the RHOAI UI and the token.
