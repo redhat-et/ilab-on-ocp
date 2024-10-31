@@ -2407,14 +2407,14 @@ run_final_eval_op(mmlu_branch_output="{MMLU_BRANCH_SCORES_PATH}", mt_bench_branc
             mount_path=JUDGE_CA_CERT_PATH,  # Path where the Secret will be mounted
         )
         # Add an env var to the container to specify the path to the CA cert
-        eval_container.env.append(
+        eval_container.env = [
             kubernetes.client.V1EnvVar(
                 name=JUDGE_CA_CERT_ENV_VAR_NAME,
                 value=os.path.join(
                     JUDGE_CA_CERT_PATH, judge_serving_model_ca_cert_cm_key
                 ),
             )
-        )
+        ]
         # Add the volume to the Pod spec
         eval_container.volume_mounts.append(cm_volume_mount)
         # Add the volume mount to the container
@@ -2929,12 +2929,14 @@ def sdg_data_fetch(
                 )
                 validate_url(judge_serving_model_endpoint)
 
-                # Validation of the secret's existence is done in the next conditional block
+                # Validation of the configmap's existence is done in the next conditional block
                 if secret.data.get("JUDGE_CA_CERT"):
-                    judge_serving_model_ca_cert = secret.data.get("JUDGE_CA_CERT")
+                    judge_serving_model_ca_cert = decode_base64(
+                        secret.data.get("JUDGE_CA_CERT")
+                    )
                 if secret.data.get("JUDGE_CA_CERT_CM_KEY"):
-                    judge_serving_model_ca_cert_cm_key = secret.data.get(
-                        "JUDGE_CA_CERT_CM_KEY"
+                    judge_serving_model_ca_cert_cm_key = decode_base64(
+                        secret.data.get("JUDGE_CA_CERT_CM_KEY")
                     )
             except kubernetes.client.rest.ApiException as exc:
                 if exc.status == 404:
