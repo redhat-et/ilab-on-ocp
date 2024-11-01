@@ -1057,7 +1057,7 @@ def create_sdg_container(
     num_instructions_to_generate: int = 30,
     exec_git_clone_op_repo_branch: str = "",
     exec_git_clone_op_repo_pr: str = "",
-    sdg_pipeline: str = "",
+    sdg_pipeline: str = SDG_DEFAULT_PIPELINE,
 ) -> kubernetes.client.V1Container:
     """
     Creates a Kubernetes V1Job container for generating synthetic data.
@@ -1115,7 +1115,7 @@ def create_data_job(
     num_instructions_to_generate: int = 30,
     taxonomy_repo_pr: str = "",
     taxonomy_repo_branch: str = "",
-    sdg_pipeline: str = "",
+    sdg_pipeline: str = SDG_DEFAULT_PIPELINE,
 ) -> kubernetes.client.V1Job:
     """
     Create a Kubernetes Job object.
