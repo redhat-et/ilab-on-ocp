@@ -432,7 +432,7 @@ if [ "$STRATEGY" == "download" ]; then
     # Patterns to match
     if [ "$SDG_IN_CLUSTER" == "True" ]; then
         # When SDG is in-cluster we will run synthetic data generation in the cluster, so the "data"
-        directory is not needed since it will be generated
+        # directory is not needed since it will be generated
         patterns=(
             "{data_pvc_mount_path}/model/config.json"
             "{data_pvc_mount_path}/model/tokenizer.json"
