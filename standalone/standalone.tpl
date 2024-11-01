@@ -56,6 +56,7 @@ RHELAI_IMAGE = "registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2"
 SDG_OBJECT_STORE_SECRET_NAME = "sdg-object-store-credentials"
 SDG_SERVING_NAME = "sdg-serving-details"
 REPO_GRANITE_7B_IMAGE = "ibm-granite/granite-7b-base"  # used by HF downloader
+SDG_DEFAULT_PIPELINE = "simple"
 
 # SDG DATA PREPROCESSING (before doing training, data has to be converted)
 MAX_SEQ_LEN = 4096
@@ -845,6 +846,11 @@ def show(
     default=False,
     is_flag=True,
 )
+@click.option(
+    "--sdg-pipeline",
+    help="The pipeline used for SDG, value must be 'simple', 'full', or a valid path to a directory.",
+    default="simple",
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -880,6 +886,7 @@ def run(
     num_instructions_to_generate: typing.Optional[int] = 30,
     dry_run: bool = False,
     sdg_in_cluster: bool = False,
+    sdg_pipeline: str = SDG_DEFAULT_PIPELINE,
 ):
     """
     Execute the distributed training on Kubernetes.
@@ -923,6 +930,8 @@ def run(
         num_instructions_to_generate (int): Number of instructions to generate during SDG.
         dry_run (bool): Print the generated YAML to stdout instead of creating the resources.
         sdg_in_cluster (bool): Run SDG in the cluster. Default is retrieve SDG Data from an object store.
+        sdg_pipeline (str): The pipeline type used for SDG, value must be 'simple', 'full', or a
+        valid path to a directory.
     Returns:
         None
     """
@@ -959,6 +968,7 @@ def run(
     ctx.obj["num_instructions_to_generate"] = num_instructions_to_generate
     ctx.obj["dry_run"] = dry_run
     ctx.obj["sdg_in_cluster"] = sdg_in_cluster
+    ctx.obj["sdg_pipeline"] = sdg_pipeline
 
     ##########################
     # MAIN WORKFLOW SEQUENCE #
@@ -1047,6 +1057,7 @@ def create_sdg_container(
     num_instructions_to_generate: int = 30,
     exec_git_clone_op_repo_branch: str = "",
     exec_git_clone_op_repo_pr: str = "",
+    sdg_pipeline: str = "",
 ) -> kubernetes.client.V1Container:
     """
     Creates a Kubernetes V1Job container for generating synthetic data.
@@ -1104,6 +1115,7 @@ def create_data_job(
     num_instructions_to_generate: int = 30,
     taxonomy_repo_pr: str = "",
     taxonomy_repo_branch: str = "",
+    sdg_pipeline: str = "",
 ) -> kubernetes.client.V1Job:
     """
     Create a Kubernetes Job object.
@@ -1121,6 +1133,8 @@ def create_data_job(
         strategy (str): The strategy to use to fetch the data. Either "download" or "upload".
         force_pull (bool): Force pull the data from the object store even if it already exists in
         the PVC.
+        sdg_pipeline (str): The pipeline type used for SDG, value must be 'simple', 'full', or a
+        valid path to a directory.
 
     Returns:
         kubernetes.client.V1Job: A Kubernetes Job object configured with the specified parameters.
@@ -1272,6 +1286,7 @@ data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg
                     num_instructions_to_generate=num_instructions_to_generate,
                     exec_git_clone_op_repo_branch=taxonomy_repo_branch,
                     exec_git_clone_op_repo_pr=taxonomy_repo_pr,
+                    sdg_pipeline=sdg_pipeline,
                 )
             )
         template.spec.init_containers = init_containers
@@ -1974,6 +1989,7 @@ def sdg(
     num_instructions_to_generate = ctx.obj["num_instructions_to_generate"]
     taxonomy_repo_pr = ctx.obj["taxonomy_repo_pr"]
     taxonomy_repo_branch = ctx.obj["taxonomy_repo_branch"]
+    sdg_pipeline = ctx.obj["sdg_pipeline"]
 
     v1 = kubernetes.client.CoreV1Api()
     # Secret details validation here!
@@ -2081,6 +2097,7 @@ def sdg(
         num_instructions_to_generate=num_instructions_to_generate,
         taxonomy_repo_pr=taxonomy_repo_pr,
         taxonomy_repo_branch=taxonomy_repo_branch,
+        sdg_pipeline=sdg_pipeline,
     )
 
     if dry_run:
