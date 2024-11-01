@@ -216,7 +216,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         kubectl_apply_task = kubectl_apply_op(
             manifest=pytorchjob_manifest_task.outputs["manifest"]
         )
-        kubectl_apply_task.after(sdg_knowledge_to_pvc_task, model_to_pvc_task)
+        kubectl_apply_task.after(sdg_knowledge_to_pvc_task, model_to_artifact)
         kubectl_apply_task.set_caching_options(False)
 
         kubectl_wait_task = kubectl_wait_for_op(
@@ -301,7 +301,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         kubectl_apply_2_task = kubectl_apply_op(
             manifest=pytorchjob_manifest_2_task.outputs["manifest"]
         )
-        kubectl_apply_2_task.after(sdg_knowledge_to_pvc_task, model_to_pvc_task)
+        kubectl_apply_2_task.after(sdg_knowledge_to_pvc_task, model_to_artifact)
         kubectl_apply_2_task.set_caching_options(False)
 
         kubectl_wait_2_task = kubectl_wait_for_op(
