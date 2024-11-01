@@ -30,6 +30,7 @@ def git_clone_op(
 @dsl.component(base_image=IMAGE)
 def sdg_op(
     num_instructions_to_generate: int,
+    pipeline: str,
     taxonomy: dsl.Input[dsl.Dataset],
     sdg: dsl.Output[dsl.Dataset],
     repo_branch: Optional[str],
@@ -62,6 +63,7 @@ def sdg_op(
         taxonomy=taxonomy.path,
         taxonomy_base=taxonomy_base,
         model_name=model,
+        pipeline=pipeline,
         chunk_word_count=1000,
         server_ctx_size=4096,
     )

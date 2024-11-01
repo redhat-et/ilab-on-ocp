@@ -22,6 +22,7 @@
 #    repo_pr: int
 #    repo_url: str [Default: 'https://github.com/instructlab/taxonomy.git']
 #    save_samples: int [Default: 0.0]
+#    sdg_pipeline: str [Default: 'simple']
 #    seed: int [Default: 42.0]
 #    storage_class_name: str [Default: 'nfs-csi']
 components:
@@ -590,6 +591,8 @@ components:
       parameters:
         num_instructions_to_generate:
           parameterType: NUMBER_INTEGER
+        pipeline:
+          parameterType: STRING
         repo_branch:
           parameterType: STRING
         repo_pr:
@@ -1589,22 +1592,22 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef sdg_op(\n    num_instructions_to_generate: int,\n    taxonomy:\
-          \ dsl.Input[dsl.Dataset],\n    sdg: dsl.Output[dsl.Dataset],\n    repo_branch:\
-          \ Optional[str],\n    repo_pr: Optional[int],\n):\n    from os import getenv\n\
-          \n    import openai\n    from instructlab.sdg import generate_data\n   \
-          \ from instructlab.sdg.utils.taxonomy import read_taxonomy\n\n    api_key\
-          \ = getenv(\"api_key\")\n    model = getenv(\"model\")\n    endpoint = getenv(\"\
-          endpoint\")\n    client = openai.OpenAI(base_url=endpoint, api_key=api_key)\n\
-          \n    taxonomy_base = \"main\" if repo_branch or (repo_pr and int(repo_pr)\
-          \ > 0) else \"empty\"\n\n    print(\"Generating syntetic dataset for:\"\
-          )\n    print()\n    print(read_taxonomy(taxonomy.path, taxonomy_base))\n\
+          \ *\n\ndef sdg_op(\n    num_instructions_to_generate: int,\n    pipeline:\
+          \ str,\n    taxonomy: dsl.Input[dsl.Dataset],\n    sdg: dsl.Output[dsl.Dataset],\n\
+          \    repo_branch: Optional[str],\n    repo_pr: Optional[int],\n):\n    from\
+          \ os import getenv\n\n    import openai\n    from instructlab.sdg import\
+          \ generate_data\n    from instructlab.sdg.utils.taxonomy import read_taxonomy\n\
+          \n    api_key = getenv(\"api_key\")\n    model = getenv(\"model\")\n   \
+          \ endpoint = getenv(\"endpoint\")\n    client = openai.OpenAI(base_url=endpoint,\
+          \ api_key=api_key)\n\n    taxonomy_base = \"main\" if repo_branch or (repo_pr\
+          \ and int(repo_pr) > 0) else \"empty\"\n\n    print(\"Generating syntetic\
+          \ dataset for:\")\n    print()\n    print(read_taxonomy(taxonomy.path, taxonomy_base))\n\
           \n    # generate_data has a magic word for its taxonomy_base argument -\
           \ 'empty'\n    # it allows generating from the whole repo, see:\n    # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230\n\
           \    generate_data(\n        client=client,\n        num_instructions_to_generate=num_instructions_to_generate,\n\
           \        output_dir=sdg.path,\n        taxonomy=taxonomy.path,\n       \
-          \ taxonomy_base=taxonomy_base,\n        model_name=model,\n        chunk_word_count=1000,\n\
-          \        server_ctx_size=4096,\n    )\n\n"
+          \ taxonomy_base=taxonomy_base,\n        model_name=model,\n        pipeline=pipeline,\n\
+          \        chunk_word_count=1000,\n        server_ctx_size=4096,\n    )\n\n"
         image: quay.io/tcoufal/ilab-sdg:latest
 pipelineInfo:
   description: InstructLab pipeline
@@ -2137,6 +2140,8 @@ root:
           parameters:
             num_instructions_to_generate:
               componentInputParameter: num_instructions_to_generate
+            pipeline:
+              componentInputParameter: sdg_pipeline
             repo_branch:
               componentInputParameter: repo_branch
             repo_pr:
@@ -2222,6 +2227,10 @@ root:
         defaultValue: 0.0
         isOptional: true
         parameterType: NUMBER_INTEGER
+      sdg_pipeline:
+        defaultValue: simple
+        isOptional: true
+        parameterType: STRING
       seed:
         defaultValue: 42.0
         isOptional: true

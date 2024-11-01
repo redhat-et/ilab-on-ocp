@@ -35,6 +35,7 @@ def git_clone_op(
 )
 def sdg_op(
     num_instructions_to_generate: int,
+    pipeline: str,
     taxonomy: dsl.Input[dsl.Dataset],
     sdg: dsl.Output[dsl.Dataset],
     repo_branch: Optional[str],
