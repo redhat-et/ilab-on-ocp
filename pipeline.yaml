@@ -742,8 +742,8 @@ deploymentSpec:
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef huggingface_importer_op(model: dsl.Output[dsl.Model], repo_name:\
-          \ str, ):\n    from huggingface_hub import snapshot_download\n\n    snapshot_download(repo_id=repo_name,\
-          \ cache_dir=\"/tmp\", local_dir=model.path)\n\n"
+          \ str):\n    from huggingface_hub import snapshot_download\n\n    snapshot_download(repo_id=repo_name,\
+          \ cache_dir=\"/tmp\", local_dir=\"/mnt\")\n\n"
         image: registry.access.redhat.com/ubi9/python-311:latest
     exec-kubectl-apply-op:
       container:
