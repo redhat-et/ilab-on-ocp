@@ -48,17 +48,6 @@ components:
       parameters:
         pvc_path:
           parameterType: STRING
-  comp-artifact-to-pvc-op-3:
-    executorLabel: exec-artifact-to-pvc-op-3
-    inputDefinitions:
-      artifacts:
-        data:
-          artifactType:
-            schemaTitle: system.Artifact
-            schemaVersion: 0.0.1
-      parameters:
-        pvc_path:
-          parameterType: STRING
   comp-createpvc:
     executorLabel: exec-createpvc
     inputDefinitions:
@@ -621,14 +610,6 @@ deploymentSpec:
         - /bin/sh
         - -c
         image: registry.access.redhat.com/ubi9/toolbox
-    exec-artifact-to-pvc-op-3:
-      container:
-        args:
-        - cp -r {{$.inputs.artifacts['data'].path}} {{$.inputs.parameters['pvc_path']}}
-        command:
-        - /bin/sh
-        - -c
-        image: registry.access.redhat.com/ubi9/toolbox
     exec-createpvc:
       container:
         image: argostub/createpvc
@@ -761,7 +742,7 @@ deploymentSpec:
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef huggingface_importer_op(model: dsl.Output[dsl.Model], repo_name:\
-          \ str):\n    from huggingface_hub import snapshot_download\n\n    snapshot_download(repo_id=repo_name,\
+          \ str, ):\n    from huggingface_hub import snapshot_download\n\n    snapshot_download(repo_id=repo_name,\
           \ cache_dir=\"/tmp\", local_dir=model.path)\n\n"
         image: registry.access.redhat.com/ubi9/python-311:latest
     exec-kubectl-apply-op:
@@ -1621,30 +1602,6 @@ root:
         componentRef:
           name: comp-artifact-to-pvc-op
         dependentTasks:
-        - createpvc
-        - huggingface-importer-op
-        inputs:
-          artifacts:
-            data:
-              taskOutputArtifact:
-                outputArtifactKey: model
-                producerTask: huggingface-importer-op
-          parameters:
-            pvc_path:
-              runtimeValue:
-                constant: /model
-        retryPolicy:
-          backoffDuration: 0s
-          backoffFactor: 2.0
-          backoffMaxDuration: 3600s
-          maxRetryCount: 3
-        taskInfo:
-          name: artifact-to-pvc-op
-      artifact-to-pvc-op-2:
-        cachingOptions: {}
-        componentRef:
-          name: comp-artifact-to-pvc-op-2
-        dependentTasks:
         - createpvc-2
         - data-processing-op
         inputs:
@@ -1658,11 +1615,11 @@ root:
               runtimeValue:
                 constant: /data
         taskInfo:
-          name: artifact-to-pvc-op-2
-      artifact-to-pvc-op-3:
+          name: artifact-to-pvc-op
+      artifact-to-pvc-op-2:
         cachingOptions: {}
         componentRef:
-          name: comp-artifact-to-pvc-op-3
+          name: comp-artifact-to-pvc-op-2
         dependentTasks:
         - createpvc-2
         - data-processing-op
@@ -1677,7 +1634,7 @@ root:
               runtimeValue:
                 constant: /data
         taskInfo:
-          name: artifact-to-pvc-op-3
+          name: artifact-to-pvc-op-2
       createpvc:
         cachingOptions:
           enableCache: true
@@ -1832,6 +1789,8 @@ root:
           enableCache: true
         componentRef:
           name: comp-huggingface-importer-op
+        dependentTasks:
+        - createpvc
         inputs:
           parameters:
             repo_name:
@@ -1843,8 +1802,8 @@ root:
         componentRef:
           name: comp-kubectl-apply-op
         dependentTasks:
-        - artifact-to-pvc-op
-        - artifact-to-pvc-op-3
+        - artifact-to-pvc-op-2
+        - huggingface-importer-op
         - pytorchjob-manifest-op
         inputs:
           parameters:
@@ -1859,8 +1818,8 @@ root:
         componentRef:
           name: comp-kubectl-apply-op-2
         dependentTasks:
-        - artifact-to-pvc-op
-        - artifact-to-pvc-op-3
+        - artifact-to-pvc-op-2
+        - huggingface-importer-op
         - pytorchjob-manifest-op-2
         inputs:
           parameters:
@@ -2248,22 +2207,22 @@ platforms:
       executors:
         exec-artifact-to-pvc-op:
           pvcMount:
-          - mountPath: /model
+          - mountPath: /data
             taskOutputParameter:
               outputParameterKey: name
-              producerTask: createpvc
+              producerTask: createpvc-2
         exec-artifact-to-pvc-op-2:
           pvcMount:
           - mountPath: /data
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-2
-        exec-artifact-to-pvc-op-3:
+        exec-huggingface-importer-op:
           pvcMount:
-          - mountPath: /data
+          - mountPath: /mnt
             taskOutputParameter:
               outputParameterKey: name
-              producerTask: createpvc-2
+              producerTask: createpvc
         exec-list-models-in-directory-op:
           pvcMount:
           - mountPath: /output
