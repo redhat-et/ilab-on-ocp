@@ -149,13 +149,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             storage_class_name=storage_class_name,
         )
         model_to_artifact = huggingface_importer_op(repo_name=base_model)
-        model_to_pvc_task = artifact_to_pvc_op(
-            data=model_to_artifact.outputs["model"], pvc_path="/model"
-        )
-        model_to_pvc_task.set_caching_options(False)
-        model_to_pvc_task.set_retry(3)
         mount_pvc(
-            task=model_to_pvc_task, pvc_name=model_pvc_task.output, mount_path="/model"
+            task=model_to_artifact, pvc_name=model_pvc_task.output, mount_path="/mnt"
         )
 
         # Data processing

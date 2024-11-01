@@ -69,7 +69,7 @@ def list_models_in_directory_op(models_folder: str) -> List:
 
 
 @dsl.component(base_image=PYTHON_IMAGE, packages_to_install=["huggingface_hub"])
-def huggingface_importer_op(model: dsl.Output[dsl.Model], repo_name: str):
+def huggingface_importer_op(model: dsl.Output[dsl.Model], repo_name: str, ):
     from huggingface_hub import snapshot_download
 
     snapshot_download(repo_id=repo_name, cache_dir="/tmp", local_dir=model.path)
