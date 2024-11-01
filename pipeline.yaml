@@ -784,7 +784,7 @@ deploymentSpec:
       container:
         args:
         - kubectl wait --for={{$.inputs.parameters['condition']}} {{$.inputs.parameters['kind']}}/{{$.inputs.parameters['name']}}
-          --timeout=2h
+          --timeout=24h
         command:
         - /bin/sh
         - -c
@@ -793,7 +793,7 @@ deploymentSpec:
       container:
         args:
         - kubectl wait --for={{$.inputs.parameters['condition']}} {{$.inputs.parameters['kind']}}/{{$.inputs.parameters['name']}}
-          --timeout=2h
+          --timeout=24h
         command:
         - /bin/sh
         - -c
