@@ -36,11 +36,25 @@ def sdg_op(
     repo_branch: Optional[str],
     repo_pr: Optional[int],
 ):
-    from os import getenv
+    from os import getenv, path
 
     import openai
+    import yaml
     from instructlab.sdg import generate_data
     from instructlab.sdg.utils.taxonomy import read_taxonomy
+
+    SAMPLING_SIZE = 70
+
+    def set_precomputed_skills_data_ratio(sampling_size):
+        skills_recipe = "/usr/share/instructlab/sdg/default_data_recipes/skills.yaml"
+        if path.exists(skills_recipe):
+            with open(skills_recipe, "r") as file:
+                skills_yaml = yaml.load(file, Loader=yaml.Loader)
+
+            skills_yaml["datasets"][0]["sampling_size"] = sampling_size
+
+            with open(skills_recipe, "w", encoding="utf-8") as file:
+                yaml.dump(skills_yaml, file)
 
     api_key = getenv("api_key")
     model = getenv("model")
@@ -52,6 +66,10 @@ def sdg_op(
     print("Generating syntetic dataset for:")
     print()
     print(read_taxonomy(taxonomy.path, taxonomy_base))
+
+    # Temporary measure to limit the amount of precomputed skills data used to construct the SDG dataset.
+    # Need during development to decrease training loop times and the cost of model quality.
+    set_precomputed_skills_data_ratio(sampling_size=SAMPLING_SIZE)
 
     # generate_data has a magic word for its taxonomy_base argument - 'empty'
     # it allows generating from the whole repo, see:
