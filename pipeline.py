@@ -422,7 +422,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             base_branch=repo_branch,
             candidate_branch=repo_branch,
             device=device,
-            base_model_dir="/model",
+            base_model_dir="/model/",
             max_workers=max_workers,
             merge_system_user_message=merge_system_user_message,
             model_dtype=model_dtype,

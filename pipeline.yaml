@@ -1348,7 +1348,7 @@ deploymentSpec:
           \     }\n\n        with open(mmlu_branch_output.path, \"w\") as f:\n   \
           \         json.dump(mmlu_branch_data, f, indent=4)\n    else:\n        print(\"\
           No MMLU tasks directories found, skipping MMLU_branch evaluation.\")\n\n\
-          \    # MT_BENCH_BRANCH\n\n    print(\"Strating MT_BENCH_BRANCH ...\")\n\n\
+          \    # MT_BENCH_BRANCH\n\n    print(\"Starting MT_BENCH_BRANCH ...\")\n\n\
           \    judge_api_key = os.getenv(\"JUDGE_API_KEY\", \"\")\n    judge_model_name\
           \ = os.getenv(\"JUDGE_NAME\")\n    judge_endpoint = os.getenv(\"JUDGE_ENDPOINT\"\
           )\n\n    output_dir = \"/tmp/eval_output\"\n\n    # TODO: candidate_branch\
@@ -2036,7 +2036,7 @@ root:
               componentInputParameter: repo_branch
             base_model_dir:
               runtimeValue:
-                constant: /model
+                constant: /model/
             batch_size:
               componentInputParameter: batch_size
             candidate_branch:

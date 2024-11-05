@@ -351,7 +351,7 @@ def run_final_eval_op(
 
     # MT_BENCH_BRANCH
 
-    print("Strating MT_BENCH_BRANCH ...")
+    print("Starting MT_BENCH_BRANCH ...")
 
     judge_api_key = os.getenv("JUDGE_API_KEY", "")
     judge_model_name = os.getenv("JUDGE_NAME")
