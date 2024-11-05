@@ -275,16 +275,6 @@ components:
           defaultValue: /data/taxonomy
           isOptional: true
           parameterType: STRING
-  comp-huggingface-importer-op:
-    executorLabel: exec-huggingface-importer-op
-    inputDefinitions:
-      parameters:
-        model_path:
-          defaultValue: /model
-          isOptional: true
-          parameterType: STRING
-        repo_name:
-          parameterType: STRING
   comp-knowledge-processed-data-to-artifact-op:
     executorLabel: exec-knowledge-processed-data-to-artifact-op
     inputDefinitions:
@@ -341,6 +331,14 @@ components:
       parameters:
         Output:
           parameterType: LIST
+  comp-model-download:
+    executorLabel: exec-model-download
+    inputDefinitions:
+      parameters:
+        model_path:
+          defaultValue: /model
+          isOptional: true
+          parameterType: STRING
   comp-pvc-to-artifact-op:
     executorLabel: exec-pvc-to-artifact-op
     inputDefinitions:
@@ -721,37 +719,6 @@ deploymentSpec:
         - /bin/sh
         - -c
         image: registry.access.redhat.com/ubi9/toolbox
-    exec-huggingface-importer-op:
-      container:
-        args:
-        - --executor_input
-        - '{{$}}'
-        - --function_to_execute
-        - model_download
-        command:
-        - sh
-        - -c
-        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
-          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'huggingface_hub'\
-          \ && \"$0\" \"$@\"\n"
-        - sh
-        - -ec
-        - 'program_path=$(mktemp -d)
-
-
-          printf "%s" "$0" > "$program_path/ephemeral_component.py"
-
-          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
-
-          '
-        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef model_download(repo_name: str, model_path: str = \"\
-          /model\"):\n    from huggingface_hub import snapshot_download\n\n    snapshot_download(repo_id=repo_name,\
-          \ cache_dir=\"/tmp\", local_dir=model_path)\n\n"
-        image: registry.access.redhat.com/ubi9/python-311:latest
     exec-knowledge-processed-data-to-artifact-op:
       container:
         args:
@@ -823,6 +790,37 @@ deploymentSpec:
           \ *\n\ndef list_models_in_directory_op(models_folder: str) -> List:\n  \
           \  import os\n\n    models = os.listdir(models_folder)\n    return models\n\
           \n"
+        image: python:3.8
+    exec-model-download:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - model_download
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef model_download(model_path: str = \"/model\"):\n    return dsl.ContainerSpec(\n\
+          \        RHELAI_IMAGE,\n        [\"/bin/sh\", \"-c\"],\n        [f\"ilab\
+          \ model download --repository docker://registry.redhat.io/rhelai1/granite-7b-starter\
+          \ --release 1.2 --model-dir={model.path}\"],\n    )\n\n"
         image: python:3.8
     exec-pvc-to-artifact-op:
       container:
@@ -1714,7 +1712,7 @@ root:
         dependentTasks:
         - createpvc
         - createpvc-2
-        - huggingface-importer-op
+        - model-download
         - sdg-op
         taskInfo:
           name: data-processing-op
@@ -1785,18 +1783,6 @@ root:
               componentInputParameter: repo_url
         taskInfo:
           name: git-clone-op
-      huggingface-importer-op:
-        cachingOptions: {}
-        componentRef:
-          name: comp-huggingface-importer-op
-        dependentTasks:
-        - createpvc-2
-        inputs:
-          parameters:
-            repo_name:
-              componentInputParameter: base_model
-        taskInfo:
-          name: huggingface-importer-op
       knowledge-processed-data-to-artifact-op:
         cachingOptions: {}
         componentRef:
@@ -1812,7 +1798,7 @@ root:
           name: comp-kubectl-apply-op
         dependentTasks:
         - data-processing-op
-        - huggingface-importer-op
+        - model-download
         - pytorchjob-manifest-op
         inputs:
           parameters:
@@ -1892,6 +1878,14 @@ root:
                 constant: /output/phase_2/model/hf_format
         taskInfo:
           name: list-models-in-directory-op
+      model-download:
+        cachingOptions: {}
+        componentRef:
+          name: comp-model-download
+        dependentTasks:
+        - createpvc-2
+        taskInfo:
+          name: model-download
       pvc-to-artifact-op:
         cachingOptions: {}
         componentRef:
@@ -2244,12 +2238,6 @@ platforms:
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc
-        exec-huggingface-importer-op:
-          pvcMount:
-          - mountPath: /model
-            taskOutputParameter:
-              outputParameterKey: name
-              producerTask: createpvc-2
         exec-knowledge-processed-data-to-artifact-op:
           pvcMount:
           - mountPath: /data
@@ -2262,6 +2250,12 @@ platforms:
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-3
+        exec-model-download:
+          pvcMount:
+          - mountPath: /model
+            taskOutputParameter:
+              outputParameterKey: name
+              producerTask: createpvc-2
         exec-pvc-to-artifact-op:
           pvcMount:
           - mountPath: /output/data

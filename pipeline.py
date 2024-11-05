@@ -207,7 +207,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             size="100Gi",
             storage_class_name=storage_class_name,
         )
-        model_to_pvc_task = model_download
+        model_to_pvc_task = model_download()
         model_to_pvc_task.set_caching_options(False)
         mount_pvc(
             task=model_to_pvc_task, pvc_name=model_pvc_task.output, mount_path="/model"
