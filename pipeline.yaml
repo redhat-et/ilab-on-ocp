@@ -727,7 +727,7 @@ deploymentSpec:
         - --executor_input
         - '{{$}}'
         - --function_to_execute
-        - huggingface_importer_op
+        - model_download
         command:
         - sh
         - -c
@@ -748,7 +748,7 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef huggingface_importer_op(repo_name: str, model_path: str = \"\
+          \ *\n\ndef model_download(repo_name: str, model_path: str = \"\
           /model\"):\n    from huggingface_hub import snapshot_download\n\n    snapshot_download(repo_id=repo_name,\
           \ cache_dir=\"/tmp\", local_dir=model_path)\n\n"
         image: registry.access.redhat.com/ubi9/python-311:latest
