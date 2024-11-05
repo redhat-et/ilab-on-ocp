@@ -878,20 +878,20 @@ deploymentSpec:
           \      newest_model = models[newest_idx]\n        return f\"{model_dir}/{newest_model}\"\
           \n\n    Outputs = NamedTuple(\"outputs\", manifest=str, name=str)\n    name\
           \ = f\"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}\"\n\n    if\
-          \ phase_num == 1:\n        path_to_model = \"/input_model\"\n        path_to_data\
-          \ = \"/input_data/knowledge/data.jsonl\"\n    elif phase_num == 2:\n   \
-          \     path_to_model = list_phase1_final_model()\n        path_to_data =\
-          \ \"/input_data/skills/data.jsonl\"\n    else:\n        raise RuntimeError(f\"\
-          Unsupported value of {phase_num=}\")\n\n    image = \"quay.io/redhat-et/ilab:1.2\"\
-          \n\n    manifest = inspect.cleandoc(\n        f\"\"\"\n        apiVersion:\
-          \ kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n       \
-          \   name: {name}\n        spec:\n          nprocPerNode: \\\\\"{nproc_per_node}\\\
-          \\\"\n          pytorchReplicaSpecs:\n            Master:\n            \
-          \  replicas: 1\n              restartPolicy: OnFailure\n              template:\n\
-          \                metadata:\n                  annotations:\n           \
-          \         sidecar.istio.io/inject: 'false'\n                spec:\n    \
-          \              containers:\n                    - args:\n              \
-          \          - |\n                          echo \"Running phase {phase_num}\"\
+          \ phase_num == 1:\n        path_to_model = \"/input_model/granite-7b-starter\"\
+          \n        path_to_data = \"/input_data/knowledge/data.jsonl\"\n    elif\
+          \ phase_num == 2:\n        path_to_model = list_phase1_final_model()\n \
+          \       path_to_data = \"/input_data/skills/data.jsonl\"\n    else:\n  \
+          \      raise RuntimeError(f\"Unsupported value of {phase_num=}\")\n\n  \
+          \  image = \"quay.io/redhat-et/ilab:1.2\"\n\n    manifest = inspect.cleandoc(\n\
+          \        f\"\"\"\n        apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n\
+          \        metadata:\n          name: {name}\n        spec:\n          nprocPerNode:\
+          \ \\\\\"{nproc_per_node}\\\\\"\n          pytorchReplicaSpecs:\n       \
+          \     Master:\n              replicas: 1\n              restartPolicy: OnFailure\n\
+          \              template:\n                metadata:\n                  annotations:\n\
+          \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
+          \                  containers:\n                    - args:\n          \
+          \              - |\n                          echo \"Running phase {phase_num}\"\
           \n                          echo \"Using {path_to_model} model for training\"\
           \n                          echo \"Using {path_to_data} data for training\"\
           \n                          mkdir -p /output/phase_{phase_num}/model;\n\
@@ -1035,20 +1035,20 @@ deploymentSpec:
           \      newest_model = models[newest_idx]\n        return f\"{model_dir}/{newest_model}\"\
           \n\n    Outputs = NamedTuple(\"outputs\", manifest=str, name=str)\n    name\
           \ = f\"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}\"\n\n    if\
-          \ phase_num == 1:\n        path_to_model = \"/input_model\"\n        path_to_data\
-          \ = \"/input_data/knowledge/data.jsonl\"\n    elif phase_num == 2:\n   \
-          \     path_to_model = list_phase1_final_model()\n        path_to_data =\
-          \ \"/input_data/skills/data.jsonl\"\n    else:\n        raise RuntimeError(f\"\
-          Unsupported value of {phase_num=}\")\n\n    image = \"quay.io/redhat-et/ilab:1.2\"\
-          \n\n    manifest = inspect.cleandoc(\n        f\"\"\"\n        apiVersion:\
-          \ kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n       \
-          \   name: {name}\n        spec:\n          nprocPerNode: \\\\\"{nproc_per_node}\\\
-          \\\"\n          pytorchReplicaSpecs:\n            Master:\n            \
-          \  replicas: 1\n              restartPolicy: OnFailure\n              template:\n\
-          \                metadata:\n                  annotations:\n           \
-          \         sidecar.istio.io/inject: 'false'\n                spec:\n    \
-          \              containers:\n                    - args:\n              \
-          \          - |\n                          echo \"Running phase {phase_num}\"\
+          \ phase_num == 1:\n        path_to_model = \"/input_model/granite-7b-starter\"\
+          \n        path_to_data = \"/input_data/knowledge/data.jsonl\"\n    elif\
+          \ phase_num == 2:\n        path_to_model = list_phase1_final_model()\n \
+          \       path_to_data = \"/input_data/skills/data.jsonl\"\n    else:\n  \
+          \      raise RuntimeError(f\"Unsupported value of {phase_num=}\")\n\n  \
+          \  image = \"quay.io/redhat-et/ilab:1.2\"\n\n    manifest = inspect.cleandoc(\n\
+          \        f\"\"\"\n        apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n\
+          \        metadata:\n          name: {name}\n        spec:\n          nprocPerNode:\
+          \ \\\\\"{nproc_per_node}\\\\\"\n          pytorchReplicaSpecs:\n       \
+          \     Master:\n              replicas: 1\n              restartPolicy: OnFailure\n\
+          \              template:\n                metadata:\n                  annotations:\n\
+          \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
+          \                  containers:\n                    - args:\n          \
+          \              - |\n                          echo \"Running phase {phase_num}\"\
           \n                          echo \"Using {path_to_model} model for training\"\
           \n                          echo \"Using {path_to_data} data for training\"\
           \n                          mkdir -p /output/phase_{phase_num}/model;\n\

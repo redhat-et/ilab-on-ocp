@@ -160,7 +160,7 @@ def pytorchjob_manifest_op(
     name = f"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}"
 
     if phase_num == 1:
-        path_to_model = "/input_model"
+        path_to_model = "/input_model/granite-7b-starter"
         path_to_data = "/input_data/knowledge/data.jsonl"
     elif phase_num == 2:
         path_to_model = list_phase1_final_model()
