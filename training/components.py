@@ -5,7 +5,7 @@ from typing import NamedTuple, Optional
 
 from kfp import dsl
 
-from utils.consts import PYTHON_IMAGE
+from utils.consts import PYTHON_IMAGE, TOOLBOX_IMAGE
 
 
 @dsl.component(
@@ -15,10 +15,10 @@ from utils.consts import PYTHON_IMAGE
     ],
 )
 def data_processing_op(
-    sdg: dsl.Input[dsl.Dataset],
-    skills_processed_data: dsl.Output[dsl.Dataset],
-    knowledge_processed_data: dsl.Output[dsl.Dataset],
-    model: dsl.Input[dsl.Artifact],
+    model_path: str = "/model",
+    sdg_path: str = "/data/sdg",
+    skills_path: str = "/data/skills",
+    knowledge_path: str = "/data/knowledge",
     max_seq_len: Optional[int] = 4096,
     max_batch_len: Optional[int] = 20000,
 ):
@@ -33,9 +33,9 @@ def data_processing_op(
     # define training-specific arguments
     skill_training_args = TrainingArgs(
         # define data-specific arguments
-        model_path=model.path,
-        data_path=f"{sdg.path}/skills_train_msgs*.jsonl",
-        data_output_dir=skills_processed_data.path,
+        model_path=model_path,
+        data_path=f"{sdg_path}/skills_train_msgs*.jsonl",
+        data_output_dir=skills_path,
         # define model-trianing parameters
         max_seq_len=max_seq_len,
         max_batch_len=max_batch_len,
@@ -53,9 +53,9 @@ def data_processing_op(
 
     knowledge_training_args = TrainingArgs(
         # define data-specific arguments
-        model_path=model.path,
-        data_path=f"{sdg.path}/knowledge_train_msgs*.jsonl",
-        data_output_dir=knowledge_processed_data.path,
+        model_path=model_path,
+        data_path=f"{sdg_path}/knowledge_train_msgs*.jsonl",
+        data_output_dir=knowledge_path,
         # define model-trianing parameters
         max_seq_len=max_seq_len,
         max_batch_len=max_batch_len,
@@ -101,6 +101,30 @@ def data_processing_op(
     data_processing(train_args=knowledge_training_args)
 
 
+@dsl.container_component
+def skills_processed_data_to_artifact_op(
+    skills_processed_data: dsl.Output[dsl.Dataset],
+    pvc_path: str = "/data/skills",
+):
+    return dsl.ContainerSpec(
+        TOOLBOX_IMAGE,
+        ["/bin/sh", "-c"],
+        [f"cp -r {pvc_path} {skills_processed_data.path}"],
+    )
+
+
+@dsl.container_component
+def knowledge_processed_data_to_artifact_op(
+    knowledge_processed_data: dsl.Output[dsl.Dataset],
+    pvc_path: str = "/data/knowledge",
+):
+    return dsl.ContainerSpec(
+        TOOLBOX_IMAGE,
+        ["/bin/sh", "-c"],
+        [f"cp -r {pvc_path} {knowledge_processed_data.path}"],
+    )
+
+
 @dsl.component(base_image=PYTHON_IMAGE)
 def pytorchjob_manifest_op(
     model_pvc_name: str,
@@ -136,11 +160,13 @@ def pytorchjob_manifest_op(
     name = f"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}"
 
     if phase_num == 1:
-        path_to_model = "/input_model/model"
-        path_to_data = "/input_data/knowledge_processed_data/data.jsonl"
+        path_to_model = "/input_model"
+        path_to_data = "/input_data/knowledge/data.jsonl"
     elif phase_num == 2:
         path_to_model = list_phase1_final_model()
-        path_to_data = "/input_data/skills_processed_data/data.jsonl"
+        path_to_data = "/input_data/skills/data.jsonl"
+    else:
+        raise RuntimeError(f"Unsupported value of {phase_num=}")
 
     image = "quay.io/redhat-et/ilab:1.2"
 

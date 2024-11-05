@@ -4,21 +4,21 @@ from typing import Optional
 
 from kfp import dsl
 
-from utils.consts import PYTHON_IMAGE
+from utils.consts import PYTHON_IMAGE, TOOLBOX_IMAGE
 
 
 @dsl.container_component
 def git_clone_op(
-    taxonomy: dsl.Output[dsl.Dataset],
     repo_branch: str,
     repo_pr: Optional[int],
     repo_url: Optional[str],
+    taxonomy_path: str = "/data/taxonomy",
 ):
     return dsl.ContainerSpec(
         "registry.access.redhat.com/ubi9/toolbox",
         ["/bin/sh", "-c"],
         [
-            f"git clone {repo_url} {taxonomy.path} && cd {taxonomy.path} && "
+            f"git clone {repo_url} {taxonomy_path} && cd {taxonomy_path} && "
             + f'if [ -n "{repo_branch}" ]; then '
             + f"git fetch origin {repo_branch} && git checkout {repo_branch}; "
             + f'elif [ -n "{repo_pr}" ] && [ {repo_pr} -gt 0 ]; then '
@@ -36,14 +36,32 @@ def git_clone_op(
 def sdg_op(
     num_instructions_to_generate: int,
     pipeline: str,
-    taxonomy: dsl.Input[dsl.Dataset],
-    sdg: dsl.Output[dsl.Dataset],
     repo_branch: Optional[str],
     repo_pr: Optional[int],
+    taxonomy_path: str = "/data/taxonomy",
+    sdg_path: str = "/data/sdg",
 ):
     import shutil
     import sys
     from pathlib import Path
 
-    shutil.copytree(Path(sys.prefix) / "sdg_fixtures", sdg.path, dirs_exist_ok=True)
+    shutil.copytree(Path(sys.prefix) / "sdg_fixtures", sdg_path, dirs_exist_ok=True)
     return
+
+
+@dsl.container_component
+def taxonomy_to_artifact_op(taxonomy: dsl.Output[dsl.Dataset], pvc_path: str):
+    return dsl.ContainerSpec(
+        TOOLBOX_IMAGE,
+        ["/bin/sh", "-c"],
+        [f"cp -r {pvc_path} {taxonomy.path}"],
+    )
+
+
+@dsl.container_component
+def sdg_to_artifact_op(sdg: dsl.Output[dsl.Dataset], pvc_path: str):
+    return dsl.ContainerSpec(
+        TOOLBOX_IMAGE,
+        ["/bin/sh", "-c"],
+        [f"cp -r {pvc_path} {sdg.path}"],
+    )

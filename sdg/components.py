@@ -4,21 +4,21 @@ from typing import Optional
 
 from kfp import dsl
 
-from utils.consts import RHELAI_IMAGE
+from utils.consts import RHELAI_IMAGE, TOOLBOX_IMAGE
 
 
 @dsl.container_component
 def git_clone_op(
-    taxonomy: dsl.Output[dsl.Dataset],
     repo_branch: str,
     repo_pr: Optional[int],
     repo_url: Optional[str],
+    taxonomy_path: str = "/data/taxonomy",
 ):
     return dsl.ContainerSpec(
         "registry.access.redhat.com/ubi9/toolbox",
         ["/bin/sh", "-c"],
         [
-            f"git clone {repo_url} {taxonomy.path} && cd {taxonomy.path} && "
+            f"git clone {repo_url} {taxonomy_path} && cd {taxonomy_path} && "
             + f'if [ -n "{repo_branch}" ]; then '
             + f"git fetch origin {repo_branch} && git checkout {repo_branch}; "
             + f'elif [ -n "{repo_pr}" ] && [ {repo_pr} -gt 0 ]; then '
@@ -31,10 +31,10 @@ def git_clone_op(
 def sdg_op(
     num_instructions_to_generate: int,
     pipeline: str,
-    taxonomy: dsl.Input[dsl.Dataset],
-    sdg: dsl.Output[dsl.Dataset],
     repo_branch: Optional[str],
     repo_pr: Optional[int],
+    taxonomy_path: str = "/data/taxonomy",
+    sdg_path: str = "/data/sdg",
 ):
     from os import getenv, path
 
@@ -65,7 +65,7 @@ def sdg_op(
 
     print("Generating synthetic dataset for:")
     print()
-    print(read_taxonomy(taxonomy.path, taxonomy_base))
+    print(read_taxonomy(taxonomy_path, taxonomy_base))
 
     # Temporary measure to limit the amount of precomputed skills data used to construct the SDG dataset.
     # Need during development to decrease training loop times and the cost of model quality.
@@ -77,11 +77,31 @@ def sdg_op(
     generate_data(
         client=client,
         num_instructions_to_generate=num_instructions_to_generate,
-        output_dir=sdg.path,
-        taxonomy=taxonomy.path,
+        output_dir=sdg_path,
+        taxonomy=taxonomy_path,
         taxonomy_base=taxonomy_base,
         model_name=model,
         pipeline=pipeline,
         chunk_word_count=1000,
         server_ctx_size=4096,
+    )
+
+
+@dsl.container_component
+def taxonomy_to_artifact_op(
+    taxonomy: dsl.Output[dsl.Dataset], pvc_path: str = "/data/taxonomy"
+):
+    return dsl.ContainerSpec(
+        TOOLBOX_IMAGE,
+        ["/bin/sh", "-c"],
+        [f"cp -r {pvc_path} {taxonomy.path}"],
+    )
+
+
+@dsl.container_component
+def sdg_to_artifact_op(sdg: dsl.Output[dsl.Dataset], pvc_path: str = "/data/sdg"):
+    return dsl.ContainerSpec(
+        TOOLBOX_IMAGE,
+        ["/bin/sh", "-c"],
+        [f"cp -r {pvc_path} {sdg.path}"],
     )

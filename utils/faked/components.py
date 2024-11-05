@@ -16,7 +16,7 @@ def kubectl_wait_for_op(condition: str, kind: str, name: str):
 
 
 @dsl.component(base_image=PYTHON_IMAGE)
-def huggingface_importer_op(model: dsl.Output[dsl.Model], repo_name: str):
+def huggingface_importer_op(repo_name: str, model_path: str = "/model"):
     return
 
 

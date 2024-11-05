@@ -224,18 +224,3 @@ def run_mt_bench_op(
         )
 
     return outputs(best_model=best_model, best_score=best_score)
-
-
-@component(base_image=PYTHON_IMAGE)
-def load_mt_bench_results_op(mt_bench_output: Input[Artifact]) -> list:
-    import json
-
-    mt_bench_score_list = []
-    with open(mt_bench_output.path, "r") as f:
-        mt_bench_score_list = json.load(f)
-
-    print("MT_Bench Evaluation Data:")
-    for mt_bench_score in mt_bench_score_list:
-        print(json.dumps(mt_bench_score, indent=4))
-
-    return mt_bench_score_list
