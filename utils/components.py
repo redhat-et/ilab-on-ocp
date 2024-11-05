@@ -59,8 +59,10 @@ def list_models_in_directory_op(models_folder: str) -> List:
     return models
 
 
-@dsl.component(base_image=PYTHON_IMAGE, packages_to_install=["huggingface_hub"])
-def huggingface_importer_op(repo_name: str, model_path: str = "/model"):
-    from huggingface_hub import snapshot_download
-
-    snapshot_download(repo_id=repo_name, cache_dir="/tmp", local_dir=model_path)
+@dsl.component
+def model_download(model_path: str = "/model"):
+    return dsl.ContainerSpec(
+        RHELAI_IMAGE,
+        ["/bin/sh", "-c"],
+        [f"ilab model download --repository docker://registry.redhat.io/rhelai1/granite-7b-starter --release 1.2 --model-dir={model.path}"],
+    )

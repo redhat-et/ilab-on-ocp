@@ -1,6 +1,6 @@
 from . import faked
 from .components import (
-    huggingface_importer_op,
+    model_download,
     kubectl_apply_op,
     kubectl_wait_for_op,
     list_models_in_directory_op,
@@ -11,7 +11,7 @@ from .components import (
 __all__ = [
     "kubectl_apply_op",
     "kubectl_wait_for_op",
-    "huggingface_importer_op",
+    "model_download",
     "pvc_to_artifact_op",
     "pvc_to_model_op",
     "list_models_in_directory_op",
