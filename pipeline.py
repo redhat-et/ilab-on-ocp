@@ -27,7 +27,6 @@ GENERATED_STANDALONE_FILE_NAME = "standalone.py"
 DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
 KFP_MODEL_SERVER_CM = "sdg/kfp-model-server.yaml"
 BASE_MODEL = "ibm-granite/granite-7b-base"
-BASE_MODEL_DIR = "/data/model/"  # <- "model ID for vLLM chat/completions - corresponds to path within pvc"
 
 # eval args
 MMLU_TASKS_LIST = "mmlu_anatomy,mmlu_astronomy"
@@ -423,7 +422,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             base_branch=repo_branch,
             candidate_branch=repo_branch,
             device=device,
-            base_model_dir=BASE_MODEL_DIR,
+            base_model_dir="/model",
             max_workers=max_workers,
             merge_system_user_message=merge_system_user_message,
             model_dtype=model_dtype,
@@ -440,8 +439,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
         mount_pvc(
             task=final_eval_task,
-            pvc_name=sdg_input_pvc_task.output,
-            mount_path="/data",
+            pvc_name=model_pvc_task.output,
+            mount_path="/model",
         )
 
         use_config_map_as_env(

@@ -2027,6 +2027,7 @@ root:
           name: comp-run-final-eval-op
         dependentTasks:
         - createpvc
+        - createpvc-2
         - createpvc-3
         - run-mt-bench-op
         inputs:
@@ -2035,7 +2036,7 @@ root:
               componentInputParameter: repo_branch
             base_model_dir:
               runtimeValue:
-                constant: /data/model/
+                constant: /model
             batch_size:
               componentInputParameter: batch_size
             candidate_branch:
@@ -2298,10 +2299,10 @@ platforms:
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc
-          - mountPath: /data
+          - mountPath: /model
             taskOutputParameter:
               outputParameterKey: name
-              producerTask: createpvc
+              producerTask: createpvc-2
           secretAsEnv:
           - keyToEnv:
             - envVar: JUDGE_API_KEY
