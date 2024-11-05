@@ -888,16 +888,15 @@ deploymentSpec:
           \    path_to_data = \"/input_data/knowledge_processed_data/data.jsonl\"\n\
           \    elif phase_num == 2:\n        path_to_model = list_phase1_final_model()\n\
           \        path_to_data = \"/input_data/skills_processed_data/data.jsonl\"\
-          \n\n    image = \"registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2\"\
-          \n\n    manifest = inspect.cleandoc(\n        f\"\"\"\n        apiVersion:\
-          \ kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n       \
-          \   name: {name}\n        spec:\n          nprocPerNode: \\\\\"{nproc_per_node}\\\
-          \\\"\n          pytorchReplicaSpecs:\n            Master:\n            \
-          \  replicas: 1\n              restartPolicy: OnFailure\n              template:\n\
-          \                metadata:\n                  annotations:\n           \
-          \         sidecar.istio.io/inject: 'false'\n                spec:\n    \
-          \              containers:\n                    - args:\n              \
-          \          - |\n                          echo \"Running phase {phase_num}\"\
+          \n\n    image = \"quay.io/redhat-et/ilab:1.2\"\n\n    manifest = inspect.cleandoc(\n\
+          \        f\"\"\"\n        apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n\
+          \        metadata:\n          name: {name}\n        spec:\n          nprocPerNode:\
+          \ \\\\\"{nproc_per_node}\\\\\"\n          pytorchReplicaSpecs:\n       \
+          \     Master:\n              replicas: 1\n              restartPolicy: OnFailure\n\
+          \              template:\n                metadata:\n                  annotations:\n\
+          \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
+          \                  containers:\n                    - args:\n          \
+          \              - |\n                          echo \"Running phase {phase_num}\"\
           \n                          echo \"Using {path_to_model} model for training\"\
           \n                          echo \"Using {path_to_data} data for training\"\
           \n                          mkdir -p /output/phase_{phase_num}/model;\n\
@@ -1045,16 +1044,15 @@ deploymentSpec:
           \    path_to_data = \"/input_data/knowledge_processed_data/data.jsonl\"\n\
           \    elif phase_num == 2:\n        path_to_model = list_phase1_final_model()\n\
           \        path_to_data = \"/input_data/skills_processed_data/data.jsonl\"\
-          \n\n    image = \"registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2\"\
-          \n\n    manifest = inspect.cleandoc(\n        f\"\"\"\n        apiVersion:\
-          \ kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n       \
-          \   name: {name}\n        spec:\n          nprocPerNode: \\\\\"{nproc_per_node}\\\
-          \\\"\n          pytorchReplicaSpecs:\n            Master:\n            \
-          \  replicas: 1\n              restartPolicy: OnFailure\n              template:\n\
-          \                metadata:\n                  annotations:\n           \
-          \         sidecar.istio.io/inject: 'false'\n                spec:\n    \
-          \              containers:\n                    - args:\n              \
-          \          - |\n                          echo \"Running phase {phase_num}\"\
+          \n\n    image = \"quay.io/redhat-et/ilab:1.2\"\n\n    manifest = inspect.cleandoc(\n\
+          \        f\"\"\"\n        apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n\
+          \        metadata:\n          name: {name}\n        spec:\n          nprocPerNode:\
+          \ \\\\\"{nproc_per_node}\\\\\"\n          pytorchReplicaSpecs:\n       \
+          \     Master:\n              replicas: 1\n              restartPolicy: OnFailure\n\
+          \              template:\n                metadata:\n                  annotations:\n\
+          \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
+          \                  containers:\n                    - args:\n          \
+          \              - |\n                          echo \"Running phase {phase_num}\"\
           \n                          echo \"Using {path_to_model} model for training\"\
           \n                          echo \"Using {path_to_data} data for training\"\
           \n                          mkdir -p /output/phase_{phase_num}/model;\n\
@@ -1171,8 +1169,7 @@ deploymentSpec:
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
           \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'vllm' && \"\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
           $0\" \"$@\"\n"
         - sh
         - -ec
@@ -1419,7 +1416,7 @@ deploymentSpec:
           : base_overall_score,\n        \"error_rate\": error_rate,\n        \"summary\"\
           : summary,\n    }\n\n    with open(mt_bench_branch_output.path, \"w\") as\
           \ f:\n        json.dump(mt_bench_branch_data, f, indent=4)\n\n"
-        image: quay.io/sallyom/instructlab-ocp:eval-10-8
+        image: quay.io/redhat-et/ilab:1.2
         resources:
           accelerator:
             count: '1'
@@ -1437,8 +1434,7 @@ deploymentSpec:
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
           \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'vllm' && \"\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
           $0\" \"$@\"\n"
         - sh
         - -ec
@@ -1561,7 +1557,7 @@ deploymentSpec:
           \ best_model),\n            os.path.join(models_path_prefix, \"candidate_model\"\
           ),\n        )\n\n    return outputs(best_model=best_model, best_score=best_score)\n\
           \n"
-        image: quay.io/sallyom/instructlab-ocp:eval-10-8
+        image: quay.io/redhat-et/ilab:1.2
         resources:
           accelerator:
             count: '1'
@@ -1607,7 +1603,7 @@ deploymentSpec:
           api_key\")\n    model = getenv(\"model\")\n    endpoint = getenv(\"endpoint\"\
           )\n    client = openai.OpenAI(base_url=endpoint, api_key=api_key)\n\n  \
           \  taxonomy_base = \"main\" if repo_branch or (repo_pr and int(repo_pr)\
-          \ > 0) else \"empty\"\n\n    print(\"Generating syntetic dataset for:\"\
+          \ > 0) else \"empty\"\n\n    print(\"Generating synthetic dataset for:\"\
           )\n    print()\n    print(read_taxonomy(taxonomy.path, taxonomy_base))\n\
           \n    # Temporary measure to limit the amount of precomputed skills data\
           \ used to construct the SDG dataset.\n    # Need during development to decrease\
@@ -1618,7 +1614,7 @@ deploymentSpec:
           \        output_dir=sdg.path,\n        taxonomy=taxonomy.path,\n       \
           \ taxonomy_base=taxonomy_base,\n        model_name=model,\n        pipeline=pipeline,\n\
           \        chunk_word_count=1000,\n        server_ctx_size=4096,\n    )\n\n"
-        image: quay.io/tcoufal/ilab-sdg:latest
+        image: quay.io/redhat-et/ilab:1.2
 pipelineInfo:
   description: InstructLab pipeline
   displayName: InstructLab
@@ -2306,6 +2302,8 @@ platforms:
               envVar: JUDGE_ENDPOINT
             - configMapKey: model
               envVar: JUDGE_NAME
+          imagePullSecret:
+          - secretName: redhat-et-ilab-botty-pull-secret
           pvcMount:
           - mountPath: /output
             taskOutputParameter:
@@ -2328,6 +2326,8 @@ platforms:
               envVar: JUDGE_ENDPOINT
             - configMapKey: model
               envVar: JUDGE_NAME
+          imagePullSecret:
+          - secretName: redhat-et-ilab-botty-pull-secret
           pvcMount:
           - mountPath: /output
             taskOutputParameter:
@@ -2346,6 +2346,8 @@ platforms:
               envVar: endpoint
             - configMapKey: model
               envVar: model
+          imagePullSecret:
+          - secretName: redhat-et-ilab-botty-pull-secret
           secretAsEnv:
           - keyToEnv:
             - envVar: api_key

@@ -4,10 +4,10 @@ from typing import List, NamedTuple, Optional
 
 from kfp.dsl import Artifact, Input, Model, Output, component, importer
 
-from utils.consts import EVAL_IMAGE, PYTHON_IMAGE
+from utils.consts import PYTHON_IMAGE, RHELAI_IMAGE
 
 
-@component(base_image=EVAL_IMAGE, packages_to_install=["vllm"])
+@component(base_image=RHELAI_IMAGE)
 def run_mt_bench_op(
     models_path_prefix: str,
     mt_bench_output: Output[Artifact],
