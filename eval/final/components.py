@@ -2,7 +2,7 @@
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error
 from typing import List, NamedTuple
 
-from kfp.dsl import Artifact, Dataset, Input, Model, Output, component, importer
+from kfp.dsl import Artifact, Output, component
 
 from utils.consts import PYTHON_IMAGE, RHELAI_IMAGE
 
@@ -14,8 +14,6 @@ def run_final_eval_op(
     mmlu_branch_output: Output[Artifact],
     mt_bench_branch_output: Output[Artifact],
     base_model_dir: str,
-    tasks: Input[Dataset],
-    taxonomy: Input[Dataset],
     base_branch: str,
     candidate_branch: str,
     max_workers: str,
@@ -25,6 +23,8 @@ def run_final_eval_op(
     batch_size: str,
     merge_system_user_message: bool,
     candidate_model: str = None,
+    taxonomy_path: str = "/input/taxonomy",
+    sdg_path: str = "/input/sdg",
 ):
     import json
     import os
@@ -272,7 +272,7 @@ def run_final_eval_op(
 
     mmlu_tasks = ["mmlu_pr"]
 
-    node_dataset_dirs = find_node_dataset_directories(tasks.path)
+    node_dataset_dirs = find_node_dataset_directories(sdg_path)
 
     # This assumes generated filesystem from ilab sdg, which
     # generates a node_datasets_ directory for MMLU custom tasks data
@@ -351,7 +351,7 @@ def run_final_eval_op(
 
     # MT_BENCH_BRANCH
 
-    print("Strating MT_BENCH_BRANCH ...")
+    print("Starting MT_BENCH_BRANCH ...")
 
     judge_api_key = os.getenv("JUDGE_API_KEY", "")
     judge_model_name = os.getenv("JUDGE_NAME")
@@ -373,7 +373,7 @@ def run_final_eval_op(
         MTBenchBranchEvaluator(
             model_name=candidate_model,
             judge_model_name=judge_model_name,
-            taxonomy_git_repo_path=taxonomy.path,
+            taxonomy_git_repo_path=taxonomy_path,
             branch=candidate_branch,
             output_dir=output_dir,
             merge_system_user_message=merge_system_user_message,
@@ -381,7 +381,7 @@ def run_final_eval_op(
         MTBenchBranchEvaluator(
             model_name=base_model_dir,
             judge_model_name=judge_model_name,
-            taxonomy_git_repo_path=taxonomy.path,
+            taxonomy_git_repo_path=taxonomy_path,
             branch=base_branch,
             output_dir=output_dir,
             merge_system_user_message=merge_system_user_message,

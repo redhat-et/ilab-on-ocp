@@ -26,39 +26,6 @@
 #    seed: int [Default: 42.0]
 #    storage_class_name: str [Default: 'nfs-csi']
 components:
-  comp-artifact-to-pvc-op:
-    executorLabel: exec-artifact-to-pvc-op
-    inputDefinitions:
-      artifacts:
-        data:
-          artifactType:
-            schemaTitle: system.Artifact
-            schemaVersion: 0.0.1
-      parameters:
-        pvc_path:
-          parameterType: STRING
-  comp-artifact-to-pvc-op-2:
-    executorLabel: exec-artifact-to-pvc-op-2
-    inputDefinitions:
-      artifacts:
-        data:
-          artifactType:
-            schemaTitle: system.Artifact
-            schemaVersion: 0.0.1
-      parameters:
-        pvc_path:
-          parameterType: STRING
-  comp-artifact-to-pvc-op-3:
-    executorLabel: exec-artifact-to-pvc-op-3
-    inputDefinitions:
-      artifacts:
-        data:
-          artifactType:
-            schemaTitle: system.Artifact
-            schemaVersion: 0.0.1
-      parameters:
-        pvc_path:
-          parameterType: STRING
   comp-createpvc:
     executorLabel: exec-createpvc
     inputDefinitions:
@@ -245,16 +212,11 @@ components:
   comp-data-processing-op:
     executorLabel: exec-data-processing-op
     inputDefinitions:
-      artifacts:
-        model:
-          artifactType:
-            schemaTitle: system.Artifact
-            schemaVersion: 0.0.1
-        sdg:
-          artifactType:
-            schemaTitle: system.Dataset
-            schemaVersion: 0.0.1
       parameters:
+        knowledge_path:
+          defaultValue: /data/knowledge
+          isOptional: true
+          parameterType: STRING
         max_batch_len:
           defaultValue: 20000.0
           isOptional: true
@@ -263,16 +225,18 @@ components:
           defaultValue: 4096.0
           isOptional: true
           parameterType: NUMBER_INTEGER
-    outputDefinitions:
-      artifacts:
-        knowledge_processed_data:
-          artifactType:
-            schemaTitle: system.Dataset
-            schemaVersion: 0.0.1
-        skills_processed_data:
-          artifactType:
-            schemaTitle: system.Dataset
-            schemaVersion: 0.0.1
+        model_path:
+          defaultValue: /model
+          isOptional: true
+          parameterType: STRING
+        sdg_path:
+          defaultValue: /data/sdg
+          isOptional: true
+          parameterType: STRING
+        skills_path:
+          defaultValue: /data/skills
+          isOptional: true
+          parameterType: STRING
   comp-deletepvc:
     executorLabel: exec-deletepvc
     inputDefinitions:
@@ -307,23 +271,33 @@ components:
           parameterType: NUMBER_INTEGER
         repo_url:
           parameterType: STRING
-    outputDefinitions:
-      artifacts:
-        taxonomy:
-          artifactType:
-            schemaTitle: system.Dataset
-            schemaVersion: 0.0.1
+        taxonomy_path:
+          defaultValue: /data/taxonomy
+          isOptional: true
+          parameterType: STRING
   comp-huggingface-importer-op:
     executorLabel: exec-huggingface-importer-op
     inputDefinitions:
       parameters:
+        model_path:
+          defaultValue: /model
+          isOptional: true
+          parameterType: STRING
         repo_name:
+          parameterType: STRING
+  comp-knowledge-processed-data-to-artifact-op:
+    executorLabel: exec-knowledge-processed-data-to-artifact-op
+    inputDefinitions:
+      parameters:
+        pvc_path:
+          defaultValue: /data/knowledge
+          isOptional: true
           parameterType: STRING
     outputDefinitions:
       artifacts:
-        model:
+        knowledge_processed_data:
           artifactType:
-            schemaTitle: system.Model
+            schemaTitle: system.Dataset
             schemaVersion: 0.0.1
   comp-kubectl-apply-op:
     executorLabel: exec-kubectl-apply-op
@@ -367,18 +341,6 @@ components:
       parameters:
         Output:
           parameterType: LIST
-  comp-pvc-to-artifact-op:
-    executorLabel: exec-pvc-to-artifact-op
-    inputDefinitions:
-      parameters:
-        pvc_path:
-          parameterType: STRING
-    outputDefinitions:
-      artifacts:
-        model:
-          artifactType:
-            schemaTitle: system.Artifact
-            schemaVersion: 0.0.1
   comp-pvc-to-model-op:
     executorLabel: exec-pvc-to-model-op
     inputDefinitions:
@@ -390,6 +352,18 @@ components:
         model:
           artifactType:
             schemaTitle: system.Model
+            schemaVersion: 0.0.1
+  comp-pvc-to-mt-bench-op:
+    executorLabel: exec-pvc-to-mt-bench-op
+    inputDefinitions:
+      parameters:
+        pvc_path:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        mt_bench_output:
+          artifactType:
+            schemaTitle: system.Artifact
             schemaVersion: 0.0.1
   comp-pytorchjob-manifest-op:
     executorLabel: exec-pytorchjob-manifest-op
@@ -506,15 +480,6 @@ components:
   comp-run-final-eval-op:
     executorLabel: exec-run-final-eval-op
     inputDefinitions:
-      artifacts:
-        tasks:
-          artifactType:
-            schemaTitle: system.Dataset
-            schemaVersion: 0.0.1
-        taxonomy:
-          artifactType:
-            schemaTitle: system.Dataset
-            schemaVersion: 0.0.1
       parameters:
         base_branch:
           parameterType: STRING
@@ -536,6 +501,14 @@ components:
         merge_system_user_message:
           parameterType: BOOLEAN
         model_dtype:
+          parameterType: STRING
+        sdg_path:
+          defaultValue: /input/sdg
+          isOptional: true
+          parameterType: STRING
+        taxonomy_path:
+          defaultValue: /input/taxonomy
+          isOptional: true
           parameterType: STRING
     outputDefinitions:
       artifacts:
@@ -569,12 +542,11 @@ components:
           parameterType: LIST
         models_path_prefix:
           parameterType: STRING
+        output_path:
+          defaultValue: /output/mt_bench_data.json
+          isOptional: true
+          parameterType: STRING
     outputDefinitions:
-      artifacts:
-        mt_bench_output:
-          artifactType:
-            schemaTitle: system.Artifact
-            schemaVersion: 0.0.1
       parameters:
         best_model:
           parameterType: STRING
@@ -583,11 +555,6 @@ components:
   comp-sdg-op:
     executorLabel: exec-sdg-op
     inputDefinitions:
-      artifacts:
-        taxonomy:
-          artifactType:
-            schemaTitle: system.Dataset
-            schemaVersion: 0.0.1
       parameters:
         num_instructions_to_generate:
           parameterType: NUMBER_INTEGER
@@ -597,38 +564,58 @@ components:
           parameterType: STRING
         repo_pr:
           parameterType: NUMBER_INTEGER
+        sdg_path:
+          defaultValue: /data/sdg
+          isOptional: true
+          parameterType: STRING
+        taxonomy_path:
+          defaultValue: /data/taxonomy
+          isOptional: true
+          parameterType: STRING
+  comp-sdg-to-artifact-op:
+    executorLabel: exec-sdg-to-artifact-op
+    inputDefinitions:
+      parameters:
+        pvc_path:
+          defaultValue: /data/sdg
+          isOptional: true
+          parameterType: STRING
     outputDefinitions:
       artifacts:
         sdg:
           artifactType:
             schemaTitle: system.Dataset
             schemaVersion: 0.0.1
+  comp-skills-processed-data-to-artifact-op:
+    executorLabel: exec-skills-processed-data-to-artifact-op
+    inputDefinitions:
+      parameters:
+        pvc_path:
+          defaultValue: /data/skills
+          isOptional: true
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        skills_processed_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-taxonomy-to-artifact-op:
+    executorLabel: exec-taxonomy-to-artifact-op
+    inputDefinitions:
+      parameters:
+        pvc_path:
+          defaultValue: /data/taxonomy
+          isOptional: true
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        taxonomy:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
 deploymentSpec:
   executors:
-    exec-artifact-to-pvc-op:
-      container:
-        args:
-        - cp -r {{$.inputs.artifacts['data'].path}} {{$.inputs.parameters['pvc_path']}}
-        command:
-        - /bin/sh
-        - -c
-        image: registry.access.redhat.com/ubi9/toolbox
-    exec-artifact-to-pvc-op-2:
-      container:
-        args:
-        - cp -r {{$.inputs.artifacts['data'].path}} {{$.inputs.parameters['pvc_path']}}
-        command:
-        - /bin/sh
-        - -c
-        image: registry.access.redhat.com/ubi9/toolbox
-    exec-artifact-to-pvc-op-3:
-      container:
-        args:
-        - cp -r {{$.inputs.artifacts['data'].path}} {{$.inputs.parameters['pvc_path']}}
-        command:
-        - /bin/sh
-        - -c
-        image: registry.access.redhat.com/ubi9/toolbox
     exec-createpvc:
       container:
         image: argostub/createpvc
@@ -665,15 +652,15 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef data_processing_op(\n    sdg: dsl.Input[dsl.Dataset],\n    skills_processed_data:\
-          \ dsl.Output[dsl.Dataset],\n    knowledge_processed_data: dsl.Output[dsl.Dataset],\n\
-          \    model: dsl.Input[dsl.Artifact],\n    max_seq_len: Optional[int] = 4096,\n\
-          \    max_batch_len: Optional[int] = 20000,\n):\n    import os\n\n    import\
+          \ *\n\ndef data_processing_op(\n    model_path: str = \"/model\",\n    sdg_path:\
+          \ str = \"/data/sdg\",\n    skills_path: str = \"/data/skills\",\n    knowledge_path:\
+          \ str = \"/data/knowledge\",\n    max_seq_len: Optional[int] = 4096,\n \
+          \   max_batch_len: Optional[int] = 20000,\n):\n    import os\n\n    import\
           \ instructlab.training.data_process as dp\n    from instructlab.training\
           \ import (\n        DataProcessArgs,\n        TrainingArgs,\n    )\n\n \
           \   # define training-specific arguments\n    skill_training_args = TrainingArgs(\n\
-          \        # define data-specific arguments\n        model_path=model.path,\n\
-          \        data_path=f\"{sdg.path}/skills_train_msgs*.jsonl\",\n        data_output_dir=skills_processed_data.path,\n\
+          \        # define data-specific arguments\n        model_path=model_path,\n\
+          \        data_path=f\"{sdg_path}/skills_train_msgs*.jsonl\",\n        data_output_dir=skills_path,\n\
           \        # define model-trianing parameters\n        max_seq_len=max_seq_len,\n\
           \        max_batch_len=max_batch_len,\n        # XXX(shanand): We don't\
           \ need the following arguments\n        # for data processing. Added them\
@@ -682,9 +669,9 @@ deploymentSpec:
           \        effective_batch_size=3840,\n        save_samples=0,\n        learning_rate=2e-6,\n\
           \        warmup_steps=800,\n        is_padding_free=True,\n    )\n\n   \
           \ knowledge_training_args = TrainingArgs(\n        # define data-specific\
-          \ arguments\n        model_path=model.path,\n        data_path=f\"{sdg.path}/knowledge_train_msgs*.jsonl\"\
-          ,\n        data_output_dir=knowledge_processed_data.path,\n        # define\
-          \ model-trianing parameters\n        max_seq_len=max_seq_len,\n        max_batch_len=max_batch_len,\n\
+          \ arguments\n        model_path=model_path,\n        data_path=f\"{sdg_path}/knowledge_train_msgs*.jsonl\"\
+          ,\n        data_output_dir=knowledge_path,\n        # define model-trianing\
+          \ parameters\n        max_seq_len=max_seq_len,\n        max_batch_len=max_batch_len,\n\
           \        # XXX(shanand): We don't need the following arguments\n       \
           \ # for data processing. Added them for now to avoid\n        # Pydantic\
           \ validation errors for TrainingArgs\n        ckpt_output_dir=\"data/saved_checkpoints\"\
@@ -722,8 +709,8 @@ deploymentSpec:
     exec-git-clone-op:
       container:
         args:
-        - 'git clone {{$.inputs.parameters[''repo_url'']}} {{$.outputs.artifacts[''taxonomy''].path}}
-          && cd {{$.outputs.artifacts[''taxonomy''].path}} && if [ -n "{{$.inputs.parameters[''repo_branch'']}}"
+        - 'git clone {{$.inputs.parameters[''repo_url'']}} {{$.inputs.parameters[''taxonomy_path'']}}
+          && cd {{$.inputs.parameters[''taxonomy_path'']}} && if [ -n "{{$.inputs.parameters[''repo_branch'']}}"
           ]; then git fetch origin {{$.inputs.parameters[''repo_branch'']}} && git
           checkout {{$.inputs.parameters[''repo_branch'']}}; elif [ -n "{{$.inputs.parameters[''repo_pr'']}}"
           ] && [ {{$.inputs.parameters[''repo_pr'']}} -gt 0 ]; then git fetch origin
@@ -760,10 +747,18 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef huggingface_importer_op(model: dsl.Output[dsl.Model], repo_name:\
-          \ str):\n    from huggingface_hub import snapshot_download\n\n    snapshot_download(repo_id=repo_name,\
-          \ cache_dir=\"/tmp\", local_dir=model.path)\n\n"
+          \ *\n\ndef huggingface_importer_op(repo_name: str, model_path: str = \"\
+          /model\"):\n    from huggingface_hub import snapshot_download\n\n    snapshot_download(repo_id=repo_name,\
+          \ cache_dir=\"/tmp\", local_dir=model_path)\n\n"
         image: registry.access.redhat.com/ubi9/python-311:latest
+    exec-knowledge-processed-data-to-artifact-op:
+      container:
+        args:
+        - cp -r {{$.inputs.parameters['pvc_path']}} {{$.outputs.artifacts['knowledge_processed_data'].path}}
+        command:
+        - /bin/sh
+        - -c
+        image: registry.access.redhat.com/ubi9/toolbox
     exec-kubectl-apply-op:
       container:
         args:
@@ -824,11 +819,11 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef list_models_in_directory_op(models_folder: str) -> List:\n  \
-          \  import os\n\n    models = os.listdir(models_folder)\n    return models\n\
+          \ *\n\ndef list_models_in_directory_op(models_folder: str) -> List[str]:\n\
+          \    import os\n\n    models = os.listdir(models_folder)\n    return models\n\
           \n"
         image: python:3.8
-    exec-pvc-to-artifact-op:
+    exec-pvc-to-model-op:
       container:
         args:
         - cp -r {{$.inputs.parameters['pvc_path']}} {{$.outputs.artifacts['model'].path}}
@@ -836,10 +831,10 @@ deploymentSpec:
         - /bin/sh
         - -c
         image: registry.access.redhat.com/ubi9/toolbox
-    exec-pvc-to-model-op:
+    exec-pvc-to-mt-bench-op:
       container:
         args:
-        - cp -r {{$.inputs.parameters['pvc_path']}} {{$.outputs.artifacts['model'].path}}
+        - cp -r {{$.inputs.parameters['pvc_path']}} {{$.outputs.artifacts['mt_bench_output'].path}}
         command:
         - /bin/sh
         - -c
@@ -884,19 +879,20 @@ deploymentSpec:
           \      newest_model = models[newest_idx]\n        return f\"{model_dir}/{newest_model}\"\
           \n\n    Outputs = NamedTuple(\"outputs\", manifest=str, name=str)\n    name\
           \ = f\"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}\"\n\n    if\
-          \ phase_num == 1:\n        path_to_model = \"/input_model/model\"\n    \
-          \    path_to_data = \"/input_data/knowledge_processed_data/data.jsonl\"\n\
-          \    elif phase_num == 2:\n        path_to_model = list_phase1_final_model()\n\
-          \        path_to_data = \"/input_data/skills_processed_data/data.jsonl\"\
-          \n\n    image = \"quay.io/redhat-et/ilab:1.2\"\n\n    manifest = inspect.cleandoc(\n\
-          \        f\"\"\"\n        apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n\
-          \        metadata:\n          name: {name}\n        spec:\n          nprocPerNode:\
-          \ \\\\\"{nproc_per_node}\\\\\"\n          pytorchReplicaSpecs:\n       \
-          \     Master:\n              replicas: 1\n              restartPolicy: OnFailure\n\
-          \              template:\n                metadata:\n                  annotations:\n\
-          \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
-          \                  containers:\n                    - args:\n          \
-          \              - |\n                          echo \"Running phase {phase_num}\"\
+          \ phase_num == 1:\n        path_to_model = \"/input_model\"\n        path_to_data\
+          \ = \"/input_data/knowledge/data.jsonl\"\n    elif phase_num == 2:\n   \
+          \     path_to_model = list_phase1_final_model()\n        path_to_data =\
+          \ \"/input_data/skills/data.jsonl\"\n    else:\n        raise RuntimeError(f\"\
+          Unsupported value of {phase_num=}\")\n\n    image = \"quay.io/redhat-et/ilab:1.2\"\
+          \n\n    manifest = inspect.cleandoc(\n        f\"\"\"\n        apiVersion:\
+          \ kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n       \
+          \   name: {name}\n        spec:\n          nprocPerNode: \\\\\"{nproc_per_node}\\\
+          \\\"\n          pytorchReplicaSpecs:\n            Master:\n            \
+          \  replicas: 1\n              restartPolicy: OnFailure\n              template:\n\
+          \                metadata:\n                  annotations:\n           \
+          \         sidecar.istio.io/inject: 'false'\n                spec:\n    \
+          \              containers:\n                    - args:\n              \
+          \          - |\n                          echo \"Running phase {phase_num}\"\
           \n                          echo \"Using {path_to_model} model for training\"\
           \n                          echo \"Using {path_to_data} data for training\"\
           \n                          mkdir -p /output/phase_{phase_num}/model;\n\
@@ -1040,19 +1036,20 @@ deploymentSpec:
           \      newest_model = models[newest_idx]\n        return f\"{model_dir}/{newest_model}\"\
           \n\n    Outputs = NamedTuple(\"outputs\", manifest=str, name=str)\n    name\
           \ = f\"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}\"\n\n    if\
-          \ phase_num == 1:\n        path_to_model = \"/input_model/model\"\n    \
-          \    path_to_data = \"/input_data/knowledge_processed_data/data.jsonl\"\n\
-          \    elif phase_num == 2:\n        path_to_model = list_phase1_final_model()\n\
-          \        path_to_data = \"/input_data/skills_processed_data/data.jsonl\"\
-          \n\n    image = \"quay.io/redhat-et/ilab:1.2\"\n\n    manifest = inspect.cleandoc(\n\
-          \        f\"\"\"\n        apiVersion: kubeflow.org/v1\n        kind: PyTorchJob\n\
-          \        metadata:\n          name: {name}\n        spec:\n          nprocPerNode:\
-          \ \\\\\"{nproc_per_node}\\\\\"\n          pytorchReplicaSpecs:\n       \
-          \     Master:\n              replicas: 1\n              restartPolicy: OnFailure\n\
-          \              template:\n                metadata:\n                  annotations:\n\
-          \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
-          \                  containers:\n                    - args:\n          \
-          \              - |\n                          echo \"Running phase {phase_num}\"\
+          \ phase_num == 1:\n        path_to_model = \"/input_model\"\n        path_to_data\
+          \ = \"/input_data/knowledge/data.jsonl\"\n    elif phase_num == 2:\n   \
+          \     path_to_model = list_phase1_final_model()\n        path_to_data =\
+          \ \"/input_data/skills/data.jsonl\"\n    else:\n        raise RuntimeError(f\"\
+          Unsupported value of {phase_num=}\")\n\n    image = \"quay.io/redhat-et/ilab:1.2\"\
+          \n\n    manifest = inspect.cleandoc(\n        f\"\"\"\n        apiVersion:\
+          \ kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n       \
+          \   name: {name}\n        spec:\n          nprocPerNode: \\\\\"{nproc_per_node}\\\
+          \\\"\n          pytorchReplicaSpecs:\n            Master:\n            \
+          \  replicas: 1\n              restartPolicy: OnFailure\n              template:\n\
+          \                metadata:\n                  annotations:\n           \
+          \         sidecar.istio.io/inject: 'false'\n                spec:\n    \
+          \              containers:\n                    - args:\n              \
+          \          - |\n                          echo \"Running phase {phase_num}\"\
           \n                          echo \"Using {path_to_model} model for training\"\
           \n                          echo \"Using {path_to_data} data for training\"\
           \n                          mkdir -p /output/phase_{phase_num}/model;\n\
@@ -1184,29 +1181,29 @@ deploymentSpec:
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef run_final_eval_op(\n    mmlu_branch_output: Output[Artifact],\n\
           \    mt_bench_branch_output: Output[Artifact],\n    base_model_dir: str,\n\
-          \    tasks: Input[Dataset],\n    taxonomy: Input[Dataset],\n    base_branch:\
-          \ str,\n    candidate_branch: str,\n    max_workers: str,\n    device: str,\n\
-          \    model_dtype: str,\n    few_shots: int,\n    batch_size: str,\n    merge_system_user_message:\
-          \ bool,\n    candidate_model: str = None,\n):\n    import json\n    import\
-          \ os\n    import subprocess\n\n    import torch\n    from instructlab.eval.mmlu\
-          \ import MMLU_TASKS, MMLUBranchEvaluator\n    from instructlab.eval.mt_bench\
-          \ import MTBenchBranchEvaluator\n    from instructlab.model.evaluate import\
-          \ qa_pairs_to_qna_to_avg_scores, sort_score\n\n    if judge_ca_cert := os.getenv(\"\
-          JUDGE_CA_CERT_PATH\"):\n        import httpx\n        import openai\n\n\
-          \        # Create a custom HTTP client\n        class CustomHttpClient(httpx.Client):\n\
-          \            def __init__(self, *args, **kwargs):\n                # Use\
-          \ the custom CA certificate\n                kwargs.setdefault(\"verify\"\
-          , judge_ca_cert)\n                super().__init__(*args, **kwargs)\n\n\
-          \        # Create a new OpenAI class that uses the custom HTTP client\n\
-          \        class CustomOpenAI(openai.OpenAI):\n            def __init__(self,\
-          \ *args, **kwargs):\n                custom_client = CustomHttpClient()\n\
-          \                super().__init__(http_client=custom_client, *args, **kwargs)\n\
-          \n        # Monkey patch the OpenAI class in the openai module, so that\
-          \ the eval lib can use it\n        openai.OpenAI = CustomOpenAI\n\n    print(\"\
-          Starting Final Eval...\")\n\n    def launch_vllm(\n        model_path: str,\
-          \ gpu_count: int, retries: int = 120, delay: int = 10\n    ) -> tuple:\n\
-          \        import subprocess\n        import sys\n        import time\n\n\
-          \        import requests\n        from instructlab.model.backends.common\
+          \    base_branch: str,\n    candidate_branch: str,\n    max_workers: str,\n\
+          \    device: str,\n    model_dtype: str,\n    few_shots: int,\n    batch_size:\
+          \ str,\n    merge_system_user_message: bool,\n    candidate_model: str =\
+          \ None,\n    taxonomy_path: str = \"/input/taxonomy\",\n    sdg_path: str\
+          \ = \"/input/sdg\",\n):\n    import json\n    import os\n    import subprocess\n\
+          \n    import torch\n    from instructlab.eval.mmlu import MMLU_TASKS, MMLUBranchEvaluator\n\
+          \    from instructlab.eval.mt_bench import MTBenchBranchEvaluator\n    from\
+          \ instructlab.model.evaluate import qa_pairs_to_qna_to_avg_scores, sort_score\n\
+          \n    if judge_ca_cert := os.getenv(\"JUDGE_CA_CERT_PATH\"):\n        import\
+          \ httpx\n        import openai\n\n        # Create a custom HTTP client\n\
+          \        class CustomHttpClient(httpx.Client):\n            def __init__(self,\
+          \ *args, **kwargs):\n                # Use the custom CA certificate\n \
+          \               kwargs.setdefault(\"verify\", judge_ca_cert)\n         \
+          \       super().__init__(*args, **kwargs)\n\n        # Create a new OpenAI\
+          \ class that uses the custom HTTP client\n        class CustomOpenAI(openai.OpenAI):\n\
+          \            def __init__(self, *args, **kwargs):\n                custom_client\
+          \ = CustomHttpClient()\n                super().__init__(http_client=custom_client,\
+          \ *args, **kwargs)\n\n        # Monkey patch the OpenAI class in the openai\
+          \ module, so that the eval lib can use it\n        openai.OpenAI = CustomOpenAI\n\
+          \n    print(\"Starting Final Eval...\")\n\n    def launch_vllm(\n      \
+          \  model_path: str, gpu_count: int, retries: int = 120, delay: int = 10\n\
+          \    ) -> tuple:\n        import subprocess\n        import sys\n      \
+          \  import time\n\n        import requests\n        from instructlab.model.backends.common\
           \ import free_tcp_ipv4_port\n\n        free_port = free_tcp_ipv4_port(\"\
           127.0.0.1\")\n        port = str(free_port)\n        vllm_server = f\"http://127.0.0.1:{port}/v1\"\
           \n\n        command = [\n            sys.executable,\n            \"-m\"\
@@ -1311,8 +1308,8 @@ deploymentSpec:
           \ update sdg repo: https://github.com/instructlab/sdg/blob/366814b3e89e28c98c0d2a276ad0759c567d2798/src/instructlab/sdg/eval_data.py#L84-%23L114\n\
           \        update_test_lines_in_files(base_dir)\n        return matching_dirs\n\
           \n    print(\"Starting MMLU_Branch...\")\n\n    mmlu_tasks = [\"mmlu_pr\"\
-          ]\n\n    node_dataset_dirs = find_node_dataset_directories(tasks.path)\n\
-          \n    # This assumes generated filesystem from ilab sdg, which\n    # generates\
+          ]\n\n    node_dataset_dirs = find_node_dataset_directories(sdg_path)\n\n\
+          \    # This assumes generated filesystem from ilab sdg, which\n    # generates\
           \ a node_datasets_ directory for MMLU custom tasks data\n    if node_dataset_dirs:\n\
           \        tasks_dir = node_dataset_dirs[0]\n\n        mmlu_branch_evaluators\
           \ = [\n            MMLUBranchEvaluator(\n                model_path=candidate_model,\n\
@@ -1350,7 +1347,7 @@ deploymentSpec:
           \     }\n\n        with open(mmlu_branch_output.path, \"w\") as f:\n   \
           \         json.dump(mmlu_branch_data, f, indent=4)\n    else:\n        print(\"\
           No MMLU tasks directories found, skipping MMLU_branch evaluation.\")\n\n\
-          \    # MT_BENCH_BRANCH\n\n    print(\"Strating MT_BENCH_BRANCH ...\")\n\n\
+          \    # MT_BENCH_BRANCH\n\n    print(\"Starting MT_BENCH_BRANCH ...\")\n\n\
           \    judge_api_key = os.getenv(\"JUDGE_API_KEY\", \"\")\n    judge_model_name\
           \ = os.getenv(\"JUDGE_NAME\")\n    judge_endpoint = os.getenv(\"JUDGE_ENDPOINT\"\
           )\n\n    output_dir = \"/tmp/eval_output\"\n\n    # TODO: candidate_branch\
@@ -1363,10 +1360,10 @@ deploymentSpec:
           \    #\n    # With instructlab, model_name is synonomous with model_path\n\
           \    mt_bench_evaluators = [\n        MTBenchBranchEvaluator(\n        \
           \    model_name=candidate_model,\n            judge_model_name=judge_model_name,\n\
-          \            taxonomy_git_repo_path=taxonomy.path,\n            branch=candidate_branch,\n\
+          \            taxonomy_git_repo_path=taxonomy_path,\n            branch=candidate_branch,\n\
           \            output_dir=output_dir,\n            merge_system_user_message=merge_system_user_message,\n\
           \        ),\n        MTBenchBranchEvaluator(\n            model_name=base_model_dir,\n\
-          \            judge_model_name=judge_model_name,\n            taxonomy_git_repo_path=taxonomy.path,\n\
+          \            judge_model_name=judge_model_name,\n            taxonomy_git_repo_path=taxonomy_path,\n\
           \            branch=base_branch,\n            output_dir=output_dir,\n \
           \           merge_system_user_message=merge_system_user_message,\n     \
           \   ),\n    ]\n\n    # ilab/evaluate uses a magic word for its mt_bench\
@@ -1447,14 +1444,14 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef run_mt_bench_op(\n    models_path_prefix: str,\n    mt_bench_output:\
-          \ Output[Artifact],\n    merge_system_user_message: bool,\n    # generate_answers,judgment\
-          \ uses a magic word for its mt_bench evaluator  - 'auto'\n    # with 'auto',\
-          \ number of gpus allocated for serving is calculated based on environment\n\
-          \    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36\n\
-          \    max_workers: str,\n    models_list: List[str] = None,\n    models_folder:\
-          \ Optional[str] = None,\n    device: str = None,\n    best_score_file: Optional[str]\
-          \ = None,\n) -> NamedTuple(\"outputs\", best_model=str, best_score=float):\n\
+          \ *\n\ndef run_mt_bench_op(\n    models_path_prefix: str,\n    merge_system_user_message:\
+          \ bool,\n    # generate_answers,judgment uses a magic word for its mt_bench\
+          \ evaluator  - 'auto'\n    # with 'auto', number of gpus allocated for serving\
+          \ is calculated based on environment\n    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36\n\
+          \    max_workers: str,\n    output_path: str = \"/output/mt_bench_data.json\"\
+          ,\n    models_list: List[str] = None,\n    models_folder: Optional[str]\
+          \ = None,\n    device: str = None,\n    best_score_file: Optional[str] =\
+          \ None,\n) -> NamedTuple(\"outputs\", best_model=str, best_score=float):\n\
           \    import json\n    import os\n    import subprocess\n\n    import torch\n\
           \    from instructlab.eval.mt_bench import MTBenchEvaluator\n\n    if judge_ca_cert\
           \ := os.getenv(\"JUDGE_CA_CERT_PATH\"):\n        import httpx\n        import\
@@ -1543,11 +1540,11 @@ deploymentSpec:
           : overall_score,\n            \"turn_scores\": turn_scores,\n          \
           \  \"qa_scores\": qa_pairs,\n            \"error_rate\": error_rate,\n \
           \       }\n\n        all_mt_bench_data.append(mt_bench_data)\n        scores[model_path]\
-          \ = overall_score\n\n    with open(mt_bench_output.path, \"w\", encoding=\"\
-          utf-8\") as f:\n        json.dump(all_mt_bench_data, f, indent=4)\n\n  \
-          \  outputs = NamedTuple(\"outputs\", best_model=str, best_score=float)\n\
-          \    best_model = max(scores, key=scores.get)\n    best_score = scores[best_model]\n\
-          \    if best_score_file:\n        with open(best_score_file, \"w\", encoding=\"\
+          \ = overall_score\n\n    with open(output_path, \"w\", encoding=\"utf-8\"\
+          ) as f:\n        json.dump(all_mt_bench_data, f, indent=4)\n\n    outputs\
+          \ = NamedTuple(\"outputs\", best_model=str, best_score=float)\n    best_model\
+          \ = max(scores, key=scores.get)\n    best_score = scores[best_model]\n \
+          \   if best_score_file:\n        with open(best_score_file, \"w\", encoding=\"\
           utf-8\") as f:\n            json.dump({\"best_model\": best_model, \"best_score\"\
           : best_score}, f, indent=4)\n\n    # Rename the best model directory to\
           \ \"candidate_model\" for the next step\n    # So we know which model to\
@@ -1589,10 +1586,10 @@ deploymentSpec:
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef sdg_op(\n    num_instructions_to_generate: int,\n    pipeline:\
-          \ str,\n    taxonomy: dsl.Input[dsl.Dataset],\n    sdg: dsl.Output[dsl.Dataset],\n\
-          \    repo_branch: Optional[str],\n    repo_pr: Optional[int],\n):\n    from\
-          \ os import getenv, path\n\n    import openai\n    import yaml\n    from\
-          \ instructlab.sdg import generate_data\n    from instructlab.sdg.utils.taxonomy\
+          \ str,\n    repo_branch: Optional[str],\n    repo_pr: Optional[int],\n \
+          \   taxonomy_path: str = \"/data/taxonomy\",\n    sdg_path: str = \"/data/sdg\"\
+          ,\n):\n    from os import getenv, path\n\n    import openai\n    import\
+          \ yaml\n    from instructlab.sdg import generate_data\n    from instructlab.sdg.utils.taxonomy\
           \ import read_taxonomy\n\n    SAMPLING_SIZE = 70\n\n    def set_precomputed_skills_data_ratio(sampling_size):\n\
           \        skills_recipe = \"/usr/share/instructlab/sdg/default_data_recipes/skills.yaml\"\
           \n        if path.exists(skills_recipe):\n            with open(skills_recipe,\
@@ -1604,17 +1601,41 @@ deploymentSpec:
           )\n    client = openai.OpenAI(base_url=endpoint, api_key=api_key)\n\n  \
           \  taxonomy_base = \"main\" if repo_branch or (repo_pr and int(repo_pr)\
           \ > 0) else \"empty\"\n\n    print(\"Generating synthetic dataset for:\"\
-          )\n    print()\n    print(read_taxonomy(taxonomy.path, taxonomy_base))\n\
+          )\n    print()\n    print(read_taxonomy(taxonomy_path, taxonomy_base))\n\
           \n    # Temporary measure to limit the amount of precomputed skills data\
           \ used to construct the SDG dataset.\n    # Need during development to decrease\
           \ training loop times and the cost of model quality.\n    set_precomputed_skills_data_ratio(sampling_size=SAMPLING_SIZE)\n\
           \n    # generate_data has a magic word for its taxonomy_base argument -\
           \ 'empty'\n    # it allows generating from the whole repo, see:\n    # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230\n\
           \    generate_data(\n        client=client,\n        num_instructions_to_generate=num_instructions_to_generate,\n\
-          \        output_dir=sdg.path,\n        taxonomy=taxonomy.path,\n       \
+          \        output_dir=sdg_path,\n        taxonomy=taxonomy_path,\n       \
           \ taxonomy_base=taxonomy_base,\n        model_name=model,\n        pipeline=pipeline,\n\
           \        chunk_word_count=1000,\n        server_ctx_size=4096,\n    )\n\n"
         image: quay.io/redhat-et/ilab:1.2
+    exec-sdg-to-artifact-op:
+      container:
+        args:
+        - cp -r {{$.inputs.parameters['pvc_path']}} {{$.outputs.artifacts['sdg'].path}}
+        command:
+        - /bin/sh
+        - -c
+        image: registry.access.redhat.com/ubi9/toolbox
+    exec-skills-processed-data-to-artifact-op:
+      container:
+        args:
+        - cp -r {{$.inputs.parameters['pvc_path']}} {{$.outputs.artifacts['skills_processed_data'].path}}
+        command:
+        - /bin/sh
+        - -c
+        image: registry.access.redhat.com/ubi9/toolbox
+    exec-taxonomy-to-artifact-op:
+      container:
+        args:
+        - cp -r {{$.inputs.parameters['pvc_path']}} {{$.outputs.artifacts['taxonomy'].path}}
+        command:
+        - /bin/sh
+        - -c
+        image: registry.access.redhat.com/ubi9/toolbox
 pipelineInfo:
   description: InstructLab pipeline
   displayName: InstructLab
@@ -1622,68 +1643,6 @@ pipelineInfo:
 root:
   dag:
     tasks:
-      artifact-to-pvc-op:
-        cachingOptions: {}
-        componentRef:
-          name: comp-artifact-to-pvc-op
-        dependentTasks:
-        - createpvc
-        - huggingface-importer-op
-        inputs:
-          artifacts:
-            data:
-              taskOutputArtifact:
-                outputArtifactKey: model
-                producerTask: huggingface-importer-op
-          parameters:
-            pvc_path:
-              runtimeValue:
-                constant: /model
-        retryPolicy:
-          backoffDuration: 0s
-          backoffFactor: 2.0
-          backoffMaxDuration: 3600s
-          maxRetryCount: 3
-        taskInfo:
-          name: artifact-to-pvc-op
-      artifact-to-pvc-op-2:
-        cachingOptions: {}
-        componentRef:
-          name: comp-artifact-to-pvc-op-2
-        dependentTasks:
-        - createpvc-2
-        - data-processing-op
-        inputs:
-          artifacts:
-            data:
-              taskOutputArtifact:
-                outputArtifactKey: skills_processed_data
-                producerTask: data-processing-op
-          parameters:
-            pvc_path:
-              runtimeValue:
-                constant: /data
-        taskInfo:
-          name: artifact-to-pvc-op-2
-      artifact-to-pvc-op-3:
-        cachingOptions: {}
-        componentRef:
-          name: comp-artifact-to-pvc-op-3
-        dependentTasks:
-        - createpvc-2
-        - data-processing-op
-        inputs:
-          artifacts:
-            data:
-              taskOutputArtifact:
-                outputArtifactKey: knowledge_processed_data
-                producerTask: data-processing-op
-          parameters:
-            pvc_path:
-              runtimeValue:
-                constant: /data
-        taskInfo:
-          name: artifact-to-pvc-op-3
       createpvc:
         cachingOptions:
           enableCache: true
@@ -1697,10 +1656,10 @@ root:
                 - ReadWriteMany
             pvc_name_suffix:
               runtimeValue:
-                constant: -model-cache
+                constant: -sdg
             size:
               runtimeValue:
-                constant: 100Gi
+                constant: 10Gi
             storage_class_name:
               componentInputParameter: storage_class_name
         taskInfo:
@@ -1718,10 +1677,10 @@ root:
                 - ReadWriteMany
             pvc_name_suffix:
               runtimeValue:
-                constant: -sdg
+                constant: -model-cache
             size:
               runtimeValue:
-                constant: 1Gi
+                constant: 100Gi
             storage_class_name:
               componentInputParameter: storage_class_name
         taskInfo:
@@ -1748,23 +1707,14 @@ root:
         taskInfo:
           name: createpvc-3
       data-processing-op:
-        cachingOptions:
-          enableCache: true
+        cachingOptions: {}
         componentRef:
           name: comp-data-processing-op
         dependentTasks:
+        - createpvc
+        - createpvc-2
         - huggingface-importer-op
         - sdg-op
-        inputs:
-          artifacts:
-            model:
-              taskOutputArtifact:
-                outputArtifactKey: model
-                producerTask: huggingface-importer-op
-            sdg:
-              taskOutputArtifact:
-                outputArtifactKey: sdg
-                producerTask: sdg-op
         taskInfo:
           name: data-processing-op
       deletepvc:
@@ -1774,8 +1724,9 @@ root:
           name: comp-deletepvc
         dependentTasks:
         - createpvc-3
-        - pvc-to-artifact-op
         - pvc-to-model-op
+        - pvc-to-mt-bench-op
+        - run-final-eval-op
         inputs:
           parameters:
             pvc_name:
@@ -1790,15 +1741,14 @@ root:
         componentRef:
           name: comp-deletepvc-2
         dependentTasks:
-        - createpvc-2
-        - pvc-to-artifact-op
-        - pvc-to-model-op
+        - createpvc
+        - run-final-eval-op
         inputs:
           parameters:
             pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
-                producerTask: createpvc-2
+                producerTask: createpvc
         taskInfo:
           name: deletepvc-2
       deletepvc-3:
@@ -1807,22 +1757,22 @@ root:
         componentRef:
           name: comp-deletepvc-3
         dependentTasks:
-        - createpvc
-        - pvc-to-artifact-op
-        - pvc-to-model-op
+        - createpvc-2
+        - run-final-eval-op
         inputs:
           parameters:
             pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
-                producerTask: createpvc
+                producerTask: createpvc-2
         taskInfo:
           name: deletepvc-3
       git-clone-op:
-        cachingOptions:
-          enableCache: true
+        cachingOptions: {}
         componentRef:
           name: comp-git-clone-op
+        dependentTasks:
+        - createpvc
         inputs:
           parameters:
             repo_branch:
@@ -1834,23 +1784,33 @@ root:
         taskInfo:
           name: git-clone-op
       huggingface-importer-op:
-        cachingOptions:
-          enableCache: true
+        cachingOptions: {}
         componentRef:
           name: comp-huggingface-importer-op
+        dependentTasks:
+        - createpvc-2
         inputs:
           parameters:
             repo_name:
               componentInputParameter: base_model
         taskInfo:
           name: huggingface-importer-op
+      knowledge-processed-data-to-artifact-op:
+        cachingOptions: {}
+        componentRef:
+          name: comp-knowledge-processed-data-to-artifact-op
+        dependentTasks:
+        - createpvc
+        - data-processing-op
+        taskInfo:
+          name: knowledge-processed-data-to-artifact-op
       kubectl-apply-op:
         cachingOptions: {}
         componentRef:
           name: comp-kubectl-apply-op
         dependentTasks:
-        - artifact-to-pvc-op
-        - artifact-to-pvc-op-3
+        - data-processing-op
+        - huggingface-importer-op
         - pytorchjob-manifest-op
         inputs:
           parameters:
@@ -1865,8 +1825,6 @@ root:
         componentRef:
           name: comp-kubectl-apply-op-2
         dependentTasks:
-        - artifact-to-pvc-op
-        - artifact-to-pvc-op-3
         - pytorchjob-manifest-op-2
         inputs:
           parameters:
@@ -1932,20 +1890,6 @@ root:
                 constant: /output/phase_2/model/hf_format
         taskInfo:
           name: list-models-in-directory-op
-      pvc-to-artifact-op:
-        cachingOptions: {}
-        componentRef:
-          name: comp-pvc-to-artifact-op
-        dependentTasks:
-        - createpvc-3
-        - run-final-eval-op
-        inputs:
-          parameters:
-            pvc_path:
-              runtimeValue:
-                constant: /output/data
-        taskInfo:
-          name: pvc-to-artifact-op
       pvc-to-model-op:
         cachingOptions:
           enableCache: true
@@ -1953,14 +1897,29 @@ root:
           name: comp-pvc-to-model-op
         dependentTasks:
         - createpvc-3
-        - run-final-eval-op
+        - run-mt-bench-op
         inputs:
           parameters:
             pvc_path:
               runtimeValue:
-                constant: /output/model
+                constant: /output/phase_2/model/hf_format/candidate_model
         taskInfo:
           name: pvc-to-model-op
+      pvc-to-mt-bench-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-pvc-to-mt-bench-op
+        dependentTasks:
+        - createpvc-3
+        - run-mt-bench-op
+        inputs:
+          parameters:
+            pvc_path:
+              runtimeValue:
+                constant: /output/mt_bench_data.json
+        taskInfo:
+          name: pvc-to-mt-bench-op
       pytorchjob-manifest-op:
         cachingOptions: {}
         componentRef:
@@ -1976,7 +1935,7 @@ root:
             input_pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
-                producerTask: createpvc-2
+                producerTask: createpvc
             learning_rate:
               componentInputParameter: learning_rate
             max_batch_len:
@@ -1984,11 +1943,11 @@ root:
             model_pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
-                producerTask: createpvc
+                producerTask: createpvc-2
             name_suffix:
               taskOutputParameter:
                 outputParameterKey: name
-                producerTask: createpvc-2
+                producerTask: createpvc
             nnodes:
               componentInputParameter: nnodes
             nproc_per_node:
@@ -2026,7 +1985,7 @@ root:
             input_pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
-                producerTask: createpvc-2
+                producerTask: createpvc
             learning_rate:
               componentInputParameter: learning_rate
             max_batch_len:
@@ -2034,11 +1993,11 @@ root:
             model_pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
-                producerTask: createpvc
+                producerTask: createpvc-2
             name_suffix:
               taskOutputParameter:
                 outputParameterKey: name
-                producerTask: createpvc-2
+                producerTask: createpvc
             nnodes:
               componentInputParameter: nnodes
             nproc_per_node:
@@ -2067,26 +2026,16 @@ root:
           name: comp-run-final-eval-op
         dependentTasks:
         - createpvc
+        - createpvc-2
         - createpvc-3
-        - git-clone-op
         - run-mt-bench-op
-        - sdg-op
         inputs:
-          artifacts:
-            tasks:
-              taskOutputArtifact:
-                outputArtifactKey: sdg
-                producerTask: sdg-op
-            taxonomy:
-              taskOutputArtifact:
-                outputArtifactKey: taxonomy
-                producerTask: git-clone-op
           parameters:
             base_branch:
               componentInputParameter: repo_branch
             base_model_dir:
               runtimeValue:
-                constant: /data/model/
+                constant: /model/
             batch_size:
               componentInputParameter: batch_size
             candidate_branch:
@@ -2131,18 +2080,13 @@ root:
         taskInfo:
           name: run-mt-bench-op
       sdg-op:
-        cachingOptions:
-          enableCache: true
+        cachingOptions: {}
         componentRef:
           name: comp-sdg-op
         dependentTasks:
+        - createpvc
         - git-clone-op
         inputs:
-          artifacts:
-            taxonomy:
-              taskOutputArtifact:
-                outputArtifactKey: taxonomy
-                producerTask: git-clone-op
           parameters:
             num_instructions_to_generate:
               componentInputParameter: num_instructions_to_generate
@@ -2154,6 +2098,37 @@ root:
               componentInputParameter: repo_pr
         taskInfo:
           name: sdg-op
+      sdg-to-artifact-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-sdg-to-artifact-op
+        dependentTasks:
+        - createpvc
+        - git-clone-op
+        - sdg-op
+        taskInfo:
+          name: sdg-to-artifact-op
+      skills-processed-data-to-artifact-op:
+        cachingOptions: {}
+        componentRef:
+          name: comp-skills-processed-data-to-artifact-op
+        dependentTasks:
+        - createpvc
+        - data-processing-op
+        taskInfo:
+          name: skills-processed-data-to-artifact-op
+      taxonomy-to-artifact-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-taxonomy-to-artifact-op
+        dependentTasks:
+        - createpvc
+        - git-clone-op
+        - sdg-op
+        taskInfo:
+          name: taxonomy-to-artifact-op
   inputDefinitions:
     parameters:
       base_model:
@@ -2252,39 +2227,49 @@ platforms:
   kubernetes:
     deploymentSpec:
       executors:
-        exec-artifact-to-pvc-op:
+        exec-data-processing-op:
           pvcMount:
           - mountPath: /model
             taskOutputParameter:
               outputParameterKey: name
+              producerTask: createpvc-2
+          - mountPath: /data
+            taskOutputParameter:
+              outputParameterKey: name
               producerTask: createpvc
-        exec-artifact-to-pvc-op-2:
+        exec-git-clone-op:
           pvcMount:
           - mountPath: /data
             taskOutputParameter:
               outputParameterKey: name
+              producerTask: createpvc
+        exec-huggingface-importer-op:
+          pvcMount:
+          - mountPath: /model
+            taskOutputParameter:
+              outputParameterKey: name
               producerTask: createpvc-2
-        exec-artifact-to-pvc-op-3:
+        exec-knowledge-processed-data-to-artifact-op:
           pvcMount:
           - mountPath: /data
             taskOutputParameter:
               outputParameterKey: name
-              producerTask: createpvc-2
+              producerTask: createpvc
         exec-list-models-in-directory-op:
           pvcMount:
           - mountPath: /output
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-3
-        exec-pvc-to-artifact-op:
+        exec-pvc-to-model-op:
           pvcMount:
-          - mountPath: /output/data
+          - mountPath: /output
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-3
-        exec-pvc-to-model-op:
+        exec-pvc-to-mt-bench-op:
           pvcMount:
-          - mountPath: /output/model
+          - mountPath: /output
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-3
@@ -2309,10 +2294,14 @@ platforms:
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-3
-          - mountPath: /data
+          - mountPath: /input
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc
+          - mountPath: /model
+            taskOutputParameter:
+              outputParameterKey: name
+              producerTask: createpvc-2
           secretAsEnv:
           - keyToEnv:
             - envVar: JUDGE_API_KEY
@@ -2348,8 +2337,31 @@ platforms:
               envVar: model
           imagePullSecret:
           - secretName: redhat-et-ilab-botty-pull-secret
+          pvcMount:
+          - mountPath: /data
+            taskOutputParameter:
+              outputParameterKey: name
+              producerTask: createpvc
           secretAsEnv:
           - keyToEnv:
             - envVar: api_key
               secretKey: api_key
             secretName: kfp-model-server
+        exec-sdg-to-artifact-op:
+          pvcMount:
+          - mountPath: /data
+            taskOutputParameter:
+              outputParameterKey: name
+              producerTask: createpvc
+        exec-skills-processed-data-to-artifact-op:
+          pvcMount:
+          - mountPath: /data
+            taskOutputParameter:
+              outputParameterKey: name
+              producerTask: createpvc
+        exec-taxonomy-to-artifact-op:
+          pvcMount:
+          - mountPath: /data
+            taskOutputParameter:
+              outputParameterKey: name
+              producerTask: createpvc

@@ -34,20 +34,11 @@ def kubectl_wait_for_op(
 
 
 @dsl.container_component
-def artifact_to_pvc_op(data: dsl.Input[dsl.Artifact], pvc_path: str):
+def pvc_to_mt_bench_op(mt_bench_output: dsl.Output[dsl.Artifact], pvc_path: str):
     return dsl.ContainerSpec(
         TOOLBOX_IMAGE,
         ["/bin/sh", "-c"],
-        [f"cp -r {data.path} {pvc_path}"],
-    )
-
-
-@dsl.container_component
-def pvc_to_artifact_op(model: dsl.Output[dsl.Artifact], pvc_path: str):
-    return dsl.ContainerSpec(
-        TOOLBOX_IMAGE,
-        ["/bin/sh", "-c"],
-        [f"cp -r {pvc_path} {model.path}"],
+        [f"cp -r {pvc_path} {mt_bench_output.path}"],
     )
 
 
@@ -61,7 +52,7 @@ def pvc_to_model_op(model: dsl.Output[dsl.Model], pvc_path: str):
 
 
 @dsl.component
-def list_models_in_directory_op(models_folder: str) -> List:
+def list_models_in_directory_op(models_folder: str) -> List[str]:
     import os
 
     models = os.listdir(models_folder)
@@ -69,7 +60,7 @@ def list_models_in_directory_op(models_folder: str) -> List:
 
 
 @dsl.component(base_image=PYTHON_IMAGE, packages_to_install=["huggingface_hub"])
-def huggingface_importer_op(model: dsl.Output[dsl.Model], repo_name: str):
+def huggingface_importer_op(repo_name: str, model_path: str = "/model"):
     from huggingface_hub import snapshot_download
 
-    snapshot_download(repo_id=repo_name, cache_dir="/tmp", local_dir=model.path)
+    snapshot_download(repo_id=repo_name, cache_dir="/tmp", local_dir=model_path)

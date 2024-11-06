@@ -27,7 +27,6 @@ GENERATED_STANDALONE_FILE_NAME = "standalone.py"
 DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
 KFP_MODEL_SERVER_CM = "sdg/kfp-model-server.yaml"
 BASE_MODEL = "ibm-granite/granite-7b-base"
-BASE_MODEL_DIR = "/data/model/"  # <- "model ID for vLLM chat/completions - corresponds to path within pvc"
 
 # eval args
 MMLU_TASKS_LIST = "mmlu_anatomy,mmlu_astronomy"
@@ -54,30 +53,48 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
     # Imports for SDG stage
     if mock is not None and "sdg" in mock:
-        from sdg.faked import git_clone_op, sdg_op
+        from sdg.faked import (
+            git_clone_op,
+            sdg_op,
+            sdg_to_artifact_op,
+            taxonomy_to_artifact_op,
+        )
     else:
-        from sdg import git_clone_op, sdg_op
+        from sdg import (
+            git_clone_op,
+            sdg_op,
+            sdg_to_artifact_op,
+            taxonomy_to_artifact_op,
+        )
 
     # Imports for Training stage
     if mock is not None and "train" in mock:
-        from training.faked import pytorchjob_manifest_op
-        from utils import artifact_to_pvc_op
+        from training.faked import (
+            data_processing_op,
+            knowledge_processed_data_to_artifact_op,
+            pytorchjob_manifest_op,
+            skills_processed_data_to_artifact_op,
+        )
         from utils.faked import (
             huggingface_importer_op,
             kubectl_apply_op,
             kubectl_wait_for_op,
-            pvc_to_artifact_op,
             pvc_to_model_op,
+            pvc_to_mt_bench_op,
         )
     else:
-        from training import data_processing_op, pytorchjob_manifest_op
+        from training import (
+            data_processing_op,
+            knowledge_processed_data_to_artifact_op,
+            pytorchjob_manifest_op,
+            skills_processed_data_to_artifact_op,
+        )
         from utils import (
-            artifact_to_pvc_op,
             huggingface_importer_op,
             kubectl_apply_op,
             kubectl_wait_for_op,
-            pvc_to_artifact_op,
             pvc_to_model_op,
+            pvc_to_mt_bench_op,
         )
 
     # Imports for evaluation
@@ -85,7 +102,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
     from eval.mmlu import load_mmlu_results_op, run_mmlu_op
 
     ## from eval.mmlu import run_mmlu_op, load_mmlu_results_op
-    from eval.mt_bench import load_mt_bench_results_op, run_mt_bench_op
+    from eval.mt_bench import run_mt_bench_op
     from utils import list_models_in_directory_op
 
     @dsl.pipeline(
@@ -121,16 +138,27 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         seed: int = SEED,
     ):
         # SDG stage
+        sdg_input_pvc_task = CreatePVC(
+            pvc_name_suffix="-sdg",
+            access_modes=["ReadWriteMany"],
+            size="10Gi",
+            storage_class_name=storage_class_name,
+        )
         git_clone_task = git_clone_op(
             repo_branch=repo_branch,
             repo_pr=repo_pr if repo_pr and repo_pr > 0 else None,
             repo_url=repo_url,
         )
+        mount_pvc(
+            task=git_clone_task,
+            pvc_name=sdg_input_pvc_task.output,
+            mount_path="/data",
+        )
+        git_clone_task.set_caching_options(False)
 
         sdg_task = sdg_op(
             num_instructions_to_generate=num_instructions_to_generate,
             pipeline=sdg_pipeline,
-            taxonomy=git_clone_task.outputs["taxonomy"],
             repo_branch=repo_branch,
             repo_pr=repo_pr,
         )
@@ -138,6 +166,29 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             sdg_task, K8S_NAME, dict(endpoint="endpoint", model="model")
         )
         use_secret_as_env(sdg_task, K8S_NAME, {"api_key": "api_key"})
+        sdg_task.after(git_clone_task)
+        mount_pvc(
+            task=sdg_task,
+            pvc_name=sdg_input_pvc_task.output,
+            mount_path="/data",
+        )
+        sdg_task.set_caching_options(False)
+
+        # Upload "sdg" and "taxonomy" artifacts to S3 without blocking the rest of the workflow
+        taxonomy_to_artifact_task = taxonomy_to_artifact_op()
+        taxonomy_to_artifact_task.after(git_clone_task, sdg_task)
+        mount_pvc(
+            task=taxonomy_to_artifact_task,
+            pvc_name=sdg_input_pvc_task.output,
+            mount_path="/data",
+        )
+        sdg_to_artifact_task = sdg_to_artifact_op()
+        sdg_to_artifact_task.after(git_clone_task, sdg_task)
+        mount_pvc(
+            task=sdg_to_artifact_task,
+            pvc_name=sdg_input_pvc_task.output,
+            mount_path="/data",
+        )
 
         set_image_pull_secrets(sdg_task, [IMAGE_PULL_SECRET])
 
@@ -156,48 +207,46 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             size="100Gi",
             storage_class_name=storage_class_name,
         )
-        model_to_artifact = huggingface_importer_op(repo_name=base_model)
-        model_to_pvc_task = artifact_to_pvc_op(
-            data=model_to_artifact.outputs["model"], pvc_path="/model"
-        )
+        model_to_pvc_task = huggingface_importer_op(repo_name=base_model)
         model_to_pvc_task.set_caching_options(False)
-        model_to_pvc_task.set_retry(3)
         mount_pvc(
             task=model_to_pvc_task, pvc_name=model_pvc_task.output, mount_path="/model"
         )
 
         # Data processing
-        data_processing_task = data_processing_op(
-            sdg=sdg_task.outputs["sdg"], model=model_to_artifact.outputs["model"]
-        )
-
-        sdg_input_pvc_task = CreatePVC(
-            pvc_name_suffix="-sdg",
-            access_modes=["ReadWriteMany"],
-            size="1Gi",
-            storage_class_name=storage_class_name,
-        )
-
-        sdg_skills_to_pvc_task = artifact_to_pvc_op(
-            data=data_processing_task.outputs["skills_processed_data"], pvc_path="/data"
-        )
-        sdg_skills_to_pvc_task.set_caching_options(False)
+        data_processing_task = data_processing_op()
         mount_pvc(
-            task=sdg_skills_to_pvc_task,
+            task=data_processing_task,
+            pvc_name=model_pvc_task.output,
+            mount_path="/model",
+        )
+        mount_pvc(
+            task=data_processing_task,
             pvc_name=sdg_input_pvc_task.output,
             mount_path="/data",
         )
+        data_processing_task.after(model_to_pvc_task, sdg_task)
+        data_processing_task.set_caching_options(False)
 
-        sdg_knowledge_to_pvc_task = artifact_to_pvc_op(
-            data=data_processing_task.outputs["knowledge_processed_data"],
-            pvc_path="/data",
-        )
-        sdg_knowledge_to_pvc_task.set_caching_options(False)
+        # Upload "skills_processed_data" and "knowledge_processed_data" artifacts to S3 without blocking the rest of the workflow
+        skills_processed_data_to_artifact_task = skills_processed_data_to_artifact_op()
+        skills_processed_data_to_artifact_task.after(data_processing_task)
         mount_pvc(
-            task=sdg_knowledge_to_pvc_task,
+            task=skills_processed_data_to_artifact_task,
             pvc_name=sdg_input_pvc_task.output,
             mount_path="/data",
         )
+        skills_processed_data_to_artifact_task.set_caching_options(False)
+        knowledge_processed_data_to_artifact_task = (
+            knowledge_processed_data_to_artifact_op()
+        )
+        knowledge_processed_data_to_artifact_task.after(data_processing_task)
+        mount_pvc(
+            task=knowledge_processed_data_to_artifact_task,
+            pvc_name=sdg_input_pvc_task.output,
+            mount_path="/data",
+        )
+        knowledge_processed_data_to_artifact_task.set_caching_options(False)
 
         output_pvc_task = CreatePVC(
             pvc_name_suffix="-output",
@@ -229,7 +278,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         kubectl_apply_task = kubectl_apply_op(
             manifest=pytorchjob_manifest_task.outputs["manifest"]
         )
-        kubectl_apply_task.after(sdg_knowledge_to_pvc_task, model_to_pvc_task)
+        kubectl_apply_task.after(data_processing_task, model_to_pvc_task)
         kubectl_apply_task.set_caching_options(False)
 
         kubectl_wait_task = kubectl_wait_for_op(
@@ -314,7 +363,6 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         kubectl_apply_2_task = kubectl_apply_op(
             manifest=pytorchjob_manifest_2_task.outputs["manifest"]
         )
-        kubectl_apply_2_task.after(sdg_knowledge_to_pvc_task, model_to_pvc_task)
         kubectl_apply_2_task.set_caching_options(False)
 
         kubectl_wait_2_task = kubectl_wait_for_op(
@@ -331,9 +379,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             models_folder="/output/phase_2/model/hf_format",
         )
         models_list_2_task.set_caching_options(False)
-
         models_list_2_task.after(kubectl_wait_2_task)
-
         mount_pvc(
             task=models_list_2_task,
             pvc_name=output_pvc_task.output,
@@ -351,56 +397,50 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             merge_system_user_message=merge_system_user_message,
             device=device,
         )
-
         mount_pvc(
             task=run_mt_bench_task,
             pvc_name=output_pvc_task.output,
             mount_path="/output",
         )
-
-        run_mt_bench_task.after(models_list_2_task)
-
         run_mt_bench_task.set_accelerator_type("nvidia.com/gpu")
         run_mt_bench_task.set_accelerator_limit(1)
         run_mt_bench_task.set_caching_options(False)
-
         use_config_map_as_env(
             run_mt_bench_task,
             JUDGE_CONFIG_MAP,
             dict(endpoint="JUDGE_ENDPOINT", model="JUDGE_NAME"),
         )
-
         set_image_pull_secrets(run_mt_bench_task, [IMAGE_PULL_SECRET])
+        use_secret_as_env(run_mt_bench_task, JUDGE_SECRET, {"api_key": "JUDGE_API_KEY"})
 
         # uncomment if updating image with same tag
         # set_image_pull_policy(run_mt_bench_task, "Always")
 
-        use_secret_as_env(run_mt_bench_task, JUDGE_SECRET, {"api_key": "JUDGE_API_KEY"})
-
         final_eval_task = run_final_eval_op(
             candidate_model="/output/phase_2/model/hf_format/candidate_model",
-            taxonomy=git_clone_task.outputs["taxonomy"],
-            tasks=sdg_task.outputs["sdg"],
             # TODO: DO we need both candidate_branch and base_branch
             base_branch=repo_branch,
             candidate_branch=repo_branch,
             device=device,
-            base_model_dir=BASE_MODEL_DIR,
+            base_model_dir="/model/",
             max_workers=max_workers,
             merge_system_user_message=merge_system_user_message,
             model_dtype=model_dtype,
             few_shots=few_shots,
             batch_size=batch_size,
         )
-
         mount_pvc(
             task=final_eval_task, pvc_name=output_pvc_task.output, mount_path="/output"
         )
-
+        mount_pvc(
+            task=final_eval_task,
+            pvc_name=sdg_input_pvc_task.output,
+            mount_path="/input",
+        )
         mount_pvc(
             task=final_eval_task,
             pvc_name=model_pvc_task.output,
-            mount_path="/data",
+            mount_path="/model",
         )
 
         use_config_map_as_env(
@@ -420,39 +460,36 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         final_eval_task.set_accelerator_type("nvidia.com/gpu")
         final_eval_task.set_accelerator_limit(1)
 
-        # Technically 'output_model_task' and 'output_data_task' can happen before evaluation,
-        # however the PVC can only be mounted once, so, setting these to _after_ so the eval proceeds.
-        output_model_task = pvc_to_artifact_op(
-            pvc_path="/output/data",
+        output_model_task = pvc_to_model_op(
+            pvc_path="/output/phase_2/model/hf_format/candidate_model",
         )
-        output_model_task.after(final_eval_task)
-        output_model_task.set_caching_options(False)
-
+        output_model_task.after(run_mt_bench_task)
         mount_pvc(
             task=output_model_task,
             pvc_name=output_pvc_task.output,
-            mount_path="/output/data",
+            mount_path="/output",
         )
 
-        output_data_task = pvc_to_model_op(
-            pvc_path="/output/model",
+        output_mt_bench_task = pvc_to_mt_bench_op(
+            pvc_path="/output/mt_bench_data.json",
         )
-        output_data_task.after(final_eval_task)
-
+        output_mt_bench_task.after(run_mt_bench_task)
         mount_pvc(
-            task=output_data_task,
+            task=output_mt_bench_task,
             pvc_name=output_pvc_task.output,
-            mount_path="/output/model",
+            mount_path="/output",
         )
 
         output_pvc_delete_task = DeletePVC(pvc_name=output_pvc_task.output)
-        output_pvc_delete_task.after(output_data_task, output_model_task)
+        output_pvc_delete_task.after(
+            output_model_task, output_mt_bench_task, final_eval_task
+        )
 
         sdg_pvc_delete_task = DeletePVC(pvc_name=sdg_input_pvc_task.output)
-        sdg_pvc_delete_task.after(output_data_task, output_model_task)
+        sdg_pvc_delete_task.after(final_eval_task)
 
         model_pvc_delete_task = DeletePVC(pvc_name=model_pvc_task.output)
-        model_pvc_delete_task.after(output_data_task, output_model_task)
+        model_pvc_delete_task.after(final_eval_task)
 
         return
 
@@ -514,12 +551,12 @@ def gen_standalone():
 
     # The list of executor names to extract details from to generate the standalone script
     executors = {
-        "exec-data-processing-op": 'data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg="{DATA_PVC_SDG_PATH}", model="{DATA_PVC_MODEL_PATH}", skills_processed_data="{PREPROCESSED_DATA_PATH_SKILLS}", knowledge_processed_data="{PREPROCESSED_DATA_PATH_KNOWLEDGE}")',
-        "exec-sdg-op": 'sdg_op(num_instructions_to_generate={num_instructions_to_generate}, pipeline="{sdg_pipeline}", repo_branch="{exec_git_clone_op_repo_branch}", repo_pr={exec_git_clone_op_repo_pr}, taxonomy="{TAXONOMY_DATA_PATH}", sdg="{DATA_PVC_SDG_PATH}")',
+        "exec-data-processing-op": 'data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg_path="{DATA_PVC_SDG_PATH}", model_path="{DATA_PVC_MODEL_PATH}", skills_path="{PREPROCESSED_DATA_SKILLS_PATH}", knowledge_path="{PREPROCESSED_DATA_KNOWLEDGE_PATH}")',
+        "exec-sdg-op": 'sdg_op(num_instructions_to_generate={num_instructions_to_generate}, pipeline="{sdg_pipeline}", repo_branch="{exec_git_clone_op_repo_branch}", repo_pr={exec_git_clone_op_repo_pr}, taxonomy_path="{TAXONOMY_DATA_PATH}", sdg_path="{DATA_PVC_SDG_PATH}")',
         "exec-git-clone-op": {},
-        "exec-huggingface-importer-op": 'huggingface_importer_op(repo_name="{REPO_GRANITE_7B_IMAGE}", model="{DATA_PVC_MODEL_PATH}")',
-        "exec-run-mt-bench-op": 'run_mt_bench_op(best_score_file="{MT_BENCH_SCORES_PATH}",mt_bench_output="{MT_BENCH_OUTPUT_PATH}",models_folder="{CANDIDATE_MODEL_PATH_PREFIX}",models_path_prefix="{CANDIDATE_MODEL_PATH_PREFIX}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE})',
-        "exec-run-final-eval-op": 'run_final_eval_op(mmlu_branch_output="{MMLU_BRANCH_SCORES_PATH}", mt_bench_branch_output="{MT_BENCH_BRANCH_SCORES_PATH}", candidate_model="{CANDIDATE_MODEL_PATH}", taxonomy="{TAXONOMY_PATH}", tasks="{DATA_PVC_SDG_PATH}", base_branch="", candidate_branch="", device=None, base_model_dir="{DATA_PVC_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE}, model_dtype="{MODEL_DTYPE}", few_shots={FEW_SHOTS}, batch_size="{BATCH_SIZE}")',
+        "exec-huggingface-importer-op": 'huggingface_importer_op(repo_name="{REPO_GRANITE_7B_IMAGE}", model_path="{DATA_PVC_MODEL_PATH}")',
+        "exec-run-mt-bench-op": 'run_mt_bench_op(best_score_file="{MT_BENCH_SCORES_PATH}",output_path="{MT_BENCH_OUTPUT_PATH}",models_folder="{CANDIDATE_MODEL_PATH_PREFIX}",models_path_prefix="{CANDIDATE_MODEL_PATH_PREFIX}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE})',
+        "exec-run-final-eval-op": 'run_final_eval_op(mmlu_branch_output="{MMLU_BRANCH_SCORES_PATH}", mt_bench_branch_output="{MT_BENCH_BRANCH_SCORES_PATH}", candidate_model="{CANDIDATE_MODEL_PATH}", taxonomy_path="{TAXONOMY_PATH}", sdg_path="{DATA_PVC_SDG_PATH}", base_branch="", candidate_branch="", device=None, base_model_dir="{DATA_PVC_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE}, model_dtype="{MODEL_DTYPE}", few_shots={FEW_SHOTS}, batch_size="{BATCH_SIZE}")',
     }
 
     details = {}

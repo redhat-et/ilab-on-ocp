@@ -1081,16 +1081,30 @@ from typing import *
 def sdg_op(
     num_instructions_to_generate: int,
     pipeline: str,
-    taxonomy: str,
-    sdg: str,
     repo_branch: Optional[str],
     repo_pr: Optional[int],
+    taxonomy_path: str = "/data/taxonomy",
+    sdg_path: str = "/data/sdg",
 ):
-    from os import getenv
+    from os import getenv, path
 
     import openai
+    import yaml
     from instructlab.sdg import generate_data
     from instructlab.sdg.utils.taxonomy import read_taxonomy
+
+    SAMPLING_SIZE = 70
+
+    def set_precomputed_skills_data_ratio(sampling_size):
+        skills_recipe = "/usr/share/instructlab/sdg/default_data_recipes/skills.yaml"
+        if path.exists(skills_recipe):
+            with open(skills_recipe, "r") as file:
+                skills_yaml = yaml.load(file, Loader=yaml.Loader)
+
+            skills_yaml["datasets"][0]["sampling_size"] = sampling_size
+
+            with open(skills_recipe, "w", encoding="utf-8") as file:
+                yaml.dump(skills_yaml, file)
 
     api_key = getenv("api_key")
     model = getenv("model")
@@ -1101,7 +1115,11 @@ def sdg_op(
 
     print("Generating synthetic dataset for:")
     print()
-    print(read_taxonomy(taxonomy, taxonomy_base))
+    print(read_taxonomy(taxonomy_path, taxonomy_base))
+
+    # Temporary measure to limit the amount of precomputed skills data used to construct the SDG dataset.
+    # Need during development to decrease training loop times and the cost of model quality.
+    set_precomputed_skills_data_ratio(sampling_size=SAMPLING_SIZE)
 
     # generate_data has a magic word for its taxonomy_base argument - 'empty'
     # it allows generating from the whole repo, see:
@@ -1109,8 +1127,8 @@ def sdg_op(
     generate_data(
         client=client,
         num_instructions_to_generate=num_instructions_to_generate,
-        output_dir=sdg,
-        taxonomy=taxonomy,
+        output_dir=sdg_path,
+        taxonomy=taxonomy_path,
         taxonomy_base=taxonomy_base,
         model_name=model,
         pipeline=pipeline,
@@ -1119,7 +1137,7 @@ def sdg_op(
     )
 """
     exec_sdg_op_args = f"""
-sdg_op(num_instructions_to_generate={num_instructions_to_generate}, pipeline="{sdg_pipeline}", repo_branch="{exec_git_clone_op_repo_branch}", repo_pr={exec_git_clone_op_repo_pr}, taxonomy="{TAXONOMY_DATA_PATH}", sdg="{DATA_PVC_SDG_PATH}")
+sdg_op(num_instructions_to_generate={num_instructions_to_generate}, pipeline="{sdg_pipeline}", repo_branch="{exec_git_clone_op_repo_branch}", repo_pr={exec_git_clone_op_repo_pr}, taxonomy_path="{TAXONOMY_DATA_PATH}", sdg_path="{DATA_PVC_SDG_PATH}")
 """
 
     return kubernetes.client.V1Container(
@@ -1188,10 +1206,10 @@ def create_data_job(
 from typing import *
 
 def data_processing_op(
-    sdg: str,
-    skills_processed_data: str,
-    knowledge_processed_data: str,
-    model: str,
+    model_path: str = "/model",
+    sdg_path: str = "/data/sdg",
+    skills_path: str = "/data/skills",
+    knowledge_path: str = "/data/knowledge",
     max_seq_len: Optional[int] = 4096,
     max_batch_len: Optional[int] = 20000,
 ):
@@ -1206,9 +1224,9 @@ def data_processing_op(
     # define training-specific arguments
     skill_training_args = TrainingArgs(
         # define data-specific arguments
-        model_path=model,
-        data_path=f"{sdg}/skills_train_msgs*.jsonl",
-        data_output_dir=skills_processed_data,
+        model_path=model_path,
+        data_path=f"{sdg_path}/skills_train_msgs*.jsonl",
+        data_output_dir=skills_path,
         # define model-trianing parameters
         max_seq_len=max_seq_len,
         max_batch_len=max_batch_len,
@@ -1226,9 +1244,9 @@ def data_processing_op(
 
     knowledge_training_args = TrainingArgs(
         # define data-specific arguments
-        model_path=model,
-        data_path=f"{sdg}/knowledge_train_msgs*.jsonl",
-        data_output_dir=knowledge_processed_data,
+        model_path=model_path,
+        data_path=f"{sdg_path}/knowledge_train_msgs*.jsonl",
+        data_output_dir=knowledge_path,
         # define model-trianing parameters
         max_seq_len=max_seq_len,
         max_batch_len=max_batch_len,
@@ -1274,7 +1292,7 @@ def data_processing_op(
     data_processing(train_args=knowledge_training_args)
 """
     exec_data_processing_op_args = f"""
-data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg="{DATA_PVC_SDG_PATH}", model="{DATA_PVC_MODEL_PATH}", skills_processed_data="{PREPROCESSED_DATA_SKILLS_PATH}", knowledge_processed_data="{PREPROCESSED_DATA_KNOWLEDGE_PATH}")
+data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg_path="{DATA_PVC_SDG_PATH}", model_path="{DATA_PVC_MODEL_PATH}", skills_path="{PREPROCESSED_DATA_SKILLS_PATH}", knowledge_path="{PREPROCESSED_DATA_KNOWLEDGE_PATH}")
 """
 
     data_container = kubernetes.client.V1Container(
@@ -1489,12 +1507,12 @@ from typing import *
 
 def run_mt_bench_op(
     models_path_prefix: str,
-    mt_bench_output: str,
     merge_system_user_message: bool,
     # generate_answers,judgment uses a magic word for its mt_bench evaluator  - 'auto'
     # with 'auto', number of gpus allocated for serving is calculated based on environment
     # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
     max_workers: str,
+    output_path: str = "/output/mt_bench_data.json",
     models_list: List[str] = None,
     models_folder: Optional[str] = None,
     device: str = None,
@@ -1682,7 +1700,7 @@ def run_mt_bench_op(
         all_mt_bench_data.append(mt_bench_data)
         scores[model_path] = overall_score
 
-    with open(mt_bench_output, "w", encoding="utf-8") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(all_mt_bench_data, f, indent=4)
 
     outputs = NamedTuple("outputs", best_model=str, best_score=float)
@@ -1705,7 +1723,7 @@ def run_mt_bench_op(
     return outputs(best_model=best_model, best_score=best_score)
 """
     exec_run_mt_bench_op_args = f"""
-run_mt_bench_op(best_score_file="{MT_BENCH_SCORES_PATH}",mt_bench_output="{MT_BENCH_OUTPUT_PATH}",models_folder="{CANDIDATE_MODEL_PATH_PREFIX}",models_path_prefix="{CANDIDATE_MODEL_PATH_PREFIX}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE})
+run_mt_bench_op(best_score_file="{MT_BENCH_SCORES_PATH}",output_path="{MT_BENCH_OUTPUT_PATH}",models_folder="{CANDIDATE_MODEL_PATH_PREFIX}",models_path_prefix="{CANDIDATE_MODEL_PATH_PREFIX}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE})
 """
     exec_run_final_eval_op_command = """
 from typing import *
@@ -1714,8 +1732,6 @@ def run_final_eval_op(
     mmlu_branch_output: str,
     mt_bench_branch_output: str,
     base_model_dir: str,
-    tasks: str,
-    taxonomy: str,
     base_branch: str,
     candidate_branch: str,
     max_workers: str,
@@ -1725,6 +1741,8 @@ def run_final_eval_op(
     batch_size: str,
     merge_system_user_message: bool,
     candidate_model: str = None,
+    taxonomy_path: str = "/input/taxonomy",
+    sdg_path: str = "/input/sdg",
 ):
     import json
     import os
@@ -1972,7 +1990,7 @@ def run_final_eval_op(
 
     mmlu_tasks = ["mmlu_pr"]
 
-    node_dataset_dirs = find_node_dataset_directories(tasks)
+    node_dataset_dirs = find_node_dataset_directories(sdg_path)
 
     # This assumes generated filesystem from ilab sdg, which
     # generates a node_datasets_ directory for MMLU custom tasks data
@@ -2051,7 +2069,7 @@ def run_final_eval_op(
 
     # MT_BENCH_BRANCH
 
-    print("Strating MT_BENCH_BRANCH ...")
+    print("Starting MT_BENCH_BRANCH ...")
 
     judge_api_key = os.getenv("JUDGE_API_KEY", "")
     judge_model_name = os.getenv("JUDGE_NAME")
@@ -2073,7 +2091,7 @@ def run_final_eval_op(
         MTBenchBranchEvaluator(
             model_name=candidate_model,
             judge_model_name=judge_model_name,
-            taxonomy_git_repo_path=taxonomy,
+            taxonomy_git_repo_path=taxonomy_path,
             branch=candidate_branch,
             output_dir=output_dir,
             merge_system_user_message=merge_system_user_message,
@@ -2081,7 +2099,7 @@ def run_final_eval_op(
         MTBenchBranchEvaluator(
             model_name=base_model_dir,
             judge_model_name=judge_model_name,
-            taxonomy_git_repo_path=taxonomy,
+            taxonomy_git_repo_path=taxonomy_path,
             branch=base_branch,
             output_dir=output_dir,
             merge_system_user_message=merge_system_user_message,
@@ -2188,7 +2206,7 @@ def run_final_eval_op(
         json.dump(mt_bench_branch_data, f, indent=4)
 """
     exec_run_final_eval_op_args = f"""
-run_final_eval_op(mmlu_branch_output="{MMLU_BRANCH_SCORES_PATH}", mt_bench_branch_output="{MT_BENCH_BRANCH_SCORES_PATH}", candidate_model="{CANDIDATE_MODEL_PATH}", taxonomy="{TAXONOMY_PATH}", tasks="{DATA_PVC_SDG_PATH}", base_branch="", candidate_branch="", device=None, base_model_dir="{DATA_PVC_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE}, model_dtype="{MODEL_DTYPE}", few_shots={FEW_SHOTS}, batch_size="{BATCH_SIZE}")
+run_final_eval_op(mmlu_branch_output="{MMLU_BRANCH_SCORES_PATH}", mt_bench_branch_output="{MT_BENCH_BRANCH_SCORES_PATH}", candidate_model="{CANDIDATE_MODEL_PATH}", taxonomy_path="{TAXONOMY_PATH}", sdg_path="{DATA_PVC_SDG_PATH}", base_branch="", candidate_branch="", device=None, base_model_dir="{DATA_PVC_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE}, model_dtype="{MODEL_DTYPE}", few_shots={FEW_SHOTS}, batch_size="{BATCH_SIZE}")
 """
 
     eval_container = kubernetes.client.V1Container(

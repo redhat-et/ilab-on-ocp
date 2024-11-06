@@ -2,20 +2,20 @@
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error
 from typing import List, NamedTuple, Optional
 
-from kfp.dsl import Artifact, Input, Model, Output, component, importer
+from kfp.dsl import component
 
-from utils.consts import PYTHON_IMAGE, RHELAI_IMAGE
+from utils.consts import RHELAI_IMAGE
 
 
 @component(base_image=RHELAI_IMAGE)
 def run_mt_bench_op(
     models_path_prefix: str,
-    mt_bench_output: Output[Artifact],
     merge_system_user_message: bool,
     # generate_answers,judgment uses a magic word for its mt_bench evaluator  - 'auto'
     # with 'auto', number of gpus allocated for serving is calculated based on environment
     # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
     max_workers: str,
+    output_path: str = "/output/mt_bench_data.json",
     models_list: List[str] = None,
     models_folder: Optional[str] = None,
     device: str = None,
@@ -203,7 +203,7 @@ def run_mt_bench_op(
         all_mt_bench_data.append(mt_bench_data)
         scores[model_path] = overall_score
 
-    with open(mt_bench_output.path, "w", encoding="utf-8") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(all_mt_bench_data, f, indent=4)
 
     outputs = NamedTuple("outputs", best_model=str, best_score=float)
@@ -224,18 +224,3 @@ def run_mt_bench_op(
         )
 
     return outputs(best_model=best_model, best_score=best_score)
-
-
-@component(base_image=PYTHON_IMAGE)
-def load_mt_bench_results_op(mt_bench_output: Input[Artifact]) -> list:
-    import json
-
-    mt_bench_score_list = []
-    with open(mt_bench_output.path, "r") as f:
-        mt_bench_score_list = json.load(f)
-
-    print("MT_Bench Evaluation Data:")
-    for mt_bench_score in mt_bench_score_list:
-        print(json.dumps(mt_bench_score, indent=4))
-
-    return mt_bench_score_list
