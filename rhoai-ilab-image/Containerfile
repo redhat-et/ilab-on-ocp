@@ -11,5 +11,3 @@ ENV HOME=/tmp
 ENV HF_HOME=/tmp
 ENV TRANSFORMERS_CACHE=/tmp
 ENV XDG_CACHE_HOME=/tmp
-
-CMD ["python3.11"]
