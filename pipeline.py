@@ -10,6 +10,7 @@ from kfp.kubernetes import (
     DeletePVC,
     mount_pvc,
     set_image_pull_policy,
+    set_env_variable,
     set_image_pull_secrets,
     use_config_map_as_env,
     use_secret_as_env,
@@ -194,7 +195,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
         # uncomment if updating image with same tag
         # set_image_pull_policy(sdg_task, "Always")
-
+        set_env_variable(HF_HOME="/tmp", XDG_CACHE_HOME="/tmp", TRITON_CACHE_DIR="/tmp", HOME="/tmp")
         # Training stage
 
         # We need to pass storage_class_name as "" to use the default StorageClass, if left empty, KFP uses "standard" StorageClass.
@@ -412,6 +413,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
         set_image_pull_secrets(run_mt_bench_task, [IMAGE_PULL_SECRET])
         use_secret_as_env(run_mt_bench_task, JUDGE_SECRET, {"api_key": "JUDGE_API_KEY"})
+        set_env_variable(HF_HOME="/tmp", XDG_CACHE_HOME="/tmp", TRITON_CACHE_DIR="/tmp", HOME="/tmp")
+
 
         # uncomment if updating image with same tag
         # set_image_pull_policy(run_mt_bench_task, "Always")
@@ -450,6 +453,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
 
         set_image_pull_secrets(final_eval_task, [IMAGE_PULL_SECRET])
+        set_env_variable(HF_HOME="/tmp", XDG_CACHE_HOME="/tmp", TRITON_CACHE_DIR="/tmp", HOME="/tmp")
 
         # uncomment if updating image with same tag
         # set_image_pull_policy(final_eval_task, "Always")
