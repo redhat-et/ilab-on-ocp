@@ -21,7 +21,7 @@ def huggingface_importer_op(repo_name: str, model_path: str = "/model"):
 
 
 @dsl.component(base_image=PYTHON_IMAGE)
-def pvc_to_artifact_op(model: dsl.Output[dsl.Artifact], pvc_path: str):
+def pvc_to_mt_bench_op(mt_bench_output: dsl.Output[dsl.Artifact], pvc_path: str):
     return
 
 

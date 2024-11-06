@@ -79,8 +79,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             huggingface_importer_op,
             kubectl_apply_op,
             kubectl_wait_for_op,
-            pvc_to_artifact_op,
             pvc_to_model_op,
+            pvc_to_mt_bench_op,
         )
     else:
         from training import (
@@ -93,8 +93,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             huggingface_importer_op,
             kubectl_apply_op,
             kubectl_wait_for_op,
-            pvc_to_artifact_op,
             pvc_to_model_op,
+            pvc_to_mt_bench_op,
         )
 
     # Imports for evaluation
@@ -460,39 +460,36 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         final_eval_task.set_accelerator_type("nvidia.com/gpu")
         final_eval_task.set_accelerator_limit(1)
 
-        # Technically 'output_model_task' and 'output_data_task' can happen before evaluation,
-        # however the PVC can only be mounted once, so, setting these to _after_ so the eval proceeds.
-        output_model_task = pvc_to_artifact_op(
-            pvc_path="/output/data",
+        output_model_task = pvc_to_model_op(
+            pvc_path="/output/phase_2/model/hf_format/candidate_model",
         )
-        output_model_task.after(final_eval_task)
-        output_model_task.set_caching_options(False)
-
+        output_model_task.after(run_mt_bench_task)
         mount_pvc(
             task=output_model_task,
             pvc_name=output_pvc_task.output,
-            mount_path="/output/data",
+            mount_path="/output",
         )
 
-        output_data_task = pvc_to_model_op(
-            pvc_path="/output/model",
+        output_mt_bench_task = pvc_to_mt_bench_op(
+            pvc_path="/output/mt_bench_data.json",
         )
-        output_data_task.after(final_eval_task)
-
+        output_mt_bench_task.after(run_mt_bench_task)
         mount_pvc(
-            task=output_data_task,
+            task=output_mt_bench_task,
             pvc_name=output_pvc_task.output,
-            mount_path="/output/model",
+            mount_path="/output",
         )
 
         output_pvc_delete_task = DeletePVC(pvc_name=output_pvc_task.output)
-        output_pvc_delete_task.after(output_data_task, output_model_task)
+        output_pvc_delete_task.after(
+            output_model_task, output_mt_bench_task, final_eval_task
+        )
 
         sdg_pvc_delete_task = DeletePVC(pvc_name=sdg_input_pvc_task.output)
-        sdg_pvc_delete_task.after(output_data_task, output_model_task)
+        sdg_pvc_delete_task.after(final_eval_task)
 
         model_pvc_delete_task = DeletePVC(pvc_name=model_pvc_task.output)
-        model_pvc_delete_task.after(output_data_task, output_model_task)
+        model_pvc_delete_task.after(final_eval_task)
 
         return
 

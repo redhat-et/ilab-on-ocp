@@ -1507,12 +1507,12 @@ from typing import *
 
 def run_mt_bench_op(
     models_path_prefix: str,
-    mt_bench_output: str,
     merge_system_user_message: bool,
     # generate_answers,judgment uses a magic word for its mt_bench evaluator  - 'auto'
     # with 'auto', number of gpus allocated for serving is calculated based on environment
     # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
     max_workers: str,
+    output_path: str = "/output",
     models_list: List[str] = None,
     models_folder: Optional[str] = None,
     device: str = None,
@@ -1700,7 +1700,7 @@ def run_mt_bench_op(
         all_mt_bench_data.append(mt_bench_data)
         scores[model_path] = overall_score
 
-    with open(mt_bench_output, "w", encoding="utf-8") as f:
+    with open(f"{output_path}/mt_bench_data.json", "w", encoding="utf-8") as f:
         json.dump(all_mt_bench_data, f, indent=4)
 
     outputs = NamedTuple("outputs", best_model=str, best_score=float)

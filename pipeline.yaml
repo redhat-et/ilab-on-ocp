@@ -341,18 +341,6 @@ components:
       parameters:
         Output:
           parameterType: LIST
-  comp-pvc-to-artifact-op:
-    executorLabel: exec-pvc-to-artifact-op
-    inputDefinitions:
-      parameters:
-        pvc_path:
-          parameterType: STRING
-    outputDefinitions:
-      artifacts:
-        model:
-          artifactType:
-            schemaTitle: system.Artifact
-            schemaVersion: 0.0.1
   comp-pvc-to-model-op:
     executorLabel: exec-pvc-to-model-op
     inputDefinitions:
@@ -364,6 +352,18 @@ components:
         model:
           artifactType:
             schemaTitle: system.Model
+            schemaVersion: 0.0.1
+  comp-pvc-to-mt-bench-op:
+    executorLabel: exec-pvc-to-mt-bench-op
+    inputDefinitions:
+      parameters:
+        pvc_path:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        mt_bench_output:
+          artifactType:
+            schemaTitle: system.Artifact
             schemaVersion: 0.0.1
   comp-pytorchjob-manifest-op:
     executorLabel: exec-pytorchjob-manifest-op
@@ -542,12 +542,11 @@ components:
           parameterType: LIST
         models_path_prefix:
           parameterType: STRING
+        output_path:
+          defaultValue: /output
+          isOptional: true
+          parameterType: STRING
     outputDefinitions:
-      artifacts:
-        mt_bench_output:
-          artifactType:
-            schemaTitle: system.Artifact
-            schemaVersion: 0.0.1
       parameters:
         best_model:
           parameterType: STRING
@@ -820,11 +819,11 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef list_models_in_directory_op(models_folder: str) -> List:\n  \
-          \  import os\n\n    models = os.listdir(models_folder)\n    return models\n\
+          \ *\n\ndef list_models_in_directory_op(models_folder: str) -> List[str]:\n\
+          \    import os\n\n    models = os.listdir(models_folder)\n    return models\n\
           \n"
         image: python:3.8
-    exec-pvc-to-artifact-op:
+    exec-pvc-to-model-op:
       container:
         args:
         - cp -r {{$.inputs.parameters['pvc_path']}} {{$.outputs.artifacts['model'].path}}
@@ -832,10 +831,10 @@ deploymentSpec:
         - /bin/sh
         - -c
         image: registry.access.redhat.com/ubi9/toolbox
-    exec-pvc-to-model-op:
+    exec-pvc-to-mt-bench-op:
       container:
         args:
-        - cp -r {{$.inputs.parameters['pvc_path']}} {{$.outputs.artifacts['model'].path}}
+        - cp -r {{$.inputs.parameters['pvc_path']}} {{$.outputs.artifacts['mt_bench_output'].path}}
         command:
         - /bin/sh
         - -c
@@ -1445,47 +1444,46 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef run_mt_bench_op(\n    models_path_prefix: str,\n    mt_bench_output:\
-          \ Output[Artifact],\n    merge_system_user_message: bool,\n    # generate_answers,judgment\
-          \ uses a magic word for its mt_bench evaluator  - 'auto'\n    # with 'auto',\
-          \ number of gpus allocated for serving is calculated based on environment\n\
-          \    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36\n\
-          \    max_workers: str,\n    models_list: List[str] = None,\n    models_folder:\
-          \ Optional[str] = None,\n    device: str = None,\n    best_score_file: Optional[str]\
-          \ = None,\n) -> NamedTuple(\"outputs\", best_model=str, best_score=float):\n\
-          \    import json\n    import os\n    import subprocess\n\n    import torch\n\
-          \    from instructlab.eval.mt_bench import MTBenchEvaluator\n\n    if judge_ca_cert\
-          \ := os.getenv(\"JUDGE_CA_CERT_PATH\"):\n        import httpx\n        import\
-          \ openai\n\n        # Create a custom HTTP client\n        class CustomHttpClient(httpx.Client):\n\
-          \            def __init__(self, *args, **kwargs):\n                # Use\
-          \ the custom CA certificate\n                kwargs.setdefault(\"verify\"\
-          , judge_ca_cert)\n                super().__init__(*args, **kwargs)\n\n\
-          \        # Create a new OpenAI class that uses the custom HTTP client\n\
-          \        class CustomOpenAI(openai.OpenAI):\n            def __init__(self,\
-          \ *args, **kwargs):\n                custom_client = CustomHttpClient()\n\
-          \                super().__init__(http_client=custom_client, *args, **kwargs)\n\
-          \n        # Monkey patch the OpenAI class in the openai module, so that\
-          \ the eval lib can use it\n        openai.OpenAI = CustomOpenAI\n\n    def\
-          \ launch_vllm(\n        model_path: str, gpu_count: int, retries: int =\
-          \ 120, delay: int = 10\n    ) -> tuple:\n        import subprocess\n   \
-          \     import sys\n        import time\n\n        import requests\n     \
-          \   from instructlab.model.backends.common import free_tcp_ipv4_port\n\n\
-          \        free_port = free_tcp_ipv4_port(\"127.0.0.1\")\n        port = str(free_port)\n\
-          \        vllm_server = f\"http://127.0.0.1:{port}/v1\"\n\n        command\
-          \ = [\n            sys.executable,\n            \"-m\",\n            \"\
-          vllm.entrypoints.openai.api_server\",\n            \"--port\",\n       \
-          \     port,\n            \"--model\",\n            model_path,\n       \
-          \ ]\n        if gpu_count > 0:\n            command += [\n             \
-          \   \"--tensor-parallel-size\",\n                str(gpu_count),\n     \
-          \       ]\n\n        process = subprocess.Popen(args=command)\n\n      \
-          \  print(f\"Waiting for vLLM server to start at {vllm_server}...\")\n\n\
-          \        for attempt in range(retries):\n            try:\n            \
-          \    response = requests.get(f\"{vllm_server}/models\")\n              \
-          \  if response.status_code == 200:\n                    print(f\"vLLM server\
-          \ is up and running at {vllm_server}.\")\n                    return process,\
-          \ vllm_server\n            except requests.ConnectionError:\n          \
-          \      pass\n\n            print(\n                f\"Server not available\
-          \ yet, retrying in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\
+          \ *\n\ndef run_mt_bench_op(\n    models_path_prefix: str,\n    merge_system_user_message:\
+          \ bool,\n    # generate_answers,judgment uses a magic word for its mt_bench\
+          \ evaluator  - 'auto'\n    # with 'auto', number of gpus allocated for serving\
+          \ is calculated based on environment\n    # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36\n\
+          \    max_workers: str,\n    output_path: str = \"/output\",\n    models_list:\
+          \ List[str] = None,\n    models_folder: Optional[str] = None,\n    device:\
+          \ str = None,\n    best_score_file: Optional[str] = None,\n) -> NamedTuple(\"\
+          outputs\", best_model=str, best_score=float):\n    import json\n    import\
+          \ os\n    import subprocess\n\n    import torch\n    from instructlab.eval.mt_bench\
+          \ import MTBenchEvaluator\n\n    if judge_ca_cert := os.getenv(\"JUDGE_CA_CERT_PATH\"\
+          ):\n        import httpx\n        import openai\n\n        # Create a custom\
+          \ HTTP client\n        class CustomHttpClient(httpx.Client):\n         \
+          \   def __init__(self, *args, **kwargs):\n                # Use the custom\
+          \ CA certificate\n                kwargs.setdefault(\"verify\", judge_ca_cert)\n\
+          \                super().__init__(*args, **kwargs)\n\n        # Create a\
+          \ new OpenAI class that uses the custom HTTP client\n        class CustomOpenAI(openai.OpenAI):\n\
+          \            def __init__(self, *args, **kwargs):\n                custom_client\
+          \ = CustomHttpClient()\n                super().__init__(http_client=custom_client,\
+          \ *args, **kwargs)\n\n        # Monkey patch the OpenAI class in the openai\
+          \ module, so that the eval lib can use it\n        openai.OpenAI = CustomOpenAI\n\
+          \n    def launch_vllm(\n        model_path: str, gpu_count: int, retries:\
+          \ int = 120, delay: int = 10\n    ) -> tuple:\n        import subprocess\n\
+          \        import sys\n        import time\n\n        import requests\n  \
+          \      from instructlab.model.backends.common import free_tcp_ipv4_port\n\
+          \n        free_port = free_tcp_ipv4_port(\"127.0.0.1\")\n        port =\
+          \ str(free_port)\n        vllm_server = f\"http://127.0.0.1:{port}/v1\"\n\
+          \n        command = [\n            sys.executable,\n            \"-m\",\n\
+          \            \"vllm.entrypoints.openai.api_server\",\n            \"--port\"\
+          ,\n            port,\n            \"--model\",\n            model_path,\n\
+          \        ]\n        if gpu_count > 0:\n            command += [\n      \
+          \          \"--tensor-parallel-size\",\n                str(gpu_count),\n\
+          \            ]\n\n        process = subprocess.Popen(args=command)\n\n \
+          \       print(f\"Waiting for vLLM server to start at {vllm_server}...\"\
+          )\n\n        for attempt in range(retries):\n            try:\n        \
+          \        response = requests.get(f\"{vllm_server}/models\")\n          \
+          \      if response.status_code == 200:\n                    print(f\"vLLM\
+          \ server is up and running at {vllm_server}.\")\n                    return\
+          \ process, vllm_server\n            except requests.ConnectionError:\n \
+          \               pass\n\n            print(\n                f\"Server not\
+          \ available yet, retrying in {delay} seconds (Attempt {attempt + 1}/{retries})...\"\
           \n            )\n            time.sleep(delay)\n\n        raise RuntimeError(\n\
           \            f\"Failed to start vLLM server at {vllm_server} after {retries}\
           \ retries.\"\n        )\n\n    def shutdown_vllm(process: subprocess.Popen,\
@@ -1541,15 +1539,15 @@ deploymentSpec:
           : overall_score,\n            \"turn_scores\": turn_scores,\n          \
           \  \"qa_scores\": qa_pairs,\n            \"error_rate\": error_rate,\n \
           \       }\n\n        all_mt_bench_data.append(mt_bench_data)\n        scores[model_path]\
-          \ = overall_score\n\n    with open(mt_bench_output.path, \"w\", encoding=\"\
-          utf-8\") as f:\n        json.dump(all_mt_bench_data, f, indent=4)\n\n  \
-          \  outputs = NamedTuple(\"outputs\", best_model=str, best_score=float)\n\
-          \    best_model = max(scores, key=scores.get)\n    best_score = scores[best_model]\n\
-          \    if best_score_file:\n        with open(best_score_file, \"w\", encoding=\"\
-          utf-8\") as f:\n            json.dump({\"best_model\": best_model, \"best_score\"\
-          : best_score}, f, indent=4)\n\n    # Rename the best model directory to\
-          \ \"candidate_model\" for the next step\n    # So we know which model to\
-          \ use for the final evaluation\n    if os.path.exists(os.path.join(models_path_prefix,\
+          \ = overall_score\n\n    with open(f\"{output_path}/mt_bench_data.json\"\
+          , \"w\", encoding=\"utf-8\") as f:\n        json.dump(all_mt_bench_data,\
+          \ f, indent=4)\n\n    outputs = NamedTuple(\"outputs\", best_model=str,\
+          \ best_score=float)\n    best_model = max(scores, key=scores.get)\n    best_score\
+          \ = scores[best_model]\n    if best_score_file:\n        with open(best_score_file,\
+          \ \"w\", encoding=\"utf-8\") as f:\n            json.dump({\"best_model\"\
+          : best_model, \"best_score\": best_score}, f, indent=4)\n\n    # Rename\
+          \ the best model directory to \"candidate_model\" for the next step\n  \
+          \  # So we know which model to use for the final evaluation\n    if os.path.exists(os.path.join(models_path_prefix,\
           \ \"candidate_model\")):\n        print(\"candidate_model already exists.\
           \ Skipping renaming\")\n    else:\n        os.rename(\n            os.path.join(models_path_prefix,\
           \ best_model),\n            os.path.join(models_path_prefix, \"candidate_model\"\
@@ -1725,8 +1723,9 @@ root:
           name: comp-deletepvc
         dependentTasks:
         - createpvc-3
-        - pvc-to-artifact-op
         - pvc-to-model-op
+        - pvc-to-mt-bench-op
+        - run-final-eval-op
         inputs:
           parameters:
             pvc_name:
@@ -1742,8 +1741,7 @@ root:
           name: comp-deletepvc-2
         dependentTasks:
         - createpvc
-        - pvc-to-artifact-op
-        - pvc-to-model-op
+        - run-final-eval-op
         inputs:
           parameters:
             pvc_name:
@@ -1759,8 +1757,7 @@ root:
           name: comp-deletepvc-3
         dependentTasks:
         - createpvc-2
-        - pvc-to-artifact-op
-        - pvc-to-model-op
+        - run-final-eval-op
         inputs:
           parameters:
             pvc_name:
@@ -1892,20 +1889,6 @@ root:
                 constant: /output/phase_2/model/hf_format
         taskInfo:
           name: list-models-in-directory-op
-      pvc-to-artifact-op:
-        cachingOptions: {}
-        componentRef:
-          name: comp-pvc-to-artifact-op
-        dependentTasks:
-        - createpvc-3
-        - run-final-eval-op
-        inputs:
-          parameters:
-            pvc_path:
-              runtimeValue:
-                constant: /output/data
-        taskInfo:
-          name: pvc-to-artifact-op
       pvc-to-model-op:
         cachingOptions:
           enableCache: true
@@ -1913,14 +1896,29 @@ root:
           name: comp-pvc-to-model-op
         dependentTasks:
         - createpvc-3
-        - run-final-eval-op
+        - run-mt-bench-op
         inputs:
           parameters:
             pvc_path:
               runtimeValue:
-                constant: /output/model
+                constant: /output/phase_2/model/hf_format/candidate_model
         taskInfo:
           name: pvc-to-model-op
+      pvc-to-mt-bench-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-pvc-to-mt-bench-op
+        dependentTasks:
+        - createpvc-3
+        - run-mt-bench-op
+        inputs:
+          parameters:
+            pvc_path:
+              runtimeValue:
+                constant: /output/mt_bench_data.json
+        taskInfo:
+          name: pvc-to-mt-bench-op
       pytorchjob-manifest-op:
         cachingOptions: {}
         componentRef:
@@ -2262,15 +2260,15 @@ platforms:
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-3
-        exec-pvc-to-artifact-op:
+        exec-pvc-to-model-op:
           pvcMount:
-          - mountPath: /output/data
+          - mountPath: /output
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-3
-        exec-pvc-to-model-op:
+        exec-pvc-to-mt-bench-op:
           pvcMount:
-          - mountPath: /output/model
+          - mountPath: /output
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-3
