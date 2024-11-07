@@ -400,21 +400,26 @@ evaluation
   true). `SDG_OBJECT_STORE_VERIFY_TLS` environment variable can be used as well. **Optional**
 * `--sdg-object-store-region`: The region of the object store. `SDG_OBJECT_STORE_REGION` environment
   variable can be used as well. **Optional**
-* `--sdg-serving-model-secret`: The name of the Kubernetes secret containing the SDG serving model
+* `--sdg-serving-model-secret`: The name of the Kubernetes Secret containing the SDG serving model
   details. **Optional** - Only valid when running Synthetic Data Generation inside the Kubernetes
   Cluster.
 * `--sdg-serving-model-endpoint`: The endpoint of the SDG serving model. **Optional** - Only valid
   when running Synthetic Data Generation inside the Kubernetes Cluster.
 * `--sdg-serving-model-name`: The name of the model to use for Synthetic Data Generation.
   **Optional**
+* `--sdg-serving-model-ca-cert`: Name of the Kubernetes ConfigMap containing the SDG serving model CA cert.
+  `SDG_SERVING_MODEL_CA_CERT` environment variable can be used as well. **Optional**
+* `--sdg-serving-model-ca-cert-cm-key`: Name of the Key in the Kubernetes ConfigMap containing the SDG serving model CA cert.
+  `SDG_SERVING_MODEL_CA_CERT_CM_KEY` environment variable can be used as well. **Optional**
 * `--sdg-serving-model-api-key`: The API key for the model to use for Synthetic Data Generation. **Optional**
 * `--judge-serving-model-endpoint`: Serving endpoint for evaluation. e.g:
   http://serving.kubeflow.svc.cluster.local:8080/v1 - **Optional**
 * `--judge-serving-model-name`: The name of the model to use for evaluation. **Optional**
 * `--judge-serving-model-api-key`: The API key for the model to evaluate. `JUDGE_SERVING_MODEL_API_KEY`
   environment variable can be used as well. **Optional**
-* `--judge-serving-model-ca-cert`: Name of the Kubernetes ConfigMap containing the serving model CA cert. **Optional**
-* `--judge-serving-model-secret`: The name of the Kubernetes secret containing the judge serving model
+* `--judge-serving-model-ca-cert`: Name of the Kubernetes ConfigMap containing the judge serving model CA cert. **Optional**
+* `--judge-serving-model-ca-cert-cm-key`: Name of the Key in the Kubernetes ConfigMap containing the judge serving model CA cert. **Optional**
+* `--judge-serving-model-secret`: The name of the Kubernetes Secret containing the judge serving model
   API key. **Optional** - If not provided, the script will expect the provided CLI options to evaluate the model.
 * `--force-pull`: Force pull the data (sdg data, model and taxonomy) from the object store even if it already
   exists in the PVC. **Optional** - Default: false.

@@ -1587,13 +1587,16 @@ deploymentSpec:
           \n            with open(skills_recipe, \"w\", encoding=\"utf-8\") as file:\n\
           \                yaml.dump(skills_yaml, file)\n\n    api_key = getenv(\"\
           api_key\")\n    model = getenv(\"model\")\n    endpoint = getenv(\"endpoint\"\
-          )\n    client = openai.OpenAI(base_url=endpoint, api_key=api_key)\n\n  \
-          \  taxonomy_base = \"main\" if repo_branch or (repo_pr and int(repo_pr)\
-          \ > 0) else \"empty\"\n\n    print(\"Generating synthetic dataset for:\"\
-          )\n    print()\n    print(read_taxonomy(taxonomy_path, taxonomy_base))\n\
-          \n    # Temporary measure to limit the amount of precomputed skills data\
-          \ used to construct the SDG dataset.\n    # Need during development to decrease\
-          \ training loop times and the cost of model quality.\n    set_precomputed_skills_data_ratio(sampling_size=SAMPLING_SIZE)\n\
+          )\n\n    if sdg_ca_cert := getenv(\"SDG_CA_CERT_PATH\"):\n        import\
+          \ httpx\n\n        custom_http_client = httpx.Client(verify=sdg_ca_cert)\n\
+          \        client = openai.OpenAI(\n            base_url=endpoint, api_key=api_key,\
+          \ http_client=custom_http_client\n        )\n    else:\n        client =\
+          \ openai.OpenAI(base_url=endpoint, api_key=api_key)\n\n    taxonomy_base\
+          \ = \"main\" if repo_branch or (repo_pr and int(repo_pr) > 0) else \"empty\"\
+          \n\n    print(\"Generating synthetic dataset for:\")\n    print()\n    print(read_taxonomy(taxonomy_path,\
+          \ taxonomy_base))\n\n    # Temporary measure to limit the amount of precomputed\
+          \ skills data used to construct the SDG dataset.\n    # Need during development\
+          \ to decrease training loop times and the cost of model quality.\n    set_precomputed_skills_data_ratio(sampling_size=SAMPLING_SIZE)\n\
           \n    # generate_data has a magic word for its taxonomy_base argument -\
           \ 'empty'\n    # it allows generating from the whole repo, see:\n    # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230\n\
           \    generate_data(\n        client=client,\n        num_instructions_to_generate=num_instructions_to_generate,\n\

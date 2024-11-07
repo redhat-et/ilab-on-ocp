@@ -59,7 +59,16 @@ def sdg_op(
     api_key = getenv("api_key")
     model = getenv("model")
     endpoint = getenv("endpoint")
-    client = openai.OpenAI(base_url=endpoint, api_key=api_key)
+
+    if sdg_ca_cert := getenv("SDG_CA_CERT_PATH"):
+        import httpx
+
+        custom_http_client = httpx.Client(verify=sdg_ca_cert)
+        client = openai.OpenAI(
+            base_url=endpoint, api_key=api_key, http_client=custom_http_client
+        )
+    else:
+        client = openai.OpenAI(base_url=endpoint, api_key=api_key)
 
     taxonomy_base = "main" if repo_branch or (repo_pr and int(repo_pr) > 0) else "empty"
 

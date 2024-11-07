@@ -57,6 +57,9 @@ SDG_OBJECT_STORE_SECRET_NAME = "sdg-object-store-credentials"
 SDG_SERVING_NAME = "sdg-serving-details"
 REPO_GRANITE_7B_IMAGE = "ibm-granite/granite-7b-base"  # used by HF downloader
 SDG_DEFAULT_PIPELINE = "simple"
+SDG_CA_CERT_ENV_VAR_NAME = "SDG_CA_CERT_PATH"
+SDG_CA_CERT_PATH = "/tmp/cert"
+SDG_CA_CERT_CM_KEY = "ca-bundle.crt"
 
 # SDG DATA PREPROCESSING (before doing training, data has to be converted)
 MAX_SEQ_LEN = 4096
@@ -656,14 +659,13 @@ def show(
     "--judge-serving-model-ca-cert",
     type=str,
     help=(
-        "Name of the Kubernetes ConfigMap containing the serving model CA cert."
-        "The expected key name is 'ca-bundle.crt'."
+        "Name of the Kubernetes ConfigMap containing the judge serving model CA cert."
     ),
 )
 @click.option(
     "--judge-serving-model-ca-cert-cm-key",
     type=str,
-    help="Name of the Key in the Kubernetes ConfigMap containing the serving model CA cert.",
+    help="Name of the Key in the Kubernetes ConfigMap containing the judge serving model CA cert.",
     default=JUDGE_CA_CERT_CM_KEY,
 )
 @click.option(
@@ -677,7 +679,8 @@ def show(
         "The following keys are expected: JUDGE_API_KEY, JUDGE_ENDPOINT, JUDGE_NAME"
         "Optional keys are: JUDGE_CA_CERT, JUDGE_CA_CERT_CM_KEY"
         " (JUDGE_SERVING_MODEL_SECRET env var)"
-        "If used, --judge-serving-model-{api-key,endpoint,name,ca-cert} will be ignored."
+        "If used, --judge-serving-model-{api-key,endpoint,name,ca-cert,ca-cert-cm-key} "
+        "options will be ignored."
     ),
 )
 @click.option(
@@ -805,10 +808,24 @@ def show(
         "Name of the Kubernetes Secret containing the sdg serving model endpoint. "
         "For SDG only. "
         "The namespace is inferred from the namespace option. "
-        "The following keys are expected: endpoint, model, api_key "
-        " (SDG_SERVING_MODEL_SECRET env var)"
-        "If used, the --sdg-serving-model-{api-key,endpoint,name} options will be ignored."
+        "The following keys are expected: endpoint, model, api_key, SDG_CA_CERT, "
+        "SDG_CA_CERT_CM_KEY (SDG_SERVING_MODEL_SECRET env var)"
+        "If used, the --sdg-serving-model-{api-key,endpoint,name,ca-cert,ca-cert-cm-key} "
+        "options will be ignored."
     ),
+)
+@click.option(
+    "--sdg-serving-model-ca-cert",
+    type=str,
+    envvar="SDG_SERVING_MODEL_CA_CERT",
+    help=("Name of the Kubernetes ConfigMap containing the SDG serving model CA cert."),
+)
+@click.option(
+    "--sdg-serving-model-ca-cert-cm-key",
+    type=str,
+    envvar="SDG_SERVING_MODEL_CA_CERT_CM_KEY",
+    help="Name of the Key in the Kubernetes ConfigMap containing the SDG serving model CA cert.",
+    default=SDG_CA_CERT_CM_KEY,
 )
 @click.option(
     "--force-pull",
@@ -880,6 +897,8 @@ def run(
     sdg_serving_model_endpoint: typing.Optional[str] = None,
     sdg_serving_model_name: typing.Optional[str] = None,
     sdg_serving_model_api_key: typing.Optional[str] = None,
+    sdg_serving_model_ca_cert: typing.Optional[str] = None,
+    sdg_serving_model_ca_cert_cm_key: typing.Optional[str] = None,
     force_pull: typing.Optional[bool] = False,
     training_1_epoch_num: int = 7,
     training_2_epoch_num: int = 10,
@@ -902,7 +921,7 @@ def run(
         judge_serving_model_api_key (str): The serving model API key for evaluation. For Evaluation
         only.
         judge_serving_model_ca_cert (str): The serving model CA cert for evaluation.
-        judge_serving_model_ca_cert_cm_key (str): The name of the Key in the Kubernetes ConfigMap
+        judge_serving_model_ca_cert_cm_key (str): The name of the Key in the Kubernetes ConfigMap.
         judge_serving_model_secret (str): The name of the Kubernetes Secret containing the serving
         model credentials. For Evaluation only.
         nproc_per_node (int): The number of processes per node. For training only.
@@ -923,6 +942,8 @@ def run(
         sdg_serving_model_endpoint (str): The serving endpoint for SDG.
         sdg_serving_model_name (str): The serving model name for SDG.
         sdg_serving_model_api_key (str): The serving model API key for SDG.
+        sdg_serving_model_ca_cert (str): The serving model CA cert for SDG.
+        sdg_serving_model_ca_cert_cm_key (str): The name of the Key in the Kubernetes ConfigMap.
         force_pull (bool): Force pull the data (sdg data and model) from the object store even if it
         already exists in the PVC.
         training_1_epoch_num (int): Number of epochs to train the model for during phase 1.
@@ -944,8 +965,8 @@ def run(
     ctx.obj["judge_serving_model_name"] = judge_serving_model_name
     ctx.obj["judge_serving_model_api_key"] = judge_serving_model_api_key
     ctx.obj["judge_serving_model_ca_cert"] = judge_serving_model_ca_cert
-    ctx.obj["judge_serving_model_secret"] = judge_serving_model_secret
     ctx.obj["judge_serving_model_ca_cert_cm_key"] = judge_serving_model_ca_cert_cm_key
+    ctx.obj["judge_serving_model_secret"] = judge_serving_model_secret
     ctx.obj["nproc_per_node"] = nproc_per_node
     ctx.obj["eval_type"] = eval_type
     ctx.obj["training_phase"] = training_phase
@@ -962,6 +983,8 @@ def run(
     ctx.obj["sdg_serving_model_endpoint"] = sdg_serving_model_endpoint
     ctx.obj["sdg_serving_model_name"] = sdg_serving_model_name
     ctx.obj["sdg_serving_model_api_key"] = sdg_serving_model_api_key
+    ctx.obj["sdg_serving_model_ca_cert"] = sdg_serving_model_ca_cert
+    ctx.obj["sdg_serving_model_ca_cert_cm_key"] = sdg_serving_model_ca_cert_cm_key
     ctx.obj["force_pull"] = force_pull
     ctx.obj["training_1_epoch_num"] = training_1_epoch_num
     ctx.obj["training_2_epoch_num"] = training_2_epoch_num
@@ -1116,6 +1139,8 @@ def create_data_job(
     taxonomy_repo_pr: str = "",
     taxonomy_repo_branch: str = "",
     sdg_pipeline: str = SDG_DEFAULT_PIPELINE,
+    sdg_serving_model_ca_cert: str = None,
+    sdg_serving_model_ca_cert_cm_key: str = None,
 ) -> kubernetes.client.V1Job:
     """
     Create a Kubernetes Job object.
@@ -1135,6 +1160,9 @@ def create_data_job(
         the PVC.
         sdg_pipeline (str): The pipeline type used for SDG, value must be 'simple', 'full', or a
         valid path to a directory.
+        sdg_serving_model_ca_cert (str): The serving model CA cert for SDG.
+        sdg_serving_model_ca_cert_cm_key (str): The name of the Key in the Kubernetes ConfigMap.
+
 
     Returns:
         kubernetes.client.V1Job: A Kubernetes Job object configured with the specified parameters.
@@ -1280,15 +1308,42 @@ data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg
         # If sdg_in_cluster is True, we append the create_sdg_container to the init_containers so
         # the sequence will be: download data (model and taxonomy) -> generate synthetic data
         if sdg_in_cluster:
-            init_containers.append(
-                create_sdg_container(
-                    sdg_serving_model_secret,
-                    num_instructions_to_generate=num_instructions_to_generate,
-                    exec_git_clone_op_repo_branch=taxonomy_repo_branch,
-                    exec_git_clone_op_repo_pr=taxonomy_repo_pr,
-                    sdg_pipeline=sdg_pipeline,
-                )
+            sdg_container = create_sdg_container(
+                sdg_serving_model_secret=sdg_serving_model_secret,
+                num_instructions_to_generate=num_instructions_to_generate,
+                exec_git_clone_op_repo_branch=taxonomy_repo_branch,
+                exec_git_clone_op_repo_pr=taxonomy_repo_pr,
+                sdg_pipeline=sdg_pipeline,
             )
+
+            if sdg_serving_model_ca_cert:
+                # Define the volume that references the ConfigMap
+                cm_volume = kubernetes.client.V1Volume(
+                    name="sdg-ca-cert-volume",
+                    config_map=kubernetes.client.V1ConfigMapVolumeSource(
+                        name=sdg_serving_model_ca_cert
+                    ),
+                )
+                # Define the volume mount to specify where the Secret should be mounted in the container
+                cm_volume_mount = kubernetes.client.V1VolumeMount(
+                    name="sdg-ca-cert-volume",
+                    mount_path=SDG_CA_CERT_PATH,  # Path where the Secret will be mounted
+                )
+                # Add an env var to the container to specify the path to the CA cert
+                sdg_container.env = [
+                    kubernetes.client.V1EnvVar(
+                        name=SDG_CA_CERT_ENV_VAR_NAME,
+                        value=os.path.join(
+                            SDG_CA_CERT_PATH, sdg_serving_model_ca_cert_cm_key
+                        ),
+                    )
+                ]
+                # Add the volume mount to the container
+                sdg_container.volume_mounts.append(cm_volume_mount)
+                # Add the volume to the Pod spec
+                template.spec.volumes.append(cm_volume)
+
+            init_containers.append(sdg_container)
         template.spec.init_containers = init_containers
 
     # Create the specification of deployment
@@ -1459,9 +1514,9 @@ def create_eval_job(
                 ),
             )
         ]
-        # Add the volume to the Pod spec
-        eval_container.volume_mounts.append(cm_volume_mount)
         # Add the volume mount to the container
+        eval_container.volume_mounts.append(cm_volume_mount)
+        # Add the volume to the Pod spec
         template.spec.volumes.append(cm_volume)
 
     # Create the specification of deployment
@@ -1986,6 +2041,10 @@ def sdg(
     sdg_serving_model_endpoint = ctx.obj["sdg_serving_model_endpoint"]
     sdg_serving_model_name = ctx.obj["sdg_serving_model_name"]
     sdg_serving_model_api_key = ctx.obj["sdg_serving_model_api_key"]
+
+    sdg_serving_model_ca_cert = ctx.obj["sdg_serving_model_ca_cert"]
+    sdg_serving_model_ca_cert_cm_key = ctx.obj["sdg_serving_model_ca_cert_cm_key"]
+
     num_instructions_to_generate = ctx.obj["num_instructions_to_generate"]
     taxonomy_repo_pr = ctx.obj["taxonomy_repo_pr"]
     taxonomy_repo_branch = ctx.obj["taxonomy_repo_branch"]
@@ -2074,11 +2133,42 @@ def sdg(
                 # Validate the endpoint
                 endpoint = decode_base64(secret.data.get("endpoint"))
                 validate_url(endpoint)
+
+                # Validation of the secret's existence is done in the next conditional block
+                if secret.data.get("SDG_CA_CERT"):
+                    sdg_serving_model_ca_cert = decode_base64(
+                        secret.data.get("SDG_CA_CERT")
+                    )
+                if secret.data.get("SDG_CA_CERT_CM_KEY"):
+                    sdg_serving_model_ca_cert_cm_key = decode_base64(
+                        secret.data.get("SDG_CA_CERT_CM_KEY")
+                    )
             except kubernetes.client.rest.ApiException as exc:
                 if exc.status == 404:
                     raise ValueError(
                         f"Secret {sdg_serving_model_secret} not found in namespace {namespace}."
                     ) from exc
+
+    # If the CA cert is provided, verify the existence of the configmap
+    # We don't add the CA Cert configmap name into the configmap that contains the sdg details
+    # If provided, the configmap will be mounted as a volume in the sdg data job
+    if sdg_serving_model_ca_cert and not dry_run:
+        try:
+            cm = v1.read_namespaced_config_map(
+                name=sdg_serving_model_ca_cert, namespace=namespace
+            )
+            # Validate the presence of the key
+            if not cm.data.get(sdg_serving_model_ca_cert_cm_key):
+                raise ValueError(
+                    f"Provided ConfigMap {sdg_serving_model_ca_cert} does not contain the key:"
+                    f"'{sdg_serving_model_ca_cert_cm_key}'."
+                    "Use '--sdg-serving-model-ca-cert-cm-key' to specify the key."
+                )
+        except kubernetes.client.rest.ApiException as exc:
+            if exc.status == 404:
+                raise ValueError(
+                    f"ConfigMap {sdg_serving_model_ca_cert} not found in namespace {namespace}."
+                ) from exc
 
     logger.info("Initial configuration.")
     initial_setup(ctx)
@@ -2098,6 +2188,8 @@ def sdg(
         taxonomy_repo_pr=taxonomy_repo_pr,
         taxonomy_repo_branch=taxonomy_repo_branch,
         sdg_pipeline=sdg_pipeline,
+        sdg_serving_model_ca_cert=sdg_serving_model_ca_cert,
+        sdg_serving_model_ca_cert_cm_key=sdg_serving_model_ca_cert_cm_key,
     )
 
     if dry_run:
