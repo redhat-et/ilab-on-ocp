@@ -162,6 +162,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             repo_branch=repo_branch,
             repo_pr=repo_pr,
         )
+        sdg_task.set_env_variable("HOME", "/tmp")
+        sdg_task.set_env_variable("HF_HOME", "/tmp")
         use_config_map_as_env(
             sdg_task, K8S_NAME, dict(endpoint="endpoint", model="model")
         )
@@ -402,6 +404,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             pvc_name=output_pvc_task.output,
             mount_path="/output",
         )
+        run_mt_bench_task.set_env_variable("HOME", "/tmp")
+        run_mt_bench_task.set_env_variable("HF_HOME", "/tmp")
         run_mt_bench_task.set_accelerator_type("nvidia.com/gpu")
         run_mt_bench_task.set_accelerator_limit(1)
         run_mt_bench_task.set_caching_options(False)
@@ -449,6 +453,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             dict(endpoint="JUDGE_ENDPOINT", model="JUDGE_NAME"),
         )
 
+        final_eval_task.set_env_variable("HOME", "/tmp")
+        final_eval_task.set_env_variable("HF_HOME", "/tmp")
         set_image_pull_secrets(final_eval_task, [IMAGE_PULL_SECRET])
 
         # uncomment if updating image with same tag

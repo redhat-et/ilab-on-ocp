@@ -1,13 +1,3 @@
 FROM registry.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.2
 
 RUN pip install kfp==2.9.0
-
-# We don't expect to keep Triton cache after pod is finished
-ENV TRITON_CACHE_DIR=/tmp
-
-ENV HOME=/tmp
-# Set HF_HOME to volatile location. We do not preserve cache etc over restarts with this container.
-# https://huggingface.co/docs/huggingface_hub/en/guides/manage-cache
-ENV HF_HOME=/tmp
-ENV TRANSFORMERS_CACHE=/tmp
-ENV XDG_CACHE_HOME=/tmp

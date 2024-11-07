@@ -1413,6 +1413,11 @@ deploymentSpec:
           : base_overall_score,\n        \"error_rate\": error_rate,\n        \"summary\"\
           : summary,\n    }\n\n    with open(mt_bench_branch_output.path, \"w\") as\
           \ f:\n        json.dump(mt_bench_branch_data, f, indent=4)\n\n"
+        env:
+        - name: HOME
+          value: /tmp
+        - name: HF_HOME
+          value: /tmp
         image: quay.io/redhat-et/ilab:1.2
         resources:
           accelerator:
@@ -1554,6 +1559,11 @@ deploymentSpec:
           \ best_model),\n            os.path.join(models_path_prefix, \"candidate_model\"\
           ),\n        )\n\n    return outputs(best_model=best_model, best_score=best_score)\n\
           \n"
+        env:
+        - name: HOME
+          value: /tmp
+        - name: HF_HOME
+          value: /tmp
         image: quay.io/redhat-et/ilab:1.2
         resources:
           accelerator:
@@ -1611,6 +1621,11 @@ deploymentSpec:
           \        output_dir=sdg_path,\n        taxonomy=taxonomy_path,\n       \
           \ taxonomy_base=taxonomy_base,\n        model_name=model,\n        pipeline=pipeline,\n\
           \        chunk_word_count=1000,\n        server_ctx_size=4096,\n    )\n\n"
+        env:
+        - name: HOME
+          value: /tmp
+        - name: HF_HOME
+          value: /tmp
         image: quay.io/redhat-et/ilab:1.2
     exec-sdg-to-artifact-op:
       container:
