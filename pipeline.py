@@ -99,7 +99,6 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
     # Imports for evaluation
     from eval.final import run_final_eval_op
-    from eval.mmlu import load_mmlu_results_op, run_mmlu_op
 
     ## from eval.mmlu import run_mmlu_op, load_mmlu_results_op
     from eval.mt_bench import run_mt_bench_op
@@ -291,49 +290,6 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         kubectl_wait_task.after(kubectl_apply_task)
         kubectl_wait_task.set_caching_options(False)
 
-        # # MMLU Evaluation of models
-
-        # models_list_task = list_models_in_directory_op(
-        #     models_folder="/output/model/model/hf_format",
-        # )
-        # models_list_task.set_caching_options(False)
-
-        # models_list_task.after(kubectl_wait_task)
-
-        # mount_pvc(
-        #     task=models_list_task,
-        #     pvc_name=output_pvc_task.output,
-        #     mount_path="/output/model",
-        # )
-
-        # run_mmlu_task = run_mmlu_op(
-        #     models_list=models_list_task.output,
-        #     models_path_prefix="/output/model/hf_format",
-        #     mmlu_tasks_list=mmlu_tasks_list,
-        #     model_dtype=model_dtype,
-        #     few_shots=few_shots,
-        #     batch_size=batch_size,
-        #     device=device,
-        # )
-
-        # run_mmlu_task.set_caching_options(False)
-
-        # mount_pvc(
-        #     task=run_mmlu_task, pvc_name=output_pvc_task.output, mount_path="/output"
-        # )
-
-        # load_mmlu_results_task = load_mmlu_results_op(
-        #     mmlu_output=run_mmlu_task.outputs["mmlu_output"],
-        # )
-
-        # run_mmlu_task.set_accelerator_type("nvidia.com/gpu")
-        # run_mmlu_task.set_accelerator_limit(1)
-
-        # #    Run training on MMLU best-model
-        # #    Run final eval on best scored mt_bench candidate
-        # #    For now, running mt_bench on same output models as training phase 1
-        # #    TODO: Another training phase, using the best-model from MMLU as base
-
         #### Train 2
 
         pytorchjob_manifest_2_task = pytorchjob_manifest_op(
@@ -375,8 +331,6 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         kubectl_wait_2_task.after(kubectl_apply_2_task)
         kubectl_wait_2_task.set_caching_options(False)
 
-        ###
-
         models_list_2_task = list_models_in_directory_op(
             models_folder="/output/phase_2/model/hf_format",
         )
@@ -387,8 +341,6 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             pvc_name=output_pvc_task.output,
             mount_path="/output",
         )
-
-        ###
 
         # MT_Bench Evaluation of models
 
