@@ -7,10 +7,6 @@ metadata:
     serving.knative.openshift.io/enablePassthrough: "true"
     sidecar.istio.io/inject: "true"
     sidecar.istio.io/rewriteAppHTTPProbers: "true"
-  creationTimestamp: "2024-10-29T19:14:46Z"
-  finalizers:
-  - inferenceservice.finalizers
-  generation: 5
   labels:
     opendatahub.io/dashboard: "true"
   name: prometheus
