@@ -15,8 +15,9 @@ from kfp.kubernetes import (
     use_secret_as_env,
 )
 
-K8S_NAME = "kfp-model-server"
-JUDGE_CONFIG_MAP = "kfp-model-server"
+TEACHER_CONFIG_MAP = "teacher-server"
+TEACHER_SECRET = "teacher-server"
+JUDGE_CONFIG_MAP = "judge-server"
 JUDGE_SECRET = "judge-server"
 MOCKED_STAGES = ["sdg", "train", "eval"]
 PIPELINE_FILE_NAME = "pipeline.yaml"
@@ -165,9 +166,9 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         sdg_task.set_env_variable("HOME", "/tmp")
         sdg_task.set_env_variable("HF_HOME", "/tmp")
         use_config_map_as_env(
-            sdg_task, K8S_NAME, dict(endpoint="endpoint", model="model")
+            sdg_task, TEACHER_CONFIG_MAP, dict(endpoint="endpoint", model="model")
         )
-        use_secret_as_env(sdg_task, K8S_NAME, {"api_key": "api_key"})
+        use_secret_as_env(sdg_task, TEACHER_SECRET, {"api_key": "api_key"})
         sdg_task.after(git_clone_task)
         mount_pvc(
             task=sdg_task,
