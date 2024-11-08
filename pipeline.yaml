@@ -1906,8 +1906,7 @@ root:
         taskInfo:
           name: list-models-in-directory-op
       pvc-to-model-op:
-        cachingOptions:
-          enableCache: true
+        cachingOptions: {}
         componentRef:
           name: comp-pvc-to-model-op
         dependentTasks:

@@ -470,6 +470,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             pvc_path="/output/phase_2/model/hf_format/candidate_model",
         )
         output_model_task.after(run_mt_bench_task)
+        output_model_task.set_caching_options(False)
         mount_pvc(
             task=output_model_task,
             pvc_name=output_pvc_task.output,
