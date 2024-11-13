@@ -9,7 +9,7 @@ from utils.consts import PYTHON_IMAGE
 EVAL_IMAGE = "quay.io/sallyom/instructlab-ocp:eval"
 
 
-@component(base_image=EVAL_IMAGE)
+@component(base_image=EVAL_IMAGE, install_kfp_package=False)
 def run_mmlu_op(
     mmlu_output: Output[Artifact],
     models_path_prefix: str,
