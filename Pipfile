@@ -10,6 +10,7 @@ ruff = "*"
 pyyaml = "*"
 kubernetes = "*"
 pre-commit = "*"
+jinja2 = "*"
 
 [dev-packages]
 

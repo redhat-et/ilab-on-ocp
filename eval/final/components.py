@@ -7,9 +7,7 @@ from kfp.dsl import Artifact, Output, component
 from utils.consts import PYTHON_IMAGE, RHELAI_IMAGE
 
 
-@component(
-    base_image=RHELAI_IMAGE,
-)
+@component(base_image=RHELAI_IMAGE, install_kfp_package=False)
 def run_final_eval_op(
     mmlu_branch_output: Output[Artifact],
     mt_bench_branch_output: Output[Artifact],
