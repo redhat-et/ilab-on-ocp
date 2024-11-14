@@ -124,10 +124,7 @@ def run_final_eval_op(
                 f"Timeout expired. Forcefully killing vLLM server with PID: {process.pid}"
             )
             process.kill()  # Force kill the process if over timeout
-        except subprocess.NoSuchProcess:
-            print(f"Process with PID {process.pid} no longer exists.")
-        except Exception as e:
-            print(f"Failed to stop process with PID {process.pid}. Error: {e}")
+
         # Note from instructlab/model/backends/vllm.py
         # vLLM relies on stable VRAM,  residual reclamation activity
         # can lead to crashes on restart. To prevent this add a

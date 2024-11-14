@@ -118,8 +118,6 @@ def run_mt_bench_op(
                 f"Timeout expired. Forcefully killing vLLM server with PID: {process.pid}"
             )
             process.kill()  # Force kill the process if over timeout
-        except subprocess.NoSuchProcess:
-            print(f"Process with PID {process.pid} no longer exists.")
         except Exception as e:
             print(f"Failed to stop process with PID {process.pid}. Error: {e}")
         # Note from instructlab/model/backends/vllm.py
