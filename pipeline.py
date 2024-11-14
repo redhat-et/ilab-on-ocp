@@ -102,8 +102,6 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
     # Imports for evaluation
     from eval.final import run_final_eval_op
-
-    ## from eval.mmlu import run_mmlu_op, load_mmlu_results_op
     from eval.mt_bench import run_mt_bench_op
     from utils import list_models_in_directory_op
 

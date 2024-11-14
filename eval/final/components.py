@@ -1,10 +1,9 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error
-from typing import List, NamedTuple
 
 from kfp.dsl import Artifact, Output, component
 
-from utils.consts import PYTHON_IMAGE, RHELAI_IMAGE
+from utils.consts import RHELAI_IMAGE
 
 
 @component(base_image=RHELAI_IMAGE, install_kfp_package=False)
@@ -27,7 +26,7 @@ def run_final_eval_op(
     import subprocess
 
     import torch
-    from instructlab.eval.mmlu import MMLU_TASKS, MMLUBranchEvaluator
+    from instructlab.eval.mmlu import MMLUBranchEvaluator
     from instructlab.eval.mt_bench import MTBenchBranchEvaluator
     from instructlab.model.evaluate import qa_pairs_to_qna_to_avg_scores, sort_score
 
