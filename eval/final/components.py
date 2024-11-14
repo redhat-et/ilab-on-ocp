@@ -87,7 +87,7 @@ def run_final_eval_op(
 
         for attempt in range(retries):
             try:
-                response = requests.get(f"{vllm_server}/models")
+                response = requests.get(f"{vllm_server}/models", timeout=10)
                 if response.status_code == 200:
                     print(f"vLLM server is up and running at {vllm_server}.")
                     return process, vllm_server
