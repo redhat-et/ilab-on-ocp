@@ -153,6 +153,8 @@ def run_mt_bench_op(
         try:
             usable_cpu_count = len(os.sched_getaffinity(0)) // 2
         except AttributeError:
+            import multiprocessing
+
             usable_cpu_count = multiprocessing.cpu_count() // 2
         max_workers = usable_cpu_count
 
