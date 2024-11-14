@@ -2235,7 +2235,7 @@ root:
         isOptional: true
         parameterType: STRING
 schemaVersion: 2.1.0
-sdkVersion: kfp-2.9.0
+sdkVersion: kfp-2.10.0
 ---
 platforms:
   kubernetes:
