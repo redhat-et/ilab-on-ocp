@@ -224,7 +224,7 @@ def run_final_eval_op(
                 ):
                     file_path = os.path.join(root, file_name)
 
-                    with open(file_path, "r") as file:
+                    with open(file_path, "r", encoding="utf-8") as file:
                         task_yaml = yaml.load(file, Loader=yaml.Loader)
 
                     current_test_file_path = task_yaml["dataset_kwargs"]["data_files"][
@@ -337,7 +337,7 @@ def run_final_eval_op(
             "summary": summary,
         }
 
-        with open(mmlu_branch_output.path, "w") as f:
+        with open(mmlu_branch_output.path, "w", encoding="utf-8") as f:
             json.dump(mmlu_branch_data, f, indent=4)
     else:
         print("No MMLU tasks directories found, skipping MMLU_branch evaluation.")
@@ -479,5 +479,5 @@ def run_final_eval_op(
         "summary": summary,
     }
 
-    with open(mt_bench_branch_output.path, "w") as f:
+    with open(mt_bench_branch_output.path, "w", encoding="utf-8") as f:
         json.dump(mt_bench_branch_data, f, indent=4)
