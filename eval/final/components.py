@@ -185,7 +185,7 @@ def run_final_eval_op(
 
         if new is not None and len(new) > 0:
             for entry in new:
-                na, avg_score = entry
+                _, avg_score = entry
                 summary["new"].append(
                     {"qna": qna, "average_score": round(avg_score, 2)}
                 )
@@ -216,7 +216,7 @@ def run_final_eval_op(
 
         import yaml
 
-        for root, dirs, files in os.walk(base_dir):
+        for root, _, files in os.walk(base_dir):
             for file_name in files:
                 if file_name.startswith("knowledge_") and file_name.endswith(
                     "_task.yaml"
@@ -247,7 +247,7 @@ def run_final_eval_op(
         matching_dirs = []
         regex = re.compile(pattern)
 
-        for root, dirs, files in os.walk(base_dir):
+        for root, dirs, _ in os.walk(base_dir):
             for directory in dirs:
                 if regex.search(directory):
                     matching_dirs.append(os.path.join(root, directory))
