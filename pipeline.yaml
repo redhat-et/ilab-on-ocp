@@ -637,7 +637,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.10.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
           \  python3 -m pip install --quiet --no-warn-script-location 'instructlab-training@git+https://github.com/instructlab/training.git'\
           \ && \"$0\" \"$@\"\n"
@@ -732,7 +732,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.10.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
           \  python3 -m pip install --quiet --no-warn-script-location 'huggingface_hub'\
           \ && \"$0\" \"$@\"\n"
@@ -805,7 +805,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.10.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
           $0\" \"$@\"\n"
         - sh
@@ -851,7 +851,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.10.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
           $0\" \"$@\"\n"
         - sh
@@ -1008,7 +1008,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.9.0'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.10.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
           $0\" \"$@\"\n"
         - sh
@@ -1414,8 +1414,8 @@ deploymentSpec:
         image: quay.io/redhat-et/ilab:1.2
         resources:
           accelerator:
-            count: '1'
-            type: nvidia.com/gpu
+            resourceCount: '1'
+            resourceType: nvidia.com/gpu
     exec-run-mt-bench-op:
       container:
         args:
@@ -1553,8 +1553,8 @@ deploymentSpec:
         image: quay.io/redhat-et/ilab:1.2
         resources:
           accelerator:
-            count: '1'
-            type: nvidia.com/gpu
+            resourceCount: '1'
+            resourceType: nvidia.com/gpu
     exec-sdg-op:
       container:
         args:
@@ -2214,7 +2214,7 @@ root:
         isOptional: true
         parameterType: STRING
 schemaVersion: 2.1.0
-sdkVersion: kfp-2.9.0
+sdkVersion: kfp-2.10.0
 ---
 platforms:
   kubernetes:
