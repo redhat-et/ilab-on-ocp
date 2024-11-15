@@ -505,15 +505,20 @@ EOF
 > The secret must be part of the same namespace as the resources that the script interacts with.
 > It's inherented from the `--namespace` option.
 
-The list of all supported keys:
+The list of all mandatory keys:
 
 * `bucket`: The bucket name in the object store - **Required**
 * `access_key`: The access key for the object store - **Required**
 * `secret_key`: The secret key for the object store - **Required**
 * `data_key`: The key for the SDG data in the object store - **Required**
+
+Optional keys:
+
 * `verify_tls`: Whether to verify TLS for the object store endpoint (default: true) - **Optional**
 * `endpoint`: The endpoint of the object store, e.g: https://s3.openshift-storage.svc:443 - **Optional**
 * `region`: The region of the object store - **Optional**
+* `SDG_CA_CERT`: The name of ConfigMap containing the custom CA Cert - **Optional**
+* `SDG_CA_CERT_CM_KEY`: The key of the CA Cert in the ConfigMap - **Optional**
 
 A similar operation can be performed for the evaluation judge model serving service. Currently, the script expects the Judge serving service to be running and accessible from within the cluster. If it is not present, the script will not create this resource.
 
