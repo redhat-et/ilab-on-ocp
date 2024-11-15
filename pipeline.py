@@ -31,7 +31,6 @@ BASE_MODEL = "ibm-granite/granite-7b-base"
 
 # eval args
 MMLU_TASKS_LIST = "mmlu_anatomy,mmlu_astronomy"
-MODEL_DTYPE = "bfloat16"
 FEW_SHOTS = 5
 # BATCH_SIZE can also be an int, for example "8" is converted to an int in eval/final
 BATCH_SIZE = "auto"
@@ -115,46 +114,86 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         description="InstructLab pipeline",
     )
     def pipeline(
-        num_instructions_to_generate: int = 2,
-        repo_url: str = "https://github.com/instructlab/taxonomy.git",
-        repo_branch: Optional[str] = None,
-        repo_pr: Optional[int] = None,
-        storage_class_name: str = "nfs-csi",
-        base_model: str = BASE_MODEL,
-        # minimal subset of MMLU_TASKS
-        # mmlu_tasks_list: str = MMLU_TASKS_LIST,
-        model_dtype: str = MODEL_DTYPE,
-        few_shots: int = FEW_SHOTS,
-        batch_size: str = BATCH_SIZE,
-        max_workers: str = MAX_WORKERS,
-        merge_system_user_message: bool = MERGE_SYSTEM_USER_MESSAGE,
-        device: str = None,
-        nproc_per_node: int = 3,
-        nnodes: int = 2,
-        num_epochs_phase_1: int = NUM_EPOCHS_PHASE_1,
-        num_epochs_phase_2: int = NUM_EPOCHS_PHASE_2,
-        effective_batch_size_phase_1: int = EFFECTIVE_BATCH_SIZE_PHASE_1,
-        effective_batch_size_phase_2: int = EFFECTIVE_BATCH_SIZE_PHASE_2,
-        learning_rate_phase_1: float = LEARNING_RATE_PHASE_1,
-        learning_rate_phase_2: float = LEARNING_RATE_PHASE_2,
-        num_warmup_steps_phase_1: int = NUM_WARMUP_STEPS_PHASE_1,
-        num_warmup_steps_phase_2: int = NUM_WARMUP_STEPS_PHASE_2,
-        save_samples: int = SAVE_SAMPLES,
+        # SDG phase
+        sdg_repo_url: str = "https://github.com/instructlab/taxonomy.git",
+        sdg_repo_branch: Optional[str] = None,
+        sdg_repo_pr: Optional[int] = None,
+        sdg_base_model: str = BASE_MODEL,
+        sdg_scale_factor: int = 2,  # Renamed upstream https://github.com/instructlab/instructlab/blob/f7d40f6ed5112d59132dd832bd332fa6fbbe7010/src/instructlab/configuration.py#L279-L290
         sdg_pipeline: str = SDG_PIPELINE,
-        max_batch_len: int = MAX_BATCH_LEN,
-        seed: int = SEED,
+        sdg_max_batch_len: int = MAX_BATCH_LEN,
+        # Training phase
+        train_nproc_per_node: int = 3,
+        train_nnodes: int = 2,
+        train_num_epochs_phase_1: int = NUM_EPOCHS_PHASE_1,
+        train_num_epochs_phase_2: int = NUM_EPOCHS_PHASE_2,
+        train_effective_batch_size_phase_1: int = EFFECTIVE_BATCH_SIZE_PHASE_1,
+        train_effective_batch_size_phase_2: int = EFFECTIVE_BATCH_SIZE_PHASE_2,
+        train_learning_rate_phase_1: float = LEARNING_RATE_PHASE_1,
+        train_learning_rate_phase_2: float = LEARNING_RATE_PHASE_2,
+        train_num_warmup_steps_phase_1: int = NUM_WARMUP_STEPS_PHASE_1,
+        train_num_warmup_steps_phase_2: int = NUM_WARMUP_STEPS_PHASE_2,
+        train_save_samples: int = SAVE_SAMPLES,
+        train_max_batch_len: int = MAX_BATCH_LEN,
+        train_seed: int = SEED,
+        # MT Bench
+        mt_bench_max_workers: str = MAX_WORKERS,
+        mt_bench_merge_system_user_message: bool = MERGE_SYSTEM_USER_MESSAGE,
+        # Final evaluation
+        final_eval_max_workers: str = MAX_WORKERS,
+        final_eval_few_shots: int = FEW_SHOTS,
+        final_eval_batch_size: str = BATCH_SIZE,
+        final_eval_merge_system_user_message: bool = MERGE_SYSTEM_USER_MESSAGE,
+        # Other options
+        k8s_storage_class_name: str = "nfs-csi",
     ):
+        """InstructLab pipeline
+
+        Args:
+            sdg_repo_url: SDG parameter. Points to a taxonomy git repository
+            sdg_repo_branch: SDG parameter. Points to a branch within the taxonomy git repository. If set, has priority over sdg_repo_pr
+            sdg_repo_pr: SDG parameter. Points to a pull request against the taxonomy git repository
+            sdg_base_model: SDG parameter. LLM model used to generate the synthetic dataset
+            sdg_scale_factor: SDG parameter. The total number of instructions to be generated.
+            sdg_pipeline: SDG parameter. Data generation pipeline to use. Available: 'simple', 'full', or a valid path to a directory of pipeline workflow YAML files. Note that 'full' requires a larger teacher model, Mixtral-8x7b.
+            sdg_max_batch_len: SDG parameter. Maximum tokens per gpu for each batch that will be handled in a single step.
+
+            train_nproc_per_node: Training parameter. Number of GPUs per each node/worker to use for training.
+            train_nnodes: Training parameter. Number of nodes/workers to train on.
+            train_num_epochs_phase_1: Training parameter for in Phase 1. Number of epochs to run training.
+            train_num_epochs_phase_2: Training parameter for in Phase 2. Number of epochs to run training.
+            train_effective_batch_size_phase_1: Training parameter for in Phase 1. The number of samples in a batch that the model should see before its parameters are updated.
+            train_effective_batch_size_phase_2: Training parameter for in Phase 2. The number of samples in a batch that the model should see before its parameters are updated.
+            train_learning_rate_phase_1: Training parameter for in Phase 1. How fast we optimize the weights during gradient descent. Higher values may lead to unstable learning performance. It's generally recommended to have a low learning rate with a high effective batch size.
+            train_learning_rate_phase_2: Training parameter for in Phase 2. How fast we optimize the weights during gradient descent. Higher values may lead to unstable learning performance. It's generally recommended to have a low learning rate with a high effective batch size.
+            train_num_warmup_steps_phase_1: Training parameter for in Phase 1. The number of steps a model should go through before reaching the full learning rate. We start at 0 and linearly climb up to train_learning_rate.
+            train_num_warmup_steps_phase_2: Training parameter for in Phase 2. The number of steps a model should go through before reaching the full learning rate. We start at 0 and linearly climb up to train_learning_rate.
+            train_save_samples: Training parameter. Number of samples the model should see before saving a checkpoint.
+            train_max_batch_len: Training parameter. Maximum tokens per gpu for each batch that will be handled in a single step.
+            train_seed: Training parameter. Random seed for initializing training.
+
+            mt_bench_max_workers: MT Bench parameter. Number of workers to use for evaluation with mt_bench or mt_bench_branch. Must be a positive integer or 'auto'.
+            mt_bench_merge_system_user_message: MT Bench parameter. Boolean indicating whether to merge system and user messages (required for Mistral based judges)
+
+            final_eval_max_workers: Final model evaluation parameter for MT Bench Branch. Number of workers to use for evaluation with mt_bench or mt_bench_branch. Must be a positive integer or 'auto'.
+            final_eval_few_shots: Final model evaluation parameter for MMLU. Number of question-answer pairs provided in the context preceding the question used for evaluation.
+            final_eval_batch_size: Final model evaluation parameter for MMLU. Batch size for evaluation. Valid values are a positive integer or 'auto' to select the largest batch size that will fit in memory.
+            final_eval_merge_system_user_message: Final model evaluation parameter for MT Bench Branch. Boolean indicating whether to merge system and user messages (required for Mistral based judges)
+
+            k8s_storage_class_name: A Kubernetes StorageClass name for persistent volumes. Selected StorageClass must support RWX PersistentVolumes.
+        """
+
         # SDG stage
         sdg_input_pvc_task = CreatePVC(
             pvc_name_suffix="-sdg",
             access_modes=["ReadWriteMany"],
             size="10Gi",
-            storage_class_name=storage_class_name,
+            storage_class_name=k8s_storage_class_name,
         )
         git_clone_task = git_clone_op(
-            repo_branch=repo_branch,
-            repo_pr=repo_pr if repo_pr and repo_pr > 0 else None,
-            repo_url=repo_url,
+            repo_branch=sdg_repo_branch,
+            repo_pr=sdg_repo_pr if sdg_repo_pr and sdg_repo_pr > 0 else None,
+            repo_url=sdg_repo_url,
         )
         mount_pvc(
             task=git_clone_task,
@@ -164,10 +203,10 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         git_clone_task.set_caching_options(False)
 
         sdg_task = sdg_op(
-            num_instructions_to_generate=num_instructions_to_generate,
+            num_instructions_to_generate=sdg_scale_factor,
             pipeline=sdg_pipeline,
-            repo_branch=repo_branch,
-            repo_pr=repo_pr,
+            repo_branch=sdg_repo_branch,
+            repo_pr=sdg_repo_pr,
         )
         sdg_task.set_env_variable("HOME", "/tmp")
         sdg_task.set_env_variable("HF_HOME", "/tmp")
@@ -214,16 +253,16 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             pvc_name_suffix="-model-cache",
             access_modes=["ReadWriteMany"],
             size="100Gi",
-            storage_class_name=storage_class_name,
+            storage_class_name=k8s_storage_class_name,
         )
-        model_to_pvc_task = huggingface_importer_op(repo_name=base_model)
+        model_to_pvc_task = huggingface_importer_op(repo_name=sdg_base_model)
         model_to_pvc_task.set_caching_options(False)
         mount_pvc(
             task=model_to_pvc_task, pvc_name=model_pvc_task.output, mount_path="/model"
         )
 
         # Data processing
-        data_processing_task = data_processing_op()
+        data_processing_task = data_processing_op(max_batch_len=sdg_max_batch_len)
         mount_pvc(
             task=data_processing_task,
             pvc_name=model_pvc_task.output,
@@ -263,7 +302,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             pvc_name_suffix="-output",
             access_modes=["ReadWriteMany"],
             size="100Gi",
-            storage_class_name=storage_class_name,
+            storage_class_name=k8s_storage_class_name,
         )
 
         # Using pvc_create_task.output as PyTorchJob name since dsl.PIPELINE_* global variables do not template/work in KFP v2
@@ -274,15 +313,15 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             name_suffix=sdg_input_pvc_task.output,
             output_pvc_name=output_pvc_task.output,
             phase_num=1,
-            nproc_per_node=nproc_per_node,
-            nnodes=nnodes,
-            num_epochs=num_epochs_phase_1,
-            effective_batch_size=effective_batch_size_phase_1,
-            learning_rate=learning_rate_phase_1,
-            num_warmup_steps=num_warmup_steps_phase_1,
-            save_samples=save_samples,
-            max_batch_len=max_batch_len,
-            seed=seed,
+            nproc_per_node=train_nproc_per_node,
+            nnodes=train_nnodes,
+            num_epochs=train_num_epochs_phase_1,
+            effective_batch_size=train_effective_batch_size_phase_1,
+            learning_rate=train_learning_rate_phase_1,
+            num_warmup_steps=train_num_warmup_steps_phase_1,
+            save_samples=train_save_samples,
+            max_batch_len=train_max_batch_len,
+            seed=train_seed,
         )
         pytorchjob_manifest_task.set_caching_options(False)
 
@@ -351,15 +390,15 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             name_suffix=sdg_input_pvc_task.output,
             output_pvc_name=output_pvc_task.output,
             phase_num=2,
-            nproc_per_node=nproc_per_node,
-            nnodes=nnodes,
-            num_epochs=num_epochs_phase_2,
-            effective_batch_size=effective_batch_size_phase_2,
-            learning_rate=learning_rate_phase_2,
-            num_warmup_steps=num_warmup_steps_phase_2,
-            save_samples=save_samples,
-            max_batch_len=max_batch_len,
-            seed=seed,
+            nproc_per_node=train_nproc_per_node,
+            nnodes=train_nnodes,
+            num_epochs=train_num_epochs_phase_2,
+            effective_batch_size=train_effective_batch_size_phase_2,
+            learning_rate=train_learning_rate_phase_2,
+            num_warmup_steps=train_num_warmup_steps_phase_2,
+            save_samples=train_save_samples,
+            max_batch_len=train_max_batch_len,
+            seed=train_seed,
         )
 
         pytorchjob_manifest_2_task.set_caching_options(False)
@@ -404,9 +443,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         run_mt_bench_task = run_mt_bench_op(
             models_list=models_list_2_task.output,
             models_path_prefix="/output/phase_2/model/hf_format",
-            max_workers=max_workers,
-            merge_system_user_message=merge_system_user_message,
-            device=device,
+            max_workers=mt_bench_max_workers,
+            merge_system_user_message=mt_bench_merge_system_user_message,
         )
         mount_pvc(
             task=run_mt_bench_task,
@@ -432,15 +470,13 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         final_eval_task = run_final_eval_op(
             candidate_model="/output/phase_2/model/hf_format/candidate_model",
             # TODO: DO we need both candidate_branch and base_branch
-            base_branch=repo_branch,
-            candidate_branch=repo_branch,
-            device=device,
+            base_branch=sdg_repo_branch,
+            candidate_branch=sdg_repo_branch,
             base_model_dir="/model/",
-            max_workers=max_workers,
-            merge_system_user_message=merge_system_user_message,
-            model_dtype=model_dtype,
-            few_shots=few_shots,
-            batch_size=batch_size,
+            max_workers=final_eval_max_workers,
+            merge_system_user_message=final_eval_merge_system_user_message,
+            few_shots=final_eval_few_shots,
+            batch_size=final_eval_batch_size,
         )
         mount_pvc(
             task=final_eval_task, pvc_name=output_pvc_task.output, mount_path="/output"
