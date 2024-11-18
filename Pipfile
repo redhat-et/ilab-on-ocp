@@ -4,7 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-kfp = {extras = ["kubernetes"], version = "*"}
+kfp = {extras = ["kubernetes"], version = "2.10.1"}
 click = "*"
 ruff = "*"
 pyyaml = "*"
