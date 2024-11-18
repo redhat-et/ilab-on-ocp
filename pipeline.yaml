@@ -638,9 +638,8 @@ deploymentSpec:
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
           \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.10.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'instructlab-training@git+https://github.com/instructlab/training.git'\
-          \ && \"$0\" \"$@\"\n"
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -696,7 +695,7 @@ deploymentSpec:
           \                max_seq_len=train_args.max_seq_len,\n                chat_tmpl_path=train_args.chat_tmpl_path,\n\
           \            )\n        )\n\n    data_processing(train_args=skill_training_args)\n\
           \    data_processing(train_args=knowledge_training_args)\n\n"
-        image: registry.access.redhat.com/ubi9/python-311:latest
+        image: quay.io/redhat-et/ilab:1.2
     exec-deletepvc:
       container:
         image: argostub/deletepvc
