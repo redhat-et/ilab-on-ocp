@@ -5,15 +5,10 @@ from typing import NamedTuple, Optional
 
 from kfp import dsl
 
-from utils.consts import PYTHON_IMAGE, TOOLBOX_IMAGE
+from utils.consts import PYTHON_IMAGE, RHELAI_IMAGE, TOOLBOX_IMAGE
 
 
-@dsl.component(
-    base_image=PYTHON_IMAGE,
-    packages_to_install=[
-        "instructlab-training@git+https://github.com/instructlab/training.git"
-    ],
-)
+@dsl.component(base_image=RHELAI_IMAGE)
 def data_processing_op(
     model_path: str = "/model",
     sdg_path: str = "/data/sdg",
