@@ -230,6 +230,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         data_processing_task.after(model_to_pvc_task, sdg_task)
         data_processing_task.set_caching_options(False)
 
+        set_image_pull_secrets(data_processing_task, [IMAGE_PULL_SECRET])
+
         # Upload "skills_processed_data" and "knowledge_processed_data" artifacts to S3 without blocking the rest of the workflow
         skills_processed_data_to_artifact_task = skills_processed_data_to_artifact_op()
         skills_processed_data_to_artifact_task.after(data_processing_task)

@@ -2220,6 +2220,8 @@ platforms:
     deploymentSpec:
       executors:
         exec-data-processing-op:
+          imagePullSecret:
+          - secretName: redhat-et-ilab-botty-pull-secret
           pvcMount:
           - mountPath: /model
             taskOutputParameter:
