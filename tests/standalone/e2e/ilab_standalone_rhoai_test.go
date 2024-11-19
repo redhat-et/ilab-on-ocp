@@ -38,6 +38,10 @@ const (
 	STANDALONE_FILE_PATH        = "../../../standalone/standalone.py"
 )
 
+const (
+	E2E_TEST_RUN_TIMEOUT = 10 * time.Hour // 10 hours
+)
+
 func TestInstructlabTrainingOnRhoai(t *testing.T) {
 	instructlabDistributedTrainingOnRhoai(t, 1)
 }
@@ -379,7 +383,7 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 		workbenchPod, err = test.Client().Core().CoreV1().Pods(namespace.Name).Get(test.Ctx(), createdPod.Name, metav1.GetOptions{})
 		test.Expect(err).To(BeNil())
 		return workbenchPod.Status.Phase
-	}, 180*time.Minute, 2*time.Second).Should(Equal(corev1.PodSucceeded))
+	}, E2E_TEST_RUN_TIMEOUT, 2*time.Second).Should(Equal(corev1.PodSucceeded))
 }
 
 func CreateJudgeServingModelSecret(test Test, namespace string) *corev1.Secret {
