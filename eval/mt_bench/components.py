@@ -18,7 +18,6 @@ def run_mt_bench_op(
     output_path: str = "/output/mt_bench_data.json",
     models_list: List[str] = None,
     models_folder: Optional[str] = None,
-    device: str = None,
     best_score_file: Optional[str] = None,
 ) -> NamedTuple("outputs", best_model=str, best_score=float):
     import json

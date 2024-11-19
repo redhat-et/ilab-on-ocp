@@ -15,8 +15,6 @@ def run_final_eval_op(
     base_branch: str,
     candidate_branch: str,
     max_workers: str,
-    device: str,
-    model_dtype: str,
     few_shots: int,
     batch_size: str,
     merge_system_user_message: bool,
