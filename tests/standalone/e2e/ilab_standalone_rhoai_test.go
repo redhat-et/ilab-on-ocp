@@ -39,6 +39,7 @@ const (
 )
 
 const (
+	TEST_APP_LABEL       = "ilab-on-ocp-e2e"
 	E2E_TEST_RUN_TIMEOUT = 10 * time.Hour // 10 hours
 )
 
@@ -196,6 +197,9 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 	clusterRoleBinding := &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: "test-crb-",
+			Labels: map[string]string{
+				"app": TEST_APP_LABEL,
+			},
 		},
 		Subjects: []rbacv1.Subject{
 			{
@@ -219,6 +223,9 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: "test-secret-",
 			Namespace:    namespace.Name,
+			Labels: map[string]string{
+				"app": TEST_APP_LABEL,
+			},
 		},
 		Type: corev1.SecretTypeOpaque,
 		StringData: map[string]string{
@@ -242,6 +249,9 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: "test-workbench-pod-",
 			Namespace:    namespace.Name,
+			Labels: map[string]string{
+				"app": TEST_APP_LABEL,
+			},
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: createdSA.Name,
@@ -465,6 +475,9 @@ func CreateServiceAccountWithName(t Test, namespace string, name string) *corev1
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
+			Labels: map[string]string{
+				"app": TEST_APP_LABEL,
+			},
 		},
 	}
 	serviceAccount, err := t.Client().Core().CoreV1().ServiceAccounts(namespace).Create(t.Ctx(), serviceAccount, metav1.CreateOptions{})
