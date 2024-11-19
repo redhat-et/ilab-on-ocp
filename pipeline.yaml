@@ -2279,7 +2279,7 @@ platforms:
               producerTask: createpvc-3
         exec-run-final-eval-op:
           configMapAsEnv:
-          - configMapName: kfp-model-server
+          - configMapName: judge-server
             keyToEnv:
             - configMapKey: endpoint
               envVar: JUDGE_ENDPOINT
@@ -2307,7 +2307,7 @@ platforms:
             secretName: judge-server
         exec-run-mt-bench-op:
           configMapAsEnv:
-          - configMapName: kfp-model-server
+          - configMapName: judge-server
             keyToEnv:
             - configMapKey: endpoint
               envVar: JUDGE_ENDPOINT
@@ -2327,7 +2327,7 @@ platforms:
             secretName: judge-server
         exec-sdg-op:
           configMapAsEnv:
-          - configMapName: kfp-model-server
+          - configMapName: teacher-server
             keyToEnv:
             - configMapKey: endpoint
               envVar: endpoint
@@ -2344,7 +2344,7 @@ platforms:
           - keyToEnv:
             - envVar: api_key
               secretKey: api_key
-            secretName: kfp-model-server
+            secretName: teacher-server
         exec-sdg-to-artifact-op:
           pvcMount:
           - mountPath: /data
