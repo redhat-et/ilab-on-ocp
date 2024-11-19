@@ -371,6 +371,7 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 						"--nproc-per-node", strconv.Itoa(numGpus),
 						"--storage-class", ilabStorageClassName,
 						"--sdg-object-store-secret", createdSecret.Name,
+						"--taxonomy-repo-pr", "-1", // TODO(gfrasca): This gets around the 'no leaf node' sdg error
 						// "--training-1-epoch-num", strconv.Itoa(1),
 						// "--training-2-epoch-num", strconv.Itoa(1),
 						"--force-pull",
