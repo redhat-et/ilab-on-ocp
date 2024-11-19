@@ -255,6 +255,7 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: createdSA.Name,
+			RestartPolicy:      "OnFailure",
 			Containers: []corev1.Container{
 				{
 					Name:  "workbench-container",
