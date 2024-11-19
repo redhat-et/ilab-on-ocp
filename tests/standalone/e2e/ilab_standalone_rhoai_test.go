@@ -112,6 +112,11 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 	configMap := map[string][]byte{
 		"standalone.py": fileContent,
 	}
+	if err != nil {
+		test.T().Logf(err.Error())
+		test.Expect(err).ToNot(HaveOccurred())
+	}
+
 	createdCM := CreateConfigMap(test, namespace.Name, configMap)
 	defer test.Client().Core().CoreV1().ConfigMaps(namespace.Name).Delete(test.Ctx(), createdCM.Name, metav1.DeleteOptions{})
 
