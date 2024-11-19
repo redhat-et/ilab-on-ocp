@@ -83,7 +83,6 @@ CANDIDATE_MODEL_PATH_PREFIX = path.join(
 )
 CANDIDATE_MODEL_PATH = path.join(CANDIDATE_MODEL_PATH_PREFIX, "candidate_model")
 TAXONOMY_DATA_PATH = path.join(DATA_PVC_MOUNT_PATH, "taxonomy")
-# MMLU_SCORES_PATH = "/output/mmlu-results.txt" - after training phase 1 is done MMLU is not performed anymore
 
 # TRAINING
 PYTORCH_NNODES = 2
@@ -988,14 +987,6 @@ def run(
         ctx.obj["training_phase"] = "1"
         ctx.invoke(train)
 
-        # Evaluation of phase 1 with MMLU
-        # ctx.obj["eval_type"] = "mmlu"
-        # scores = ctx.invoke(evaluation)
-        # scores = json.loads(scores)
-        # best_model = max(scores, key=lambda x: x["average_score"])
-        # logger.info("Best model: %s", best_model.get("model"))
-        # ctx.obj["model_to_train"] = best_model.get("model")
-
         # Training Phase 2
         ctx.obj["training_phase"] = "2"
         ctx.invoke(train)
@@ -1475,32 +1466,6 @@ def create_eval_job(
     """
 
     job_name = f"eval-{eval_type}"
-
-    # if eval_type == "mmlu":
-    #     init_containers = [
-    #         kubernetes.client.V1Container(
-    #             name=f"run-eval-{eval_type}",
-    #             image="",
-    #             command=,
-    #             args=,
-    #             volume_mounts=[
-    #                 kubernetes.client.V1VolumeMount(
-    #                     name=TRAINING_VOLUME_NAME, mount_path=TRAINING_PVC_MOUNT_PATH
-    #                 ),
-    #             ],
-    #         )
-    #     ]
-    #     container = kubernetes.client.V1Container(
-    #         name=f"output-eval-{eval_type}-scores",
-    #         image="",
-    #         command=["/bin/sh", "-c"],
-    #         args=[f"cat {MMLU_SCORES_PATH}"],
-    #         volume_mounts=[
-    #             kubernetes.client.V1VolumeMount(
-    #                 name=TRAINING_VOLUME_NAME, mount_path=TRAINING_PVC_MOUNT_PATH
-    #             ),
-    #         ],
-    #     )
 
     exec_run_mt_bench_op_command = """
 from typing import *
