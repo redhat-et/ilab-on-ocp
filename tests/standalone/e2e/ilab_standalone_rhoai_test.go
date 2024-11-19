@@ -39,6 +39,10 @@ const (
 )
 
 const (
+	SDG_PIPELINE_FILEPATH = "/usr/share/instructlab/sdg/pipelines/agentic"
+)
+
+const (
 	TEST_APP_LABEL       = "ilab-on-ocp-e2e"
 	E2E_TEST_RUN_TIMEOUT = 10 * time.Hour // 10 hours
 )
@@ -247,6 +251,7 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 	test.Expect(err).ToNot(HaveOccurred())
 	test.T().Logf("Secret '%s' created successfully\n", createdSecret.Name)
 
+	sdgServingModelSecret := CreateSDGServingModelSecret(test, namespace.Name)
 	judgeServingModelSecret := CreateJudgeServingModelSecret(test, namespace.Name)
 
 	// Create pod resource using workbench image to run standalone script
@@ -368,6 +373,9 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 						"python3", "/home/standalone.py", "run",
 						"--namespace", namespace.Name,
 						"--judge-serving-model-secret", judgeServingModelSecret.Name,
+						"--sdg-serving-model-secret", sdgServingModelSecret.Name,
+						"--sdg-in-cluster",
+						"--sdg-pipeline", SDG_PIPELINE_FILEPATH,
 						"--nproc-per-node", strconv.Itoa(numGpus),
 						"--storage-class", ilabStorageClassName,
 						"--sdg-object-store-secret", createdSecret.Name,
@@ -438,6 +446,46 @@ func CreateJudgeServingModelSecret(test Test, namespace string) *corev1.Secret {
 
 	judgeServingModelSecret := CreateSecret(test, namespace, judgeServingDetails)
 	return judgeServingModelSecret
+}
+
+func CreateSDGServingModelSecret(test Test, namespace string) *corev1.Secret {
+	// judge model details like endpoint, api-key, model-name, ca certs, ...etc should be provided via k8s secret
+	// we need the secret name so the standalone.py script can fetch the details from that secret.
+	// Get Judge model server credentials using environment variables
+	sdgDataApiKeySecretKey := "api_key"
+	sdgDataEndpointSecretKey := "endpoint"
+	sdgDataModelSecretKey := "model"
+	sdgServingModelApiKeyEnvVar := "SDG_SERVING_MODEL_API_KEY"
+	sdgServingModelNameEnvVar := "SDG_NAME"         // TODO(gfrasca): unimplemented
+	sdgServingModelEndpointEnvVar := "SDG_ENDPOINT" // TODO(gfrasca): unimplemented
+	sdgServingCaCertEnvVar := "SDG_CA_CERT"
+	sdgServingCaCertCmKeyEnvVar := "SDG_CA_CERT_CM_KEY"
+	sdgServingCaCertFromOpenShiftEnvVar := "SDG_CA_CERT_FROM_OPENSHIFT"
+	sdgServingModelApiKey, sdgServingModelApiKeyExists := os.LookupEnv(sdgServingModelApiKeyEnvVar)
+	sdgServingModelName, sdgServingModelNameExists := os.LookupEnv(sdgServingModelNameEnvVar)
+	sdgServingModelEndpoint, sdgServingModelEndpointExists := os.LookupEnv(sdgServingModelEndpointEnvVar)
+	sdgServingCaCertFromOpenShift, sdgServingCaCertFromOpenShiftExists := os.LookupEnv(sdgServingCaCertFromOpenShiftEnvVar)
+
+	test.Expect(sdgServingModelApiKeyExists).To(BeTrue(), fmt.Sprintf("please provide sdg serving model api key using env variable %s", sdgServingModelApiKeyEnvVar))
+	test.Expect(sdgServingModelNameExists).To(BeTrue(), fmt.Sprintf("please provide sdg serving model name using env variable %s", sdgServingModelNameEnvVar))
+	test.Expect(sdgServingModelEndpointExists).To(BeTrue(), fmt.Sprintf("please provide sdg serving model endpoint using env variable %s", sdgServingModelEndpointEnvVar))
+
+	sdgServingDetails := map[string]string{
+		sdgDataApiKeySecretKey:   sdgServingModelApiKey,
+		sdgDataEndpointSecretKey: sdgServingModelEndpoint,
+		sdgDataModelSecretKey:    sdgServingModelName,
+	}
+
+	if sdgServingCaCertFromOpenShiftExists && sdgServingCaCertFromOpenShift == "true" {
+		test.T().Logf("Using OpenShift CA as SDG CA certificate")
+		sdgServingDetails[sdgServingCaCertEnvVar] = "kube-root-ca.crt"
+		sdgServingDetails[sdgServingCaCertCmKeyEnvVar] = "ca.crt"
+	} else {
+		test.T().Logf("Env variable '%s' not defined or not set to `true`, SDG CA certificate ConfigMap is not provided", sdgServingCaCertFromOpenShiftEnvVar)
+	}
+
+	sdgServingModelSecret := CreateSecret(test, namespace, sdgServingDetails)
+	return sdgServingModelSecret
 }
 
 func GetRhelaiWorkbenchImage() (string, bool) {
