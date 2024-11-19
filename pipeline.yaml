@@ -5,9 +5,11 @@
 #    base_model: str [Default: 'ibm-granite/granite-7b-base']
 #    batch_size: str [Default: 'auto']
 #    device: str
-#    effective_batch_size: int [Default: 3840.0]
+#    effective_batch_size_phase_1: int [Default: 3840.0]
+#    effective_batch_size_phase_2: int [Default: 3840.0]
 #    few_shots: int [Default: 5.0]
-#    learning_rate: float [Default: 0.0001]
+#    learning_rate_phase_1: float [Default: 0.0001]
+#    learning_rate_phase_2: float [Default: 0.0001]
 #    max_batch_len: int [Default: 20000.0]
 #    max_workers: str [Default: 'auto']
 #    merge_system_user_message: bool [Default: False]
@@ -17,7 +19,8 @@
 #    num_epochs_phase_1: int [Default: 2.0]
 #    num_epochs_phase_2: int [Default: 2.0]
 #    num_instructions_to_generate: int [Default: 2.0]
-#    num_warmup_steps: int [Default: 800.0]
+#    num_warmup_steps_phase_1: int [Default: 100.0]
+#    num_warmup_steps_phase_2: int [Default: 100.0]
 #    repo_branch: str
 #    repo_pr: int
 #    repo_url: str [Default: 'https://github.com/instructlab/taxonomy.git']
@@ -1927,13 +1930,13 @@ root:
         inputs:
           parameters:
             effective_batch_size:
-              componentInputParameter: effective_batch_size
+              componentInputParameter: effective_batch_size_phase_1
             input_pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
                 producerTask: createpvc
             learning_rate:
-              componentInputParameter: learning_rate
+              componentInputParameter: learning_rate_phase_1
             max_batch_len:
               componentInputParameter: max_batch_len
             model_pvc_name:
@@ -1951,7 +1954,7 @@ root:
             num_epochs:
               componentInputParameter: num_epochs_phase_1
             num_warmup_steps:
-              componentInputParameter: num_warmup_steps
+              componentInputParameter: num_warmup_steps_phase_1
             output_pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
@@ -1977,13 +1980,13 @@ root:
         inputs:
           parameters:
             effective_batch_size:
-              componentInputParameter: effective_batch_size
+              componentInputParameter: effective_batch_size_phase_2
             input_pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
                 producerTask: createpvc
             learning_rate:
-              componentInputParameter: learning_rate
+              componentInputParameter: learning_rate_phase_2
             max_batch_len:
               componentInputParameter: max_batch_len
             model_pvc_name:
@@ -2001,7 +2004,7 @@ root:
             num_epochs:
               componentInputParameter: num_epochs_phase_2
             num_warmup_steps:
-              componentInputParameter: num_warmup_steps
+              componentInputParameter: num_warmup_steps_phase_2
             output_pvc_name:
               taskOutputParameter:
                 outputParameterKey: name
@@ -2138,7 +2141,11 @@ root:
       device:
         isOptional: true
         parameterType: STRING
-      effective_batch_size:
+      effective_batch_size_phase_1:
+        defaultValue: 3840.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      effective_batch_size_phase_2:
         defaultValue: 3840.0
         isOptional: true
         parameterType: NUMBER_INTEGER
@@ -2146,7 +2153,11 @@ root:
         defaultValue: 5.0
         isOptional: true
         parameterType: NUMBER_INTEGER
-      learning_rate:
+      learning_rate_phase_1:
+        defaultValue: 0.0001
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      learning_rate_phase_2:
         defaultValue: 0.0001
         isOptional: true
         parameterType: NUMBER_DOUBLE
@@ -2186,8 +2197,12 @@ root:
         defaultValue: 2.0
         isOptional: true
         parameterType: NUMBER_INTEGER
-      num_warmup_steps:
-        defaultValue: 800.0
+      num_warmup_steps_phase_1:
+        defaultValue: 100.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      num_warmup_steps_phase_2:
+        defaultValue: 100.0
         isOptional: true
         parameterType: NUMBER_INTEGER
       repo_branch:
