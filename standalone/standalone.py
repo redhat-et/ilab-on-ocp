@@ -60,6 +60,7 @@ SDG_DEFAULT_PIPELINE = "simple"
 SDG_CA_CERT_ENV_VAR_NAME = "SDG_CA_CERT_PATH"
 SDG_CA_CERT_PATH = "/tmp/cert"
 SDG_CA_CERT_CM_KEY = "ca-bundle.crt"
+DEFAULT_SAMPLING_SIZE = 70
 
 # SDG DATA PREPROCESSING (before doing training, data has to be converted)
 MAX_SEQ_LEN = 4096
@@ -827,6 +828,13 @@ def show(
     default=SDG_CA_CERT_CM_KEY,
 )
 @click.option(
+    "--sdg-sampling-size",
+    type=int,
+    envvar="SDG_SERVING_MODEL_SAMPLING_SIZE",
+    help="Set sampling size to use for Synthetic Data Generation",  # TODO(gfrasca): improve verbage to show what sampling size actually affects
+    default=DEFAULT_SAMPLING_SIZE,
+)
+@click.option(
     "--force-pull",
     help=(
         "Force pull the data (sdg data and model) from the object store "
@@ -898,6 +906,7 @@ def run(
     sdg_serving_model_api_key: typing.Optional[str] = None,
     sdg_serving_model_ca_cert: typing.Optional[str] = None,
     sdg_serving_model_ca_cert_cm_key: typing.Optional[str] = None,
+    sdg_sampling_size: typing.Optional[int] = None,
     force_pull: typing.Optional[bool] = False,
     training_1_epoch_num: int = 7,
     training_2_epoch_num: int = 10,
@@ -984,6 +993,7 @@ def run(
     ctx.obj["sdg_serving_model_api_key"] = sdg_serving_model_api_key
     ctx.obj["sdg_serving_model_ca_cert"] = sdg_serving_model_ca_cert
     ctx.obj["sdg_serving_model_ca_cert_cm_key"] = sdg_serving_model_ca_cert_cm_key
+    ctx.obj["sdg_sampling_size"] = sdg_sampling_size
     ctx.obj["force_pull"] = force_pull
     ctx.obj["training_1_epoch_num"] = training_1_epoch_num
     ctx.obj["training_2_epoch_num"] = training_2_epoch_num
@@ -1072,6 +1082,7 @@ def create_sdg_container(
     exec_git_clone_op_repo_branch: str = "",
     exec_git_clone_op_repo_pr: str = "",
     sdg_pipeline: str = SDG_DEFAULT_PIPELINE,
+    sdg_sampling_size: int = DEFAULT_SAMPLING_SIZE,
 ) -> kubernetes.client.V1Container:
     """
     Creates a Kubernetes V1Job container for generating synthetic data.
@@ -1099,6 +1110,7 @@ def sdg_op(
     repo_pr: Optional[int],
     taxonomy_path: str = "/data/taxonomy",
     sdg_path: str = "/data/sdg",
+    sampling_size = 70,
 ):
     from os import getenv, path
 
@@ -1106,8 +1118,6 @@ def sdg_op(
     import yaml
     from instructlab.sdg import generate_data
     from instructlab.sdg.utils.taxonomy import read_taxonomy
-
-    SAMPLING_SIZE = 70
 
     def set_precomputed_skills_data_ratio(sampling_size):
         skills_recipe = "/usr/share/instructlab/sdg/default_data_recipes/skills.yaml"
@@ -1142,7 +1152,7 @@ def sdg_op(
 
     # Temporary measure to limit the amount of precomputed skills data used to construct the SDG dataset.
     # Need during development to decrease training loop times and the cost of model quality.
-    set_precomputed_skills_data_ratio(sampling_size=SAMPLING_SIZE)
+    set_precomputed_skills_data_ratio(sampling_size=sampling_size)
 
     # generate_data has a magic word for its taxonomy_base argument - 'empty'
     # it allows generating from the whole repo, see:
@@ -1160,7 +1170,7 @@ def sdg_op(
     )
 """
     exec_sdg_op_args = f"""
-sdg_op(num_instructions_to_generate={num_instructions_to_generate}, pipeline="{sdg_pipeline}", repo_branch="{exec_git_clone_op_repo_branch or ''}", repo_pr={exec_git_clone_op_repo_pr or 0}, taxonomy_path="{TAXONOMY_DATA_PATH}", sdg_path="{DATA_PVC_SDG_PATH}")
+sdg_op(num_instructions_to_generate={num_instructions_to_generate}, pipeline="{sdg_pipeline}", repo_branch="{exec_git_clone_op_repo_branch or ''}", repo_pr={exec_git_clone_op_repo_pr or 0}, taxonomy_path="{TAXONOMY_DATA_PATH}", sdg_path="{DATA_PVC_SDG_PATH}", sampling_size={sdg_sampling_size})
 """
 
     return kubernetes.client.V1Container(
@@ -1199,6 +1209,7 @@ def create_data_job(
     sdg_pipeline: str = SDG_DEFAULT_PIPELINE,
     sdg_serving_model_ca_cert: str = None,
     sdg_serving_model_ca_cert_cm_key: str = None,
+    sdg_sampling_size: int = DEFAULT_SAMPLING_SIZE,
 ) -> kubernetes.client.V1Job:
     """
     Create a Kubernetes Job object.
@@ -1458,6 +1469,7 @@ data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg
                 exec_git_clone_op_repo_branch=taxonomy_repo_branch,
                 exec_git_clone_op_repo_pr=taxonomy_repo_pr,
                 sdg_pipeline=sdg_pipeline,
+                sdg_sampling_size=sdg_sampling_size,
             )
 
             if sdg_serving_model_ca_cert:
@@ -2857,6 +2869,7 @@ def sdg(
     taxonomy_repo_pr = ctx.obj["taxonomy_repo_pr"]
     taxonomy_repo_branch = ctx.obj["taxonomy_repo_branch"]
     sdg_pipeline = ctx.obj["sdg_pipeline"]
+    sdg_sampling_size = ctx.obj["sdg_sampling_size"]
 
     v1 = kubernetes.client.CoreV1Api()
     # Secret details validation here!
@@ -2998,6 +3011,7 @@ def sdg(
         sdg_pipeline=sdg_pipeline,
         sdg_serving_model_ca_cert=sdg_serving_model_ca_cert,
         sdg_serving_model_ca_cert_cm_key=sdg_serving_model_ca_cert_cm_key,
+        sdg_sampling_size=sdg_sampling_size,
     )
 
     if dry_run:
@@ -3041,6 +3055,7 @@ def sdg_data_fetch(
     sdg_object_store_secret = ctx.obj["sdg_object_store_secret"]
     force_pull = ctx.obj["force_pull"]
     dry_run = ctx.obj["dry_run"]
+    sdg_sampling_size = ctx.obj["sdg_sampling_size"]
 
     logger.info("Initial configuration.")
     initial_setup(ctx)
@@ -3052,6 +3067,7 @@ def sdg_data_fetch(
         sdg_object_store_secret=sdg_object_store_secret,
         strategy="download",
         force_pull=force_pull,
+        sdg_sampling_size=sdg_sampling_size
     )
 
     if dry_run:

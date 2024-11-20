@@ -412,6 +412,7 @@ evaluation
 * `--sdg-serving-model-ca-cert-cm-key`: Name of the Key in the Kubernetes ConfigMap containing the SDG serving model CA cert.
   `SDG_SERVING_MODEL_CA_CERT_CM_KEY` environment variable can be used as well. **Optional**
 * `--sdg-serving-model-api-key`: The API key for the model to use for Synthetic Data Generation. **Optional**
+* `--sdg-sampling-size`: Adjust the Sampling size used for Synthetic Data Generation. **Optional**
 * `--judge-serving-model-endpoint`: Serving endpoint for evaluation. e.g:
   http://serving.kubeflow.svc.cluster.local:8080/v1 - **Optional**
 * `--judge-serving-model-name`: The name of the model to use for evaluation. **Optional**
