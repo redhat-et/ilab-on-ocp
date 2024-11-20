@@ -119,6 +119,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         sdg_scale_factor: int = 2,  # Renamed upstream https://github.com/instructlab/instructlab/blob/f7d40f6ed5112d59132dd832bd332fa6fbbe7010/src/instructlab/configuration.py#L279-L290
         sdg_pipeline: str = SDG_PIPELINE,
         sdg_max_batch_len: int = MAX_BATCH_LEN,
+        sdg_sample_size: float = 1.0,
         # Training phase
         train_nproc_per_node: int = 3,
         train_nnodes: int = 2,
@@ -154,6 +155,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             sdg_scale_factor: SDG parameter. The total number of instructions to be generated.
             sdg_pipeline: SDG parameter. Data generation pipeline to use. Available: 'simple', 'full', or a valid path to a directory of pipeline workflow YAML files. Note that 'full' requires a larger teacher model, Mixtral-8x7b.
             sdg_max_batch_len: SDG parameter. Maximum tokens per gpu for each batch that will be handled in a single step.
+            sdg_sample_size: SDG parameter. Represents the sdg skills recipe sampling size as percentage in decimal form.
 
             train_nproc_per_node: Training parameter. Number of GPUs per each node/worker to use for training.
             train_nnodes: Training parameter. Number of nodes/workers to train on.
@@ -204,6 +206,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             pipeline=sdg_pipeline,
             repo_branch=sdg_repo_branch,
             repo_pr=sdg_repo_pr,
+            sdg_sampling_size=sdg_sample_size,
         )
         sdg_task.set_env_variable("HOME", "/tmp")
         sdg_task.set_env_variable("HF_HOME", "/tmp")
@@ -554,7 +557,7 @@ def gen_standalone():
     # The list of executor names to extract details from to generate the standalone script
     executors = {
         "exec-data-processing-op": 'data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg_path="{DATA_PVC_SDG_PATH}", model_path="{DATA_PVC_MODEL_PATH}", skills_path="{PREPROCESSED_DATA_SKILLS_PATH}", knowledge_path="{PREPROCESSED_DATA_KNOWLEDGE_PATH}")',
-        "exec-sdg-op": 'sdg_op(num_instructions_to_generate={num_instructions_to_generate}, pipeline="{sdg_pipeline}", repo_branch="{exec_git_clone_op_repo_branch or ""}", repo_pr={exec_git_clone_op_repo_pr or 0}, taxonomy_path="{TAXONOMY_DATA_PATH}", sdg_path="{DATA_PVC_SDG_PATH}")',
+        "exec-sdg-op": 'sdg_op(num_instructions_to_generate={num_instructions_to_generate}, pipeline="{sdg_pipeline}", repo_branch="{exec_git_clone_op_repo_branch or ""}", repo_pr={exec_git_clone_op_repo_pr or 0}, taxonomy_path="{TAXONOMY_DATA_PATH}", sdg_path="{DATA_PVC_SDG_PATH}", sdg_sampling_size={sdg_sampling_size})',
         "exec-git-clone-op": {},
         "exec-huggingface-importer-op": 'huggingface_importer_op(repo_name="{REPO_GRANITE_7B_IMAGE}", model_path="{DATA_PVC_MODEL_PATH}")',
         "exec-run-mt-bench-op": 'run_mt_bench_op(best_score_file="{MT_BENCH_SCORES_PATH}",output_path="{MT_BENCH_OUTPUT_PATH}",models_folder="{CANDIDATE_MODEL_PATH_PREFIX}",models_path_prefix="{CANDIDATE_MODEL_PATH_PREFIX}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE})',
