@@ -51,7 +51,7 @@ def pvc_to_model_op(model: dsl.Output[dsl.Model], pvc_path: str):
     )
 
 
-@dsl.component(base_image=PYTHON_IMAGE)
+@dsl.component(base_image=PYTHON_IMAGE, install_kfp_package=False)
 def list_models_in_directory_op(models_folder: str) -> List[str]:
     import os
 
@@ -61,6 +61,7 @@ def list_models_in_directory_op(models_folder: str) -> List[str]:
 
 @dsl.component(
     base_image=PYTHON_IMAGE,
+    install_kfp_package=False,
     packages_to_install=["huggingface_hub"],
 )
 def huggingface_importer_op(repo_name: str, model_path: str = "/model"):
