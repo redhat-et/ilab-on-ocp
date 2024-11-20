@@ -8,7 +8,7 @@ from kfp import dsl
 from utils.consts import PYTHON_IMAGE, TOOLBOX_IMAGE
 
 
-@dsl.component(base_image=PYTHON_IMAGE)
+@dsl.component(base_image=PYTHON_IMAGE, install_kfp_package=False)
 def pytorchjob_manifest_op(
     model_pvc_name: str,
     input_pvc_name: str,
@@ -19,7 +19,7 @@ def pytorchjob_manifest_op(
     return Outputs("", "")
 
 
-@dsl.component(base_image=PYTHON_IMAGE)
+@dsl.component(base_image=PYTHON_IMAGE, install_kfp_package=False)
 def data_processing_op(
     model_path: str = "/model",
     sdg_path: str = "/data/sdg",

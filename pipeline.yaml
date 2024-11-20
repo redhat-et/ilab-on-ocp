@@ -721,9 +721,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.10.1'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'huggingface_hub'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'huggingface_hub'\
           \ && \"$0\" \"$@\"\n"
         - sh
         - -ec
@@ -739,7 +737,7 @@ deploymentSpec:
           \ *\n\ndef huggingface_importer_op(repo_name: str, model_path: str = \"\
           /model\"):\n    from huggingface_hub import snapshot_download\n\n    snapshot_download(repo_id=repo_name,\
           \ cache_dir=\"/tmp\", local_dir=model_path)\n\n"
-        image: registry.access.redhat.com/ubi9/python-311:latest
+        image: quay.io/modh/odh-generic-data-science-notebook:v3-2024b-20241111
     exec-knowledge-processed-data-to-artifact-op:
       container:
         args:
@@ -791,13 +789,6 @@ deploymentSpec:
         - list_models_in_directory_op
         command:
         - sh
-        - -c
-        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
-          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.10.1'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
-          $0\" \"$@\"\n"
-        - sh
         - -ec
         - 'program_path=$(mktemp -d)
 
@@ -811,7 +802,7 @@ deploymentSpec:
           \ *\n\ndef list_models_in_directory_op(models_folder: str) -> List[str]:\n\
           \    import os\n\n    models = os.listdir(models_folder)\n    return models\n\
           \n"
-        image: registry.access.redhat.com/ubi9/python-311:latest
+        image: quay.io/modh/odh-generic-data-science-notebook:v3-2024b-20241111
     exec-pvc-to-model-op:
       container:
         args:
@@ -837,13 +828,6 @@ deploymentSpec:
         - pytorchjob_manifest_op
         command:
         - sh
-        - -c
-        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
-          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.10.1'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
-          $0\" \"$@\"\n"
-        - sh
         - -ec
         - 'program_path=$(mktemp -d)
 
@@ -984,7 +968,7 @@ deploymentSpec:
           \   - name: output\n                      persistentVolumeClaim:\n     \
           \                   claimName: {output_pvc_name}\n        \"\"\"\n    )\n\
           \n    return Outputs(manifest, name)\n\n"
-        image: registry.access.redhat.com/ubi9/python-311:latest
+        image: quay.io/modh/odh-generic-data-science-notebook:v3-2024b-20241111
     exec-pytorchjob-manifest-op-2:
       container:
         args:
@@ -994,13 +978,6 @@ deploymentSpec:
         - pytorchjob_manifest_op
         command:
         - sh
-        - -c
-        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
-          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.10.1'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
-          $0\" \"$@\"\n"
-        - sh
         - -ec
         - 'program_path=$(mktemp -d)
 
@@ -1141,7 +1118,7 @@ deploymentSpec:
           \   - name: output\n                      persistentVolumeClaim:\n     \
           \                   claimName: {output_pvc_name}\n        \"\"\"\n    )\n\
           \n    return Outputs(manifest, name)\n\n"
-        image: registry.access.redhat.com/ubi9/python-311:latest
+        image: quay.io/modh/odh-generic-data-science-notebook:v3-2024b-20241111
     exec-run-final-eval-op:
       container:
         args:

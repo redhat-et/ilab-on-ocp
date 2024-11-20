@@ -120,7 +120,7 @@ def knowledge_processed_data_to_artifact_op(
     )
 
 
-@dsl.component(base_image=PYTHON_IMAGE)
+@dsl.component(base_image=PYTHON_IMAGE, install_kfp_package=False)
 def pytorchjob_manifest_op(
     model_pvc_name: str,
     input_pvc_name: str,
