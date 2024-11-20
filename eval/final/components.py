@@ -1,10 +1,9 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error
-from typing import List, NamedTuple
 
 from kfp.dsl import Artifact, Output, component
 
-from utils.consts import PYTHON_IMAGE, RHELAI_IMAGE
+from utils.consts import RHELAI_IMAGE
 
 
 @component(base_image=RHELAI_IMAGE, install_kfp_package=False)
@@ -27,7 +26,7 @@ def run_final_eval_op(
     import subprocess
 
     import torch
-    from instructlab.eval.mmlu import MMLU_TASKS, MMLUBranchEvaluator
+    from instructlab.eval.mmlu import MMLUBranchEvaluator
     from instructlab.eval.mt_bench import MTBenchBranchEvaluator
     from instructlab.model.evaluate import qa_pairs_to_qna_to_avg_scores, sort_score
 
@@ -88,7 +87,7 @@ def run_final_eval_op(
 
         for attempt in range(retries):
             try:
-                response = requests.get(f"{vllm_server}/models")
+                response = requests.get(f"{vllm_server}/models", timeout=10)
                 if response.status_code == 200:
                     print(f"vLLM server is up and running at {vllm_server}.")
                     return process, vllm_server
@@ -124,10 +123,7 @@ def run_final_eval_op(
                 f"Timeout expired. Forcefully killing vLLM server with PID: {process.pid}"
             )
             process.kill()  # Force kill the process if over timeout
-        except subprocess.NoSuchProcess:
-            print(f"Process with PID {process.pid} no longer exists.")
-        except Exception as e:
-            print(f"Failed to stop process with PID {process.pid}. Error: {e}")
+
         # Note from instructlab/model/backends/vllm.py
         # vLLM relies on stable VRAM,  residual reclamation activity
         # can lead to crashes on restart. To prevent this add a
@@ -189,7 +185,7 @@ def run_final_eval_op(
 
         if new is not None and len(new) > 0:
             for entry in new:
-                na, avg_score = entry
+                _, avg_score = entry
                 summary["new"].append(
                     {"qna": qna, "average_score": round(avg_score, 2)}
                 )
@@ -220,14 +216,14 @@ def run_final_eval_op(
 
         import yaml
 
-        for root, dirs, files in os.walk(base_dir):
+        for root, _, files in os.walk(base_dir):
             for file_name in files:
                 if file_name.startswith("knowledge_") and file_name.endswith(
                     "_task.yaml"
                 ):
                     file_path = os.path.join(root, file_name)
 
-                    with open(file_path, "r") as file:
+                    with open(file_path, "r", encoding="utf-8") as file:
                         task_yaml = yaml.load(file, Loader=yaml.Loader)
 
                     current_test_file_path = task_yaml["dataset_kwargs"]["data_files"][
@@ -251,7 +247,7 @@ def run_final_eval_op(
         matching_dirs = []
         regex = re.compile(pattern)
 
-        for root, dirs, files in os.walk(base_dir):
+        for root, dirs, _ in os.walk(base_dir):
             for directory in dirs:
                 if regex.search(directory):
                     matching_dirs.append(os.path.join(root, directory))
@@ -340,7 +336,7 @@ def run_final_eval_op(
             "summary": summary,
         }
 
-        with open(mmlu_branch_output.path, "w") as f:
+        with open(mmlu_branch_output.path, "w", encoding="utf-8") as f:
             json.dump(mmlu_branch_data, f, indent=4)
     else:
         print("No MMLU tasks directories found, skipping MMLU_branch evaluation.")
@@ -391,6 +387,8 @@ def run_final_eval_op(
         try:
             usable_cpu_count = len(os.sched_getaffinity(0)) // 2
         except AttributeError:
+            import multiprocessing
+
             usable_cpu_count = multiprocessing.cpu_count() // 2
         max_workers = usable_cpu_count
 
@@ -480,5 +478,5 @@ def run_final_eval_op(
         "summary": summary,
     }
 
-    with open(mt_bench_branch_output.path, "w") as f:
+    with open(mt_bench_branch_output.path, "w", encoding="utf-8") as f:
         json.dump(mt_bench_branch_data, f, indent=4)
