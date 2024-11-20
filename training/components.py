@@ -8,7 +8,7 @@ from kfp import dsl
 from utils.consts import PYTHON_IMAGE, RHELAI_IMAGE, TOOLBOX_IMAGE
 
 
-@dsl.component(base_image=RHELAI_IMAGE)
+@dsl.component(base_image=RHELAI_IMAGE, install_kfp_package=False)
 def data_processing_op(
     model_path: str = "/model",
     sdg_path: str = "/data/sdg",
