@@ -38,13 +38,19 @@ const (
 	STANDALONE_FILE_PATH        = "../../../standalone/standalone.py"
 )
 
+// sdg default configs
 const (
-	SDG_PIPELINE_FILEPATH = "/usr/share/instructlab/sdg/pipelines/agentic"
+	SDG_PIPELINE_DIR = "/usr/share/instructlab/sdg/pipelines/agentic"
+	// We use a reduced sample size for skills recipe to reduce
+	// sdg training times. For a production level test run, set
+	// SDG_SAMPLING_SIZE to 1.0
+	SDG_SAMPLING_SIZE = "0.0002"
 )
 
+// test suite configs
 const (
-	TEST_APP_LABEL       = "ilab-on-ocp-e2e"
-	E2E_TEST_RUN_TIMEOUT = 10 * time.Hour // 10 hours
+	TEST_APP_LABEL           = "ilab-on-ocp-e2e"
+	DEFAULT_TEST_RUN_TIMEOUT = 10 * time.Hour
 )
 
 func TestInstructlabTrainingOnRhoai(t *testing.T) {
@@ -55,12 +61,21 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 	test := With(t)
 
 	// Pre-requisites :
-
 	rhelaiWorkbenchImage, rhelaiWorkbenchImageExists := GetRhelaiWorkbenchImage()
 	if !rhelaiWorkbenchImageExists {
 		rhelaiWorkbenchImage = ILAB_RHELAI_WORKBENCH_IMAGE
 
 		test.T().Logf("RHELAI workbench image is not provided as environment variable. Using workbench image: %s", ILAB_RHELAI_WORKBENCH_IMAGE)
+	}
+
+	timeout := DEFAULT_TEST_RUN_TIMEOUT
+
+	inputTimeout, timeoutProvided := os.LookupEnv("TEST_RUN_TIMEOUT")
+	if timeoutProvided {
+		var err error
+		timeout, err = time.ParseDuration(inputTimeout)
+		test.Expect(err).NotTo(HaveOccurred())
+		test.T().Logf("Provided timeout of %s will be used", timeout.String())
 	}
 
 	// Get S3 bucket credentials using environment variables
@@ -115,10 +130,6 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 	test.Expect(err).NotTo(HaveOccurred())
 	configMap := map[string][]byte{
 		"standalone.py": fileContent,
-	}
-	if err != nil {
-		test.T().Logf(err.Error())
-		test.Expect(err).ToNot(HaveOccurred())
 	}
 
 	createdCM := CreateConfigMap(test, namespace.Name, configMap)
@@ -375,13 +386,12 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 						"--judge-serving-model-secret", judgeServingModelSecret.Name,
 						"--sdg-serving-model-secret", sdgServingModelSecret.Name,
 						"--sdg-in-cluster",
-						"--sdg-pipeline", SDG_PIPELINE_FILEPATH,
+						"--sdg-pipeline", SDG_PIPELINE_DIR,
+						"--sdg-sampling-size", GetSDGSamplingSize(),
 						"--nproc-per-node", strconv.Itoa(numGpus),
 						"--storage-class", ilabStorageClassName,
 						"--sdg-object-store-secret", createdSecret.Name,
-						"--taxonomy-repo-pr", "-1", // TODO(gfrasca): This gets around the 'no leaf node' sdg error
-						// "--training-1-epoch-num", strconv.Itoa(1),
-						// "--training-2-epoch-num", strconv.Itoa(1),
+						"--taxonomy-repo-pr", "-1",
 						"--force-pull",
 					},
 				},
@@ -408,7 +418,7 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 		workbenchPod, err = test.Client().Core().CoreV1().Pods(namespace.Name).Get(test.Ctx(), createdPod.Name, metav1.GetOptions{})
 		test.Expect(err).To(BeNil())
 		return workbenchPod.Status.Phase
-	}, E2E_TEST_RUN_TIMEOUT, 2*time.Second).Should(Equal(corev1.PodSucceeded))
+	}, timeout, 2*time.Second).Should(Equal(corev1.PodSucceeded))
 }
 
 func CreateJudgeServingModelSecret(test Test, namespace string) *corev1.Secret {
@@ -449,15 +459,15 @@ func CreateJudgeServingModelSecret(test Test, namespace string) *corev1.Secret {
 }
 
 func CreateSDGServingModelSecret(test Test, namespace string) *corev1.Secret {
-	// judge model details like endpoint, api-key, model-name, ca certs, ...etc should be provided via k8s secret
+	// Teacher model details like endpoint, api-key, model-name, ca certs, ...etc should be provided via k8s secret
 	// we need the secret name so the standalone.py script can fetch the details from that secret.
-	// Get Judge model server credentials using environment variables
+	// Get Teacher model server credentials using environment variables
 	sdgDataApiKeySecretKey := "api_key"
 	sdgDataEndpointSecretKey := "endpoint"
 	sdgDataModelSecretKey := "model"
 	sdgServingModelApiKeyEnvVar := "SDG_SERVING_MODEL_API_KEY"
-	sdgServingModelNameEnvVar := "SDG_NAME"         // TODO(gfrasca): unimplemented
-	sdgServingModelEndpointEnvVar := "SDG_ENDPOINT" // TODO(gfrasca): unimplemented
+	sdgServingModelNameEnvVar := "SDG_NAME"
+	sdgServingModelEndpointEnvVar := "SDG_ENDPOINT"
 	sdgServingCaCertEnvVar := "SDG_CA_CERT"
 	sdgServingCaCertCmKeyEnvVar := "SDG_CA_CERT_CM_KEY"
 	sdgServingCaCertFromOpenShiftEnvVar := "SDG_CA_CERT_FROM_OPENSHIFT"
@@ -517,6 +527,14 @@ func GetTestNamespace() (string, bool) {
 func GetTestServiceAccount() (string, bool) {
 	data_key, exists := os.LookupEnv("TEST_SERVICE_ACCOUNT")
 	return data_key, exists
+}
+
+func GetSDGSamplingSize() string {
+	data_key, exists := os.LookupEnv("SDG_SAMPLING_SIZE")
+	if !exists {
+		return SDG_SAMPLING_SIZE
+	}
+	return data_key
 }
 
 func CreateServiceAccountWithName(t Test, namespace string, name string) *corev1.ServiceAccount {
