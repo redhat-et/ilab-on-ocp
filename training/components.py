@@ -137,9 +137,14 @@ def pytorchjob_manifest_op(
     save_samples: int = 0,
     max_batch_len: int = 20000,
     seed: int = 42,
-) -> NamedTuple("outputs", manifest=str, name=str):
+):
     import inspect
     import os
+    import time
+
+    import kubernetes
+    import urllib3
+    import yaml
 
     def list_phase1_final_model():
         model_dir = "/output/phase_1/model/hf_format"
@@ -151,7 +156,6 @@ def pytorchjob_manifest_op(
         newest_model = models[newest_idx]
         return f"{model_dir}/{newest_model}"
 
-    Outputs = NamedTuple("outputs", manifest=str, name=str)
     name = f"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}"
 
     if phase_num == 1:
@@ -172,7 +176,7 @@ def pytorchjob_manifest_op(
         metadata:
           name: {name}
         spec:
-          nprocPerNode: \\"{nproc_per_node}\\"
+          nprocPerNode: \"{nproc_per_node}\"
           pytorchReplicaSpecs:
             Master:
               replicas: 1
@@ -228,9 +232,9 @@ def pytorchjob_manifest_op(
                           name: output
                       env:
                         - name: NNODES
-                          value: \\"{nnodes}\\"
+                          value: \"{nnodes}\"
                         - name: NPROC_PER_NODE
-                          value: \\"{nproc_per_node}\\"
+                          value: \"{nproc_per_node}\"
                         - name: XDG_CACHE_HOME
                           value: /tmp
                         - name: TRITON_CACHE_DIR
@@ -310,9 +314,9 @@ def pytorchjob_manifest_op(
                           readOnly: true
                       env:
                         - name: NNODES
-                          value: \\"{nnodes}\\"
+                          value: \"{nnodes}\"
                         - name: NPROC_PER_NODE
-                          value: \\"{nproc_per_node}\\"
+                          value: \"{nproc_per_node}\"
                         - name: XDG_CACHE_HOME
                           value: /tmp
                         - name: TRITON_CACHE_DIR
@@ -341,4 +345,107 @@ def pytorchjob_manifest_op(
         """
     )
 
-    return Outputs(manifest, name)
+    try:
+        manifest_yaml = yaml.safe_load(manifest)
+    except yaml.YAMLError as exc:
+        raise RuntimeError(f"Error parsing manifest: {exc}") from exc
+
+    # Discover the namespace in which the pod is running
+    with open(
+        "/var/run/secrets/kubernetes.io/serviceaccount/namespace", "r", encoding="utf-8"
+    ) as f:
+        namespace = f.read().strip()
+        print(f"The pod is running in the namespace: {namespace}")
+
+    try:
+        kubernetes.config.load_kube_config()
+        print("Loaded kube config")
+    except kubernetes.config.ConfigException:
+        print("Failed to load kube config. Trying in-cluster config")
+        kubernetes.config.load_incluster_config()
+
+    api = kubernetes.client.CustomObjectsApi()
+    try:
+        api.create_namespaced_custom_object(
+            group="kubeflow.org",
+            version="v1",
+            namespace=namespace,
+            plural="pytorchjobs",
+            body=manifest_yaml,
+        )
+    except kubernetes.client.rest.ApiException as exc:
+        if exc.status == 409:
+            print(
+                "{} '{}/{}' already exists.".format(
+                    manifest_yaml["kind"],
+                    namespace,
+                    manifest_yaml["metadata"]["name"],
+                )
+            )
+        else:
+            raise
+
+    # Get the CR status and wait for it to be completed
+    w = kubernetes.watch.Watch()
+    exit_flag = False
+    start_time = time.time()
+    timeout_seconds = 24 * 60 * 60  # 24 hours
+
+    while not exit_flag:  # Keep the watch active
+        if time.time() - start_time > timeout_seconds:
+            raise RuntimeError(
+                "Timeout (24h) reached waiting for the PytorchJob to complete."
+            )
+
+        try:
+            print("Watching for PytorchJob")
+            for event in w.stream(
+                api.list_namespaced_custom_object,
+                group="kubeflow.org",
+                version="v1",
+                namespace=namespace,
+                plural="pytorchjobs",
+                timeout_seconds=60,  # Timeout after 1 minute
+            ):
+                pytorchjob_event = event["object"]
+                if (
+                    pytorchjob_event["metadata"]["name"]
+                    != manifest_yaml["metadata"]["name"]
+                ):
+                    continue
+                pytorchjob_name = pytorchjob_event["metadata"]["name"]
+
+                if (
+                    "status" not in pytorchjob_event
+                    or "conditions" not in pytorchjob_event["status"]
+                ):
+                    continue
+                print(
+                    f"PytorchJob: {pytorchjob_name} - {pytorchjob_event['status'].get('conditions', 'No conditions yet')}"
+                )
+                for job_condition in reversed(pytorchjob_event["status"]["conditions"]):
+                    if job_condition["type"] == "Succeeded":
+                        print(
+                            f"PytorchJob '{pytorchjob_name}' completed successfully: {job_condition['reason']}"
+                        )
+                        print(f"Training phase {phase_num} completed.")
+                        w.stop()
+                        exit_flag = True
+                        # Break here to avoid going into other conditions, we are done
+                        break
+                    elif job_condition["type"] == "Failed":
+                        print(
+                            f"PytorchJob '{pytorchjob_name}' failed: {job_condition['reason']}"
+                        )
+                        w.stop()
+                        raise RuntimeError("Job failed.")
+        except kubernetes.client.exceptions.ApiException as e:
+            print(f"API exception occurred: {str(e)}")
+            time.sleep(5)  # Backoff before retrying
+        # Catches the following error:
+        # urllib3.exceptions.ProtocolError: ("Connection broken: InvalidChunkLength
+        except urllib3.exceptions.ProtocolError as e:
+            print(f"Connection broken reconnecting the watcher {str(e)}")
+            time.sleep(5)  # Backoff before retrying
+        finally:
+            w.stop()
