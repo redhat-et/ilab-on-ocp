@@ -1,0 +1,88 @@
+# PIPELINE DEFINITION
+# Name: instructlab-base-importer
+# Description: Helper pipeline to the InstructLab pipeline which allows users to seed/import a new base model
+# Inputs:
+#    release: str [Default: 'latest']
+#    repository: str [Default: 'docker://registry.redhat.io/rhelai1/granite-7b-starter']
+components:
+  comp-ilab-importer-op:
+    executorLabel: exec-ilab-importer-op
+    inputDefinitions:
+      parameters:
+        release:
+          parameterType: STRING
+        repository:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        base_model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+deploymentSpec:
+  executors:
+    exec-ilab-importer-op:
+      container:
+        args:
+        - ilab --config=DEFAULT model download --repository {{$.inputs.parameters['repository']}}
+          --release {{$.inputs.parameters['release']}} --model-dir {{$.outputs.artifacts['base_model'].path}}
+        command:
+        - /bin/sh
+        - -c
+        env:
+        - name: REGISTRY_AUTH_FILE
+          value: /mnt/containers/.dockerconfigjson
+        image: quay.io/redhat-et/ilab:1.2
+pipelineInfo:
+  description: Helper pipeline to the InstructLab pipeline which allows users to seed/import
+    a new base model
+  displayName: InstructLab - base model importer
+  name: instructlab-base-importer
+root:
+  dag:
+    tasks:
+      ilab-importer-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-ilab-importer-op
+        inputs:
+          parameters:
+            release:
+              componentInputParameter: release
+            repository:
+              componentInputParameter: repository
+        taskInfo:
+          name: ilab-importer-op
+  inputDefinitions:
+    parameters:
+      release:
+        defaultValue: latest
+        description: The revision of the model to download - e.g. a branch, tag, or
+          commit hash for Hugging Face repositories and tag or commit hash for OCI
+          repositories.
+        isOptional: true
+        parameterType: STRING
+      repository:
+        defaultValue: docker://registry.redhat.io/rhelai1/granite-7b-starter
+        description: Hugging Face or OCI repository of the model to download. OCI
+          repository must have a docker:// prefix
+        isOptional: true
+        parameterType: STRING
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.9.0
+---
+platforms:
+  kubernetes:
+    deploymentSpec:
+      executors:
+        exec-ilab-importer-op:
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: HF_TOKEN
+              secretKey: HF_TOKEN
+            secretName: hugging-face-token
+          secretAsVolume:
+          - mountPath: /mnt/containers
+            optional: false
+            secretName: 7033380-ilab-pull-secret

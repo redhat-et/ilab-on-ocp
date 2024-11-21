@@ -6,7 +6,7 @@ from ..consts import PYTHON_IMAGE
 
 
 @dsl.component(base_image=PYTHON_IMAGE, install_kfp_package=False)
-def huggingface_importer_op(repo_name: str, model_path: str = "/model"):
+def model_to_pvc_op(model: dsl.Input[dsl.Model], pvc_path: str = "/model"):
     return
 
 

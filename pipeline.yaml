@@ -9,7 +9,7 @@
 #    k8s_storage_class_name: str [Default: 'nfs-csi']
 #    mt_bench_max_workers: str [Default: 'auto']
 #    mt_bench_merge_system_user_message: bool [Default: False]
-#    sdg_base_model: str [Default: 'ibm-granite/granite-7b-base']
+#    sdg_base_model: str [Default: 's3://ilab-pipeline-b1d4c2b1-ab00-4e7f-b985-697bda3df385/instructlab-base-importer/648f36d0-e3f0-43b8-8adb-530576beb675/ilab-importer-op/model/granite-7b-starter']
 #    sdg_max_batch_len: int [Default: 20000.0]
 #    sdg_pipeline: str [Default: 'simple']
 #    sdg_repo_branch: str
@@ -280,16 +280,18 @@ components:
           defaultValue: /data/taxonomy
           isOptional: true
           parameterType: STRING
-  comp-huggingface-importer-op:
-    executorLabel: exec-huggingface-importer-op
+  comp-importer:
+    executorLabel: exec-importer
     inputDefinitions:
       parameters:
-        model_path:
-          defaultValue: /model
-          isOptional: true
+        uri:
           parameterType: STRING
-        repo_name:
-          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        artifact:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
   comp-knowledge-processed-data-to-artifact-op:
     executorLabel: exec-knowledge-processed-data-to-artifact-op
     inputDefinitions:
@@ -304,6 +306,19 @@ components:
           artifactType:
             schemaTitle: system.Dataset
             schemaVersion: 0.0.1
+  comp-model-to-pvc-op:
+    executorLabel: exec-model-to-pvc-op
+    inputDefinitions:
+      artifacts:
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+      parameters:
+        pvc_path:
+          defaultValue: /model
+          isOptional: true
+          parameterType: STRING
   comp-pvc-to-model-op:
     executorLabel: exec-pvc-to-model-op
     inputDefinitions:
@@ -654,39 +669,25 @@ deploymentSpec:
         - /bin/sh
         - -c
         image: registry.access.redhat.com/ubi9/toolbox
-    exec-huggingface-importer-op:
-      container:
-        args:
-        - --executor_input
-        - '{{$}}'
-        - --function_to_execute
-        - huggingface_importer_op
-        command:
-        - sh
-        - -c
-        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
-          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'huggingface_hub'\
-          \ && \"$0\" \"$@\"\n"
-        - sh
-        - -ec
-        - 'program_path=$(mktemp -d)
-
-
-          printf "%s" "$0" > "$program_path/ephemeral_component.py"
-
-          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
-
-          '
-        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef huggingface_importer_op(repo_name: str, model_path: str = \"\
-          /model\"):\n    from huggingface_hub import snapshot_download\n\n    snapshot_download(repo_id=repo_name,\
-          \ cache_dir=\"/tmp\", local_dir=model_path)\n\n"
-        image: quay.io/modh/odh-generic-data-science-notebook:v3-2024b-20241111
+    exec-importer:
+      importer:
+        artifactUri:
+          runtimeParameter: uri
+        typeSchema:
+          schemaTitle: system.Model
+          schemaVersion: 0.0.1
     exec-knowledge-processed-data-to-artifact-op:
       container:
         args:
         - cp -r {{$.inputs.parameters['pvc_path']}} {{$.outputs.artifacts['knowledge_processed_data'].path}}
+        command:
+        - /bin/sh
+        - -c
+        image: registry.access.redhat.com/ubi9/toolbox
+    exec-model-to-pvc-op:
+      container:
+        args:
+        - cp -r {{$.inputs.artifacts['model'].path}}/* {{$.inputs.parameters['pvc_path']}}
         command:
         - /bin/sh
         - -c
@@ -1670,7 +1671,7 @@ root:
         dependentTasks:
         - createpvc
         - createpvc-2
-        - huggingface-importer-op
+        - model-to-pvc-op
         - sdg-op
         inputs:
           parameters:
@@ -1744,18 +1745,17 @@ root:
               componentInputParameter: sdg_repo_url
         taskInfo:
           name: git-clone-op
-      huggingface-importer-op:
-        cachingOptions: {}
+      importer:
+        cachingOptions:
+          enableCache: true
         componentRef:
-          name: comp-huggingface-importer-op
-        dependentTasks:
-        - createpvc-2
+          name: comp-importer
         inputs:
           parameters:
-            repo_name:
+            uri:
               componentInputParameter: sdg_base_model
         taskInfo:
-          name: huggingface-importer-op
+          name: importer
       knowledge-processed-data-to-artifact-op:
         cachingOptions: {}
         componentRef:
@@ -1765,6 +1765,21 @@ root:
         - data-processing-op
         taskInfo:
           name: knowledge-processed-data-to-artifact-op
+      model-to-pvc-op:
+        cachingOptions: {}
+        componentRef:
+          name: comp-model-to-pvc-op
+        dependentTasks:
+        - createpvc-2
+        - importer
+        inputs:
+          artifacts:
+            model:
+              taskOutputArtifact:
+                outputArtifactKey: artifact
+                producerTask: importer
+        taskInfo:
+          name: model-to-pvc-op
       pvc-to-model-op:
         cachingOptions: {}
         componentRef:
@@ -1803,7 +1818,7 @@ root:
         - createpvc-2
         - createpvc-3
         - data-processing-op
-        - huggingface-importer-op
+        - model-to-pvc-op
         inputs:
           parameters:
             effective_batch_size:
@@ -2045,7 +2060,7 @@ root:
         isOptional: true
         parameterType: BOOLEAN
       sdg_base_model:
-        defaultValue: ibm-granite/granite-7b-base
+        defaultValue: s3://ilab-pipeline-b1d4c2b1-ab00-4e7f-b985-697bda3df385/instructlab-base-importer/648f36d0-e3f0-43b8-8adb-530576beb675/ilab-importer-op/model/granite-7b-starter
         description: SDG parameter. LLM model used to generate the synthetic dataset
         isOptional: true
         parameterType: STRING
@@ -2193,18 +2208,18 @@ platforms:
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc
-        exec-huggingface-importer-op:
-          pvcMount:
-          - mountPath: /model
-            taskOutputParameter:
-              outputParameterKey: name
-              producerTask: createpvc-2
         exec-knowledge-processed-data-to-artifact-op:
           pvcMount:
           - mountPath: /data
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc
+        exec-model-to-pvc-op:
+          pvcMount:
+          - mountPath: /model
+            taskOutputParameter:
+              outputParameterKey: name
+              producerTask: createpvc-2
         exec-pvc-to-model-op:
           pvcMount:
           - mountPath: /output

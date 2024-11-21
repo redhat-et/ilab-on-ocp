@@ -13,6 +13,7 @@ from kfp.kubernetes import (
     set_image_pull_secrets,
     use_config_map_as_env,
     use_secret_as_env,
+    use_secret_as_volume,
 )
 
 TEACHER_CONFIG_MAP = "teacher-server"
@@ -21,13 +22,16 @@ JUDGE_CONFIG_MAP = "judge-server"
 JUDGE_SECRET = "judge-server"
 MOCKED_STAGES = ["sdg", "train", "eval"]
 PIPELINE_FILE_NAME = "pipeline.yaml"
+IMPORTER_PIPELINE_FILE_NAME = "importer-pipeline.yaml"
 SDG_PIPELINE = "simple"
 IMAGE_PULL_SECRET = "redhat-et-ilab-botty-pull-secret"
 STANDALONE_TEMPLATE_FILE_NAME = "standalone.tpl"
 GENERATED_STANDALONE_FILE_NAME = "standalone.py"
 DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
 KFP_MODEL_SERVER_CM = "sdg/kfp-model-server.yaml"
-BASE_MODEL = "ibm-granite/granite-7b-base"
+
+# FIXME: This value is specific to ocp-beta-test.nerc.mghpcc.org cluster, `ilab` namespace. It is quite cumbersome to copypaste and remember the path every time in dev. This default value should go away once we reach feature freeze.
+BASE_MODEL = "s3://ilab-pipeline-b1d4c2b1-ab00-4e7f-b985-697bda3df385/instructlab-base-importer/648f36d0-e3f0-43b8-8adb-530576beb675/ilab-importer-op/model/granite-7b-starter"
 
 # eval args
 MMLU_TASKS_LIST = "mmlu_anatomy,mmlu_astronomy"
@@ -51,7 +55,7 @@ MAX_BATCH_LEN = 20000
 SEED = 42
 
 
-def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
+def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
     """Wrapper for KFP pipeline, which allows for mocking individual stages."""
 
     # Imports for SDG stage
@@ -79,7 +83,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             skills_processed_data_to_artifact_op,
         )
         from utils.faked import (
-            huggingface_importer_op,
+            model_to_pvc_op,
             pvc_to_model_op,
             pvc_to_mt_bench_op,
         )
@@ -91,7 +95,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             skills_processed_data_to_artifact_op,
         )
         from utils import (
-            huggingface_importer_op,
+            model_to_pvc_op,
             pvc_to_model_op,
             pvc_to_mt_bench_op,
         )
@@ -239,6 +243,9 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         # set_image_pull_policy(sdg_task, "Always")
 
         # Training stage
+        model_source_s3_task = dsl.importer(
+            artifact_uri=sdg_base_model, artifact_class=dsl.Model
+        )
 
         # We need to pass storage_class_name as "" to use the default StorageClass, if left empty, KFP uses "standard" StorageClass.
         # 'standard' !=  default StorageClass
@@ -250,7 +257,8 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             size="100Gi",
             storage_class_name=k8s_storage_class_name,
         )
-        model_to_pvc_task = huggingface_importer_op(repo_name=sdg_base_model)
+
+        model_to_pvc_task = model_to_pvc_op(model=model_source_s3_task.output)
         model_to_pvc_task.set_caching_options(False)
         mount_pvc(
             task=model_to_pvc_task, pvc_name=model_pvc_task.output, mount_path="/model"
@@ -459,6 +467,46 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
     return pipeline
 
 
+def import_base_model_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
+    from utils import ilab_importer_op
+
+    @dsl.pipeline(
+        display_name="InstructLab - base model importer",
+        name="instructlab-base-importer",
+        description="Helper pipeline to the InstructLab pipeline which allows users to seed/import a new base model",
+    )
+    def pipeline(
+        # hf_token_secret: str = "", # FIXME: Don't use hardcoded secret/configmap names once fixed upstream: https://github.com/kubeflow/pipelines/issues/11395
+        # oci_pull_secret: str = "", # FIXME: Don't use hardcoded secret/configmap names once fixed upstream: https://github.com/kubeflow/pipelines/issues/11395
+        repository: str = "docker://registry.redhat.io/rhelai1/granite-7b-starter",
+        release: str = "latest",
+    ):
+        """InstructLab - base model importer.
+
+        Args:
+            repository: Hugging Face or OCI repository of the model to download. OCI repository must have a docker:// prefix
+            release: The revision of the model to download - e.g. a branch, tag, or commit hash for Hugging Face repositories and tag or commit hash for OCI repositories.
+            hf_token_secret: Name of existing Kubernetes secret which contains HF_TOKEN value for Hugging Face repositories. Mandatory for all repositories besides those which belong to the "instructlab" organization.
+            oci_pull_secret: Name of existing Kubernetes secret of .dockerconfigjson type for OCI repository authentication.
+        """
+        importer_task = ilab_importer_op(repository=repository, release=release)
+
+        # FIXME: Don't use hardcoded secret/configmap names once fixed upstream: https://github.com/kubeflow/pipelines/issues/11395
+        # FIXME: Make env variables optional once implemented upstream: https://github.com/kubeflow/pipelines/issues/11401
+        # This pipeline is currently unusable outside of ocp-beta-test.nerc.mghpcc.org cluster, `ilab` namespace due to the hardcoded names...
+        use_secret_as_env(
+            importer_task, "hugging-face-token", dict(HF_TOKEN="HF_TOKEN")
+        )
+        importer_task.set_env_variable(
+            "REGISTRY_AUTH_FILE", "/mnt/containers/.dockerconfigjson"
+        )
+        use_secret_as_volume(
+            importer_task, "7033380-ilab-pull-secret", mount_path="/mnt/containers"
+        )
+
+    return pipeline
+
+
 @click.option(
     "--mock",
     type=click.Choice(MOCKED_STAGES, case_sensitive=False),
@@ -474,11 +522,17 @@ def cli(ctx: click.Context, mock):
 
 
 def generate_pipeline(mock):
-    p = pipeline_wrapper(mock)
+    ilab_pipeline = ilab_pipeline_wrapper(mock)
+    import_base_model_pipeline = import_base_model_pipeline_wrapper(mock)
 
-    with click.progressbar(length=1, label="Generating pipeline") as bar:
-        compiler.Compiler().compile(p, PIPELINE_FILE_NAME)
-        bar.update(1)
+    pipelines = [
+        (ilab_pipeline, PIPELINE_FILE_NAME),
+        (import_base_model_pipeline, IMPORTER_PIPELINE_FILE_NAME),
+    ]
+
+    with click.progressbar(pipelines, label="Generating pipeline") as bar:
+        for pipeline_func, pipeline_file in bar:
+            compiler.Compiler().compile(pipeline_func, pipeline_file)
 
 
 @cli.command(name="gen-standalone")
@@ -517,7 +571,6 @@ def gen_standalone():
         "exec-data-processing-op": 'data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg_path="{DATA_PVC_SDG_PATH}", model_path="{DATA_PVC_MODEL_PATH}", skills_path="{PREPROCESSED_DATA_SKILLS_PATH}", knowledge_path="{PREPROCESSED_DATA_KNOWLEDGE_PATH}")',
         "exec-sdg-op": 'sdg_op(num_instructions_to_generate={num_instructions_to_generate}, pipeline="{sdg_pipeline}", repo_branch="{exec_git_clone_op_repo_branch or ""}", repo_pr={exec_git_clone_op_repo_pr or 0}, taxonomy_path="{TAXONOMY_DATA_PATH}", sdg_path="{DATA_PVC_SDG_PATH}", sdg_sampling_size={sdg_sampling_size})',
         "exec-git-clone-op": {},
-        "exec-huggingface-importer-op": 'huggingface_importer_op(repo_name="{REPO_GRANITE_7B_IMAGE}", model_path="{DATA_PVC_MODEL_PATH}")',
         "exec-run-mt-bench-op": 'run_mt_bench_op(best_score_file="{MT_BENCH_SCORES_PATH}",output_path="{MT_BENCH_OUTPUT_PATH}",models_folder="{CANDIDATE_MODEL_PATH_PREFIX}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE})',
         "exec-run-final-eval-op": 'run_final_eval_op(mmlu_branch_output="{MMLU_BRANCH_SCORES_PATH}", mt_bench_branch_output="{MT_BENCH_BRANCH_SCORES_PATH}", candidate_model="{CANDIDATE_MODEL_PATH}", taxonomy_path="{TAXONOMY_PATH}", sdg_path="{DATA_PVC_SDG_PATH}", base_branch="", candidate_branch="", base_model_dir="{DATA_PVC_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE}, few_shots={FEW_SHOTS}, batch_size="{BATCH_SIZE}")',
     }
