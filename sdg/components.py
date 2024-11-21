@@ -27,6 +27,13 @@ def git_clone_op(
     )
 
 
+@dsl.component(base_image=TOOLBOX_IMAGE)
+def get_training_data():
+    import json
+
+    pass
+
+
 @dsl.component(base_image=RHELAI_IMAGE, install_kfp_package=False)
 def sdg_op(
     num_instructions_to_generate: int,
