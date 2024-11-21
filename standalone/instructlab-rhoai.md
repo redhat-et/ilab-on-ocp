@@ -147,6 +147,10 @@ The judge model is used for model evaluation.
 
 ### Step 3 (Optional) - Setup NFS StorageClass
 
+> [!CAUTION]
+> The image provided here is for test purposes only.
+> Users must provide a production ready storageclass with ReadWriteMany capability.
+
   This step is needed when the cluster doesn't have a storage provisioner capable of provisioning PersistentVolumeClaim with ReadWriteMany capability.
 
   * Installing the NFS CSI driver
