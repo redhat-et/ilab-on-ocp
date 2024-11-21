@@ -1382,8 +1382,6 @@ deploymentSpec:
         resources:
           accelerator:
             count: '1'
-            resourceCount: '1'
-            resourceType: nvidia.com/gpu
             type: nvidia.com/gpu
     exec-run-mt-bench-op:
       container:
@@ -1521,8 +1519,6 @@ deploymentSpec:
         resources:
           accelerator:
             count: '1'
-            resourceCount: '1'
-            resourceType: nvidia.com/gpu
             type: nvidia.com/gpu
     exec-sdg-op:
       container:
@@ -2265,7 +2261,7 @@ root:
         isOptional: true
         parameterType: NUMBER_INTEGER
 schemaVersion: 2.1.0
-sdkVersion: kfp-2.10.1
+sdkVersion: kfp-2.9.0
 ---
 platforms:
   kubernetes:
