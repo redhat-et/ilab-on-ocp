@@ -60,6 +60,7 @@ SDG_DEFAULT_PIPELINE = "simple"
 SDG_CA_CERT_ENV_VAR_NAME = "SDG_CA_CERT_PATH"
 SDG_CA_CERT_PATH = "/tmp/cert"
 SDG_CA_CERT_CM_KEY = "ca-bundle.crt"
+DEFAULT_SDG_SAMPLING_SIZE = 1.0
 
 # SDG DATA PREPROCESSING (before doing training, data has to be converted)
 MAX_SEQ_LEN = 4096
@@ -827,6 +828,16 @@ def show(
     default=SDG_CA_CERT_CM_KEY,
 )
 @click.option(
+    "--sdg-sampling-size",
+    type=float,
+    envvar="SDG_SERVING_MODEL_SAMPLING_SIZE",
+    help="Allows you to tune how much data is used from the default data skills recipe. "
+    "The sampling size represents the percentage of the sample to take, a value of 0.5 "
+    "specifies a 50% value. This is useful for development purposes, when testing the "
+    "whole iLab pipeline and model performance is not a concern.",
+    default=DEFAULT_SDG_SAMPLING_SIZE,
+)
+@click.option(
     "--force-pull",
     help=(
         "Force pull the data (sdg data and model) from the object store "
@@ -908,6 +919,7 @@ def run(
     sdg_serving_model_api_key: typing.Optional[str] = None,
     sdg_serving_model_ca_cert: typing.Optional[str] = None,
     sdg_serving_model_ca_cert_cm_key: typing.Optional[str] = None,
+    sdg_sampling_size: typing.Optional[float] = None,
     force_pull: typing.Optional[bool] = False,
     training_1_epoch_num: int = 7,
     training_1_effective_batch_size: int = 3840,
@@ -966,6 +978,7 @@ def run(
         sdg_in_cluster (bool): Run SDG in the cluster. Default is retrieve SDG Data from an object store.
         sdg_pipeline (str): The pipeline type used for SDG, value must be 'simple', 'full', or a
         valid path to a directory.
+        sdg_sampling_size (float): Represents the sdg skills recipe sampling size in decimal form.
     Returns:
         None
     """
@@ -998,6 +1011,7 @@ def run(
     ctx.obj["sdg_serving_model_api_key"] = sdg_serving_model_api_key
     ctx.obj["sdg_serving_model_ca_cert"] = sdg_serving_model_ca_cert
     ctx.obj["sdg_serving_model_ca_cert_cm_key"] = sdg_serving_model_ca_cert_cm_key
+    ctx.obj["sdg_sampling_size"] = sdg_sampling_size
     ctx.obj["force_pull"] = force_pull
     ctx.obj["training_1_epoch_num"] = training_1_epoch_num
     ctx.obj["training_1_effective_batch_size"] = training_1_effective_batch_size
@@ -1088,6 +1102,7 @@ def create_sdg_container(
     exec_git_clone_op_repo_branch: str = "",
     exec_git_clone_op_repo_pr: str = "",
     sdg_pipeline: str = SDG_DEFAULT_PIPELINE,
+    sdg_sampling_size: float = DEFAULT_SDG_SAMPLING_SIZE,
 ) -> kubernetes.client.V1Container:
     """
     Creates a Kubernetes V1Job container for generating synthetic data.
@@ -1148,6 +1163,7 @@ def create_data_job(
     sdg_pipeline: str = SDG_DEFAULT_PIPELINE,
     sdg_serving_model_ca_cert: str = None,
     sdg_serving_model_ca_cert_cm_key: str = None,
+    sdg_sampling_size: float = DEFAULT_SDG_SAMPLING_SIZE,
 ) -> kubernetes.client.V1Job:
     """
     Create a Kubernetes Job object.
@@ -1169,7 +1185,7 @@ def create_data_job(
         valid path to a directory.
         sdg_serving_model_ca_cert (str): The serving model CA cert for SDG.
         sdg_serving_model_ca_cert_cm_key (str): The name of the Key in the Kubernetes ConfigMap.
-
+        sdg_sampling_size (float): Represents the sdg skills recipe sampling size in decimal form.
 
     Returns:
         kubernetes.client.V1Job: A Kubernetes Job object configured with the specified parameters.
@@ -1321,6 +1337,7 @@ data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg
                 exec_git_clone_op_repo_branch=taxonomy_repo_branch,
                 exec_git_clone_op_repo_pr=taxonomy_repo_pr,
                 sdg_pipeline=sdg_pipeline,
+                sdg_sampling_size=sdg_sampling_size,
             )
 
             if sdg_serving_model_ca_cert:
@@ -2030,6 +2047,7 @@ def sdg(
     taxonomy_repo_pr = ctx.obj["taxonomy_repo_pr"]
     taxonomy_repo_branch = ctx.obj["taxonomy_repo_branch"]
     sdg_pipeline = ctx.obj["sdg_pipeline"]
+    sdg_sampling_size = ctx.obj["sdg_sampling_size"]
 
     v1 = kubernetes.client.CoreV1Api()
     # Secret details validation here!
@@ -2171,6 +2189,7 @@ def sdg(
         sdg_pipeline=sdg_pipeline,
         sdg_serving_model_ca_cert=sdg_serving_model_ca_cert,
         sdg_serving_model_ca_cert_cm_key=sdg_serving_model_ca_cert_cm_key,
+        sdg_sampling_size=sdg_sampling_size,
     )
 
     if dry_run:

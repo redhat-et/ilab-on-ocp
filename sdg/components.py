@@ -35,6 +35,7 @@ def sdg_op(
     repo_pr: Optional[int],
     taxonomy_path: str = "/data/taxonomy",
     sdg_path: str = "/data/sdg",
+    sdg_sampling_size: float = 1.0,
 ):
     from os import getenv, path
 
@@ -43,9 +44,7 @@ def sdg_op(
     from instructlab.sdg import generate_data
     from instructlab.sdg.utils.taxonomy import read_taxonomy
 
-    SAMPLING_SIZE = 70
-
-    def set_precomputed_skills_data_ratio(sampling_size):
+    def set_precomputed_skills_data_ratio(sampling_size: float):
         skills_recipe = "/usr/share/instructlab/sdg/default_data_recipes/skills.yaml"
         if path.exists(skills_recipe):
             with open(skills_recipe, "r") as file:
@@ -76,9 +75,7 @@ def sdg_op(
     print()
     print(read_taxonomy(taxonomy_path, taxonomy_base))
 
-    # Temporary measure to limit the amount of precomputed skills data used to construct the SDG dataset.
-    # Need during development to decrease training loop times and the cost of model quality.
-    set_precomputed_skills_data_ratio(sampling_size=SAMPLING_SIZE)
+    set_precomputed_skills_data_ratio(sampling_size=sdg_sampling_size)
 
     # generate_data has a magic word for its taxonomy_base argument - 'empty'
     # it allows generating from the whole repo, see:
