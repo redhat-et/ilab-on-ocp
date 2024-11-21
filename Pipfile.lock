@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "e0abe31977dfdcb6a4582d0ddfedc19044786921ee9744f785750d708437dd66"
+            "sha256": "67717fd09dcdcdaeffc1614941306417e80c6dcd83d709b85227eb7988b01b19"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -294,10 +294,10 @@
                 "kubernetes"
             ],
             "hashes": [
-                "sha256:e230d292ff71f5d7314cf9d29f368c556ce4d5079a4a806172e7af20bdd216a3"
+                "sha256:936b34261d7356f5f1960d07d12632a84f36f928e14a72cea7c092f2a224de7d"
             ],
-            "markers": "python_full_version >= '3.9.0'",
-            "version": "==2.10.1"
+            "markers": "python_full_version < '3.13.0' and python_full_version >= '3.8.0'",
+            "version": "==2.9.0"
         },
         "kfp-kubernetes": {
             "hashes": [
@@ -308,10 +308,10 @@
         },
         "kfp-pipeline-spec": {
             "hashes": [
-                "sha256:d21581cfc1f943ef874b771923a7e11f5b49f1bcc221ebf9acf7bcf22a2d145f"
+                "sha256:5384e710aef8268eb20ee147b2a0a6cfc3b0cbeef037cad89f46ab877375e1aa"
             ],
-            "markers": "python_full_version >= '3.9.0'",
-            "version": "==0.5.0"
+            "markers": "python_full_version < '3.13.0' and python_full_version >= '3.7.0'",
+            "version": "==0.4.0"
         },
         "kfp-server-api": {
             "hashes": [
