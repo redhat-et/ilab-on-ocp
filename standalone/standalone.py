@@ -143,7 +143,7 @@ spec:
                     --data_path="$PATH_TO_DATA"/data.jsonl \
                     --output_dir={path_to_model}/output/phase_{phase_num} \
                     --num_epochs={epoch_num} \
-                    --effective_batch_size=3840 \
+                    --effective_batch_size={effective_batch_size} \
                     --learning_rate=1e-4 \
                     --num_warmup_steps=800 \
                     --save_samples=0 \
@@ -218,7 +218,7 @@ spec:
                     --data_path="$PATH_TO_DATA"/data.jsonl \
                     --output_dir="$tmp_model" \
                     --num_epochs={epoch_num} \
-                    --effective_batch_size=3840 \
+                    --effective_batch_size={effective_batch_size} \
                     --learning_rate=1e-4 \
                     --num_warmup_steps=800 \
                     --save_samples=0 \
@@ -839,9 +839,19 @@ def show(
     "--training-1-epoch-num", help="Number of epochs to train the model for.", default=7
 )
 @click.option(
+    "--training-1-effective-batch-size",
+    help="The effective batch size to use for training-1.",
+    default=3840,
+)
+@click.option(
     "--training-2-epoch-num",
     help="Number of epochs to train the model for.",
     default=10,
+)
+@click.option(
+    "--training-2-effective-batch-size",
+    help="The effective batch size to use for training-2.",
+    default=3840,
 )
 @click.option(
     "--num-instructions-to-generate",
@@ -900,7 +910,9 @@ def run(
     sdg_serving_model_ca_cert_cm_key: typing.Optional[str] = None,
     force_pull: typing.Optional[bool] = False,
     training_1_epoch_num: int = 7,
+    training_1_effective_batch_size: int = 3840,
     training_2_epoch_num: int = 10,
+    training_2_effective_batch_size: int = 3840,
     num_instructions_to_generate: typing.Optional[int] = 30,
     dry_run: bool = False,
     sdg_in_cluster: bool = False,
@@ -946,7 +958,9 @@ def run(
         force_pull (bool): Force pull the data (sdg data and model) from the object store even if it
         already exists in the PVC.
         training_1_epoch_num (int): Number of epochs to train the model for during phase 1.
+        training_1_effective_batch_size (int): "The effective batch size to use for training 1.
         training_2_epoch_num (int): Number of epochs to train the model for during phase 2.
+        training_2_effective_batch_size (int): "The effective batch size to use for training 2.
         num_instructions_to_generate (int): Number of instructions to generate during SDG.
         dry_run (bool): Print the generated YAML to stdout instead of creating the resources.
         sdg_in_cluster (bool): Run SDG in the cluster. Default is retrieve SDG Data from an object store.
@@ -986,7 +1000,9 @@ def run(
     ctx.obj["sdg_serving_model_ca_cert_cm_key"] = sdg_serving_model_ca_cert_cm_key
     ctx.obj["force_pull"] = force_pull
     ctx.obj["training_1_epoch_num"] = training_1_epoch_num
+    ctx.obj["training_1_effective_batch_size"] = training_1_effective_batch_size
     ctx.obj["training_2_epoch_num"] = training_2_epoch_num
+    ctx.obj["training_2_effective_batch_size"] = training_2_effective_batch_size
     ctx.obj["num_instructions_to_generate"] = num_instructions_to_generate
     ctx.obj["dry_run"] = dry_run
     ctx.obj["sdg_in_cluster"] = sdg_in_cluster
@@ -3078,7 +3094,9 @@ def train(
     path_to_model = ctx.obj["model_to_train"]
     nproc_per_node: int = ctx.obj["nproc_per_node"]
     training_1_epoch_num: int = ctx.obj["training_1_epoch_num"]
+    training_1_effective_batch_size: int = ctx.obj["training_1_effective_batch_size"]
     training_2_epoch_num: int = ctx.obj["training_2_epoch_num"]
+    training_2_effective_batch_size: int = ctx.obj["training_2_effective_batch_size"]
     dry_run = ctx.obj["dry_run"]
 
     if training_phase is None:
@@ -3089,10 +3107,13 @@ def train(
         path_to_model = DATA_PVC_MODEL_PATH
 
     epoch_num = None
+    effective_batch_size = None
     if training_phase == "1":
         epoch_num = training_1_epoch_num
+        effective_batch_size = training_1_effective_batch_size
     elif training_phase == "2":
         epoch_num = training_2_epoch_num
+        effective_batch_size = training_2_effective_batch_size
 
     logger.info("Running multi-phased distributed training phase %s", training_phase)
     worker_replicas = PYTORCH_NNODES - 1
@@ -3106,6 +3127,7 @@ def train(
             image=RHELAI_IMAGE,
             worker_replicas=worker_replicas,
             epoch_num=epoch_num,
+            effective_batch_size=effective_batch_size,
             phase_num=training_phase,
             data_pvc_model_path=DATA_PVC_MODEL_PATH,
             data_pvc_sdg_path=DATA_PVC_SDG_PATH,

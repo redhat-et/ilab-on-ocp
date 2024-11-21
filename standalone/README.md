@@ -424,8 +424,10 @@ evaluation
 * `--force-pull`: Force pull the data (sdg data, model and taxonomy) from the object store even if it already
   exists in the PVC. **Optional** - Default: false.
 * `--training-1-epoch-num`: The number of epochs to train the model for phase 1. **Optional** - Default: 7.
+* `--training-1-effective-batch-size`: The effective batch size to use for training-1. **Optional** - Default: 3840
 * `--training-2-epoch-num`: The number of epochs to train the model for phase 2. **Optional** -
   Default: 10.
+* `--training-2-effective-batch-size`: The effective batch size to use for training-2. **Optional** - Default: 3840
 * `--eval-type`: The evaluation type to use. **Optional** - Default: `mt-bench`. Available options:
   `mt-bench`, `final`.
 * `--dry-run`: Print the generated Kubernetes resources without executing them. **Optional** -
