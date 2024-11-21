@@ -77,27 +77,8 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 		test.T().Logf("Storage class is not provided. Using default %s", ilabStorageClassName)
 	}
 
-	// Create a namespace
-	test_namespace, test_namespace_exists := GetTestNamespace()
-	var namespace *corev1.Namespace
-
-	if !test_namespace_exists {
-		namespace = test.NewTestNamespace()
-	} else {
-		_, namespace_exists_err := test.Client().Core().CoreV1().Namespaces().Get(test.Ctx(), test_namespace, metav1.GetOptions{})
-
-		if namespace_exists_err != nil {
-
-			test.T().Logf("%s namespace doesn't exists. Creating ...", test_namespace)
-			namespace = CreateTestNamespaceWithName(test, test_namespace)
-
-		} else {
-			namespace = GetNamespaceWithName(test, test_namespace)
-			test.T().Logf("Using the namespace name which is provided using environment variable..")
-		}
-	}
-
-	defer test.Client().Core().CoreV1().Namespaces().Delete(test.Ctx(), namespace.Name, metav1.DeleteOptions{})
+	// Create a namespace or retrieve existing namespace based on env variable
+	namespace := test.CreateOrGetTestNamespace()
 
 	// Create configmap to store standalone script and mount in workbench pod
 	workingDirectory, err := os.Getwd()

@@ -6,7 +6,7 @@ toolchain go1.21.5
 
 require (
 	github.com/onsi/gomega v1.31.1
-	github.com/project-codeflare/codeflare-common v0.0.0-20241108084652-0d76fd215a22
+	github.com/project-codeflare/codeflare-common v0.0.0-20241121090634-e99e941c6921
 	k8s.io/api v0.29.2
 	k8s.io/apimachinery v0.29.2
 )
