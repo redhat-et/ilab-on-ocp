@@ -38,6 +38,21 @@ const (
 	STANDALONE_FILE_PATH        = "../../../standalone/standalone.py"
 )
 
+// sdg default configs
+const (
+	SDG_PIPELINE_DIR = "/usr/share/instructlab/sdg/pipelines/agentic"
+	// We use a reduced sample size for skills recipe to reduce
+	// sdg training times. For a production level test run, set
+	// SDG_SAMPLING_SIZE to 1.0
+	SDG_SAMPLING_SIZE = "0.0002"
+)
+
+// test suite configs
+const (
+	TEST_APP_LABEL           = "ilab-on-ocp-e2e"
+	DEFAULT_TEST_RUN_TIMEOUT = 10 * time.Hour
+)
+
 func TestInstructlabTrainingOnRhoai(t *testing.T) {
 	instructlabDistributedTrainingOnRhoai(t, 1)
 }
@@ -46,12 +61,21 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 	test := With(t)
 
 	// Pre-requisites :
-
 	rhelaiWorkbenchImage, rhelaiWorkbenchImageExists := GetRhelaiWorkbenchImage()
 	if !rhelaiWorkbenchImageExists {
 		rhelaiWorkbenchImage = ILAB_RHELAI_WORKBENCH_IMAGE
 
 		test.T().Logf("RHELAI workbench image is not provided as environment variable. Using workbench image: %s", ILAB_RHELAI_WORKBENCH_IMAGE)
+	}
+
+	timeout := DEFAULT_TEST_RUN_TIMEOUT
+
+	inputTimeout, timeoutProvided := os.LookupEnv("TEST_RUN_TIMEOUT")
+	if timeoutProvided {
+		var err error
+		timeout, err = time.ParseDuration(inputTimeout)
+		test.Expect(err).NotTo(HaveOccurred())
+		test.T().Logf("Provided timeout of %s will be used", timeout.String())
 	}
 
 	// Get S3 bucket credentials using environment variables
@@ -88,6 +112,7 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 	configMap := map[string][]byte{
 		"standalone.py": fileContent,
 	}
+
 	createdCM := CreateConfigMap(test, namespace.Name, configMap)
 	defer test.Client().Core().CoreV1().ConfigMaps(namespace.Name).Delete(test.Ctx(), createdCM.Name, metav1.DeleteOptions{})
 
@@ -173,6 +198,9 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 	clusterRoleBinding := &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: "test-crb-",
+			Labels: map[string]string{
+				"app": TEST_APP_LABEL,
+			},
 		},
 		Subjects: []rbacv1.Subject{
 			{
@@ -196,6 +224,9 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: "test-secret-",
 			Namespace:    namespace.Name,
+			Labels: map[string]string{
+				"app": TEST_APP_LABEL,
+			},
 		},
 		Type: corev1.SecretTypeOpaque,
 		StringData: map[string]string{
@@ -212,6 +243,7 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 	test.Expect(err).ToNot(HaveOccurred())
 	test.T().Logf("Secret '%s' created successfully\n", createdSecret.Name)
 
+	sdgServingModelSecret := CreateSDGServingModelSecret(test, namespace.Name)
 	judgeServingModelSecret := CreateJudgeServingModelSecret(test, namespace.Name)
 
 	// Create pod resource using workbench image to run standalone script
@@ -219,9 +251,13 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: "test-workbench-pod-",
 			Namespace:    namespace.Name,
+			Labels: map[string]string{
+				"app": TEST_APP_LABEL,
+			},
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: createdSA.Name,
+			RestartPolicy:      "OnFailure",
 			Containers: []corev1.Container{
 				{
 					Name:  "workbench-container",
@@ -329,11 +365,14 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 						"python3", "/home/standalone.py", "run",
 						"--namespace", namespace.Name,
 						"--judge-serving-model-secret", judgeServingModelSecret.Name,
+						"--sdg-serving-model-secret", sdgServingModelSecret.Name,
+						"--sdg-in-cluster",
+						"--sdg-pipeline", SDG_PIPELINE_DIR,
+						"--sdg-sampling-size", GetSDGSamplingSize(),
 						"--nproc-per-node", strconv.Itoa(numGpus),
 						"--storage-class", ilabStorageClassName,
 						"--sdg-object-store-secret", createdSecret.Name,
-						// "--training-1-epoch-num", strconv.Itoa(1),
-						// "--training-2-epoch-num", strconv.Itoa(1),
+						"--taxonomy-repo-pr", "-1",
 						"--force-pull",
 					},
 				},
@@ -360,7 +399,7 @@ func instructlabDistributedTrainingOnRhoai(t *testing.T, numGpus int) {
 		workbenchPod, err = test.Client().Core().CoreV1().Pods(namespace.Name).Get(test.Ctx(), createdPod.Name, metav1.GetOptions{})
 		test.Expect(err).To(BeNil())
 		return workbenchPod.Status.Phase
-	}, 180*time.Minute, 2*time.Second).Should(Equal(corev1.PodSucceeded))
+	}, timeout, 2*time.Second).Should(Equal(corev1.PodSucceeded))
 }
 
 func CreateJudgeServingModelSecret(test Test, namespace string) *corev1.Secret {
@@ -400,6 +439,46 @@ func CreateJudgeServingModelSecret(test Test, namespace string) *corev1.Secret {
 	return judgeServingModelSecret
 }
 
+func CreateSDGServingModelSecret(test Test, namespace string) *corev1.Secret {
+	// Teacher model details like endpoint, api-key, model-name, ca certs, ...etc should be provided via k8s secret
+	// we need the secret name so the standalone.py script can fetch the details from that secret.
+	// Get Teacher model server credentials using environment variables
+	sdgDataApiKeySecretKey := "api_key"
+	sdgDataEndpointSecretKey := "endpoint"
+	sdgDataModelSecretKey := "model"
+	sdgServingModelApiKeyEnvVar := "SDG_SERVING_MODEL_API_KEY"
+	sdgServingModelNameEnvVar := "SDG_NAME"
+	sdgServingModelEndpointEnvVar := "SDG_ENDPOINT"
+	sdgServingCaCertEnvVar := "SDG_CA_CERT"
+	sdgServingCaCertCmKeyEnvVar := "SDG_CA_CERT_CM_KEY"
+	sdgServingCaCertFromOpenShiftEnvVar := "SDG_CA_CERT_FROM_OPENSHIFT"
+	sdgServingModelApiKey, sdgServingModelApiKeyExists := os.LookupEnv(sdgServingModelApiKeyEnvVar)
+	sdgServingModelName, sdgServingModelNameExists := os.LookupEnv(sdgServingModelNameEnvVar)
+	sdgServingModelEndpoint, sdgServingModelEndpointExists := os.LookupEnv(sdgServingModelEndpointEnvVar)
+	sdgServingCaCertFromOpenShift, sdgServingCaCertFromOpenShiftExists := os.LookupEnv(sdgServingCaCertFromOpenShiftEnvVar)
+
+	test.Expect(sdgServingModelApiKeyExists).To(BeTrue(), fmt.Sprintf("please provide sdg serving model api key using env variable %s", sdgServingModelApiKeyEnvVar))
+	test.Expect(sdgServingModelNameExists).To(BeTrue(), fmt.Sprintf("please provide sdg serving model name using env variable %s", sdgServingModelNameEnvVar))
+	test.Expect(sdgServingModelEndpointExists).To(BeTrue(), fmt.Sprintf("please provide sdg serving model endpoint using env variable %s", sdgServingModelEndpointEnvVar))
+
+	sdgServingDetails := map[string]string{
+		sdgDataApiKeySecretKey:   sdgServingModelApiKey,
+		sdgDataEndpointSecretKey: sdgServingModelEndpoint,
+		sdgDataModelSecretKey:    sdgServingModelName,
+	}
+
+	if sdgServingCaCertFromOpenShiftExists && sdgServingCaCertFromOpenShift == "true" {
+		test.T().Logf("Using OpenShift CA as SDG CA certificate")
+		sdgServingDetails[sdgServingCaCertEnvVar] = "kube-root-ca.crt"
+		sdgServingDetails[sdgServingCaCertCmKeyEnvVar] = "ca.crt"
+	} else {
+		test.T().Logf("Env variable '%s' not defined or not set to `true`, SDG CA certificate ConfigMap is not provided", sdgServingCaCertFromOpenShiftEnvVar)
+	}
+
+	sdgServingModelSecret := CreateSecret(test, namespace, sdgServingDetails)
+	return sdgServingModelSecret
+}
+
 func GetRhelaiWorkbenchImage() (string, bool) {
 	data_key, exists := os.LookupEnv("RHELAI_WORKBENCH_IMAGE")
 	return data_key, exists
@@ -431,6 +510,14 @@ func GetTestServiceAccount() (string, bool) {
 	return data_key, exists
 }
 
+func GetSDGSamplingSize() string {
+	data_key, exists := os.LookupEnv("SDG_SAMPLING_SIZE")
+	if !exists {
+		return SDG_SAMPLING_SIZE
+	}
+	return data_key
+}
+
 func CreateServiceAccountWithName(t Test, namespace string, name string) *corev1.ServiceAccount {
 	t.T().Helper()
 
@@ -442,6 +529,9 @@ func CreateServiceAccountWithName(t Test, namespace string, name string) *corev1
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
+			Labels: map[string]string{
+				"app": TEST_APP_LABEL,
+			},
 		},
 	}
 	serviceAccount, err := t.Client().Core().CoreV1().ServiceAccounts(namespace).Create(t.Ctx(), serviceAccount, metav1.CreateOptions{})

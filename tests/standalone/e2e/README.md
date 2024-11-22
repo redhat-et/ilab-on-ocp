@@ -25,6 +25,13 @@
 * `AWS_SECRET_ACCESS_KEY` - Storage bucket secret key
 * `AWS_STORAGE_BUCKET` - Storage bucket name
 * `SDG_OBJECT_STORE_DATA_KEY` - Path in the storage bucket where SDG bundle is located
+* `SDG_SERVING_MODEL_API_KEY` - Teacher model api key
+* `SDG_NAME` - Teacher model name
+* `SDG_ENDPOINT` - Teacher model endpoint
+* `SDG_CA_CERT` - Name of the configmap that contains the CA Cert bundle for the Teacher model
+* `SDG_CA_CERT_CM_KEY` - The Configmap key that contains the CA cert bundle specified via `SDG_CA_CERT`
+* `SDG_CA_CERT_FROM_OPENSHIFT` - Set to `true` if the CA Cert can be fetched from Openshift. This will automatically utilize `kube-root-ca.crt` that is provisioned within every namespace. Take precedence over `SDG_CA_CERT` and `SDG_CA_CERT_CM_KEY`.
+* `SDG_SAMPLING_SIZE` (Optional) - Adjusts the sampling used for the skills data recipe during SDG phase, should be a percentage in decimal form. Default is `0.0002`.
 
 ### Environment variables for connection to Judge model
 
@@ -39,6 +46,7 @@
 * `TEST_ILAB_STORAGE_CLASS_NAME` (Optional) - Specify name of StorageClass which supports ReadWriteMany access mode. If not specified then test assumes StorageClass `nfs-csi` to exist.
 * `RHELAI_WORKBENCH_IMAGE` (Optional) - Specify Workbench image to be used to run Standalone tool. If not specified then test uses Workbench image `quay.io/opendatahub/workbench-images:jupyter-datascience-ubi9-python-3.11-20241004-609ffb8`.
 Provided image should contain `click==8.1.7` and `kubernetes==26.1.0` packages.
+* `TEST_RUN_TIMEOUT` (Optional) - Specify the timeout for the test. Requires a [parsed duration string](https://pkg.go.dev/time#ParseDuration). Default is 10 hours.
 
 ## Running Tests
 
