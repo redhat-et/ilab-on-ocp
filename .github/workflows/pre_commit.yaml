@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Needed for HEAD to exists
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -45,3 +47,14 @@ jobs:
         run: |
           pipenv run make pipeline
           git diff --exit-code || (echo "Pipeline is not up-to-date. Please run 'make pipeline' and commit the changes." && exit 1)
+
+      - name: test if standalone.py was updated and not standalone.tpl (no components file(s) updated)
+        if: "!contains(github.event.pull_request.labels.*.name, 'ignore-standalone-change')"
+        run: |
+          files_changed=$(git diff --name-only HEAD^)
+          echo "Files changed: $files_changed"
+          if [[ $files_changed == *"standalone.py"* && $files_changed != *"standalone.tpl"* && $files_changed != *"components.py"* ]]; then
+            echo "standalone.py was updated but not standalone.tpl."
+            echo "Please update standalone.tpl and run 'make standalone'."
+            exit 1
+          fi
