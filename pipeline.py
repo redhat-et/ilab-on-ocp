@@ -99,7 +99,6 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
     # Imports for evaluation
     from eval.final import run_final_eval_op
     from eval.mt_bench import run_mt_bench_op
-    from utils import list_models_in_directory_op
 
     @dsl.pipeline(
         display_name="InstructLab",
@@ -350,22 +349,10 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             mount_path="/output",
         )
 
-        models_list_2_task = list_models_in_directory_op(
-            models_folder="/output/phase_2/model/hf_format",
-        )
-        models_list_2_task.set_caching_options(False)
-        models_list_2_task.after(training_phase_2)
-        mount_pvc(
-            task=models_list_2_task,
-            pvc_name=output_pvc_task.output,
-            mount_path="/output",
-        )
-
         # MT_Bench Evaluation of models
 
         run_mt_bench_task = run_mt_bench_op(
-            models_list=models_list_2_task.output,
-            models_path_prefix="/output/phase_2/model/hf_format",
+            models_folder="/output/phase_2/model/hf_format",
             max_workers=mt_bench_max_workers,
             merge_system_user_message=mt_bench_merge_system_user_message,
         )
@@ -379,6 +366,7 @@ def pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         run_mt_bench_task.set_accelerator_type("nvidia.com/gpu")
         run_mt_bench_task.set_accelerator_limit(1)
         run_mt_bench_task.set_caching_options(False)
+        run_mt_bench_task.after(training_phase_2)
         use_config_map_as_env(
             run_mt_bench_task,
             JUDGE_CONFIG_MAP,
@@ -530,7 +518,7 @@ def gen_standalone():
         "exec-sdg-op": 'sdg_op(num_instructions_to_generate={num_instructions_to_generate}, pipeline="{sdg_pipeline}", repo_branch="{exec_git_clone_op_repo_branch or ""}", repo_pr={exec_git_clone_op_repo_pr or 0}, taxonomy_path="{TAXONOMY_DATA_PATH}", sdg_path="{DATA_PVC_SDG_PATH}", sdg_sampling_size={sdg_sampling_size})',
         "exec-git-clone-op": {},
         "exec-huggingface-importer-op": 'huggingface_importer_op(repo_name="{REPO_GRANITE_7B_IMAGE}", model_path="{DATA_PVC_MODEL_PATH}")',
-        "exec-run-mt-bench-op": 'run_mt_bench_op(best_score_file="{MT_BENCH_SCORES_PATH}",output_path="{MT_BENCH_OUTPUT_PATH}",models_folder="{CANDIDATE_MODEL_PATH_PREFIX}",models_path_prefix="{CANDIDATE_MODEL_PATH_PREFIX}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE})',
+        "exec-run-mt-bench-op": 'run_mt_bench_op(best_score_file="{MT_BENCH_SCORES_PATH}",output_path="{MT_BENCH_OUTPUT_PATH}",models_folder="{CANDIDATE_MODEL_PATH_PREFIX}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE})',
         "exec-run-final-eval-op": 'run_final_eval_op(mmlu_branch_output="{MMLU_BRANCH_SCORES_PATH}", mt_bench_branch_output="{MT_BENCH_BRANCH_SCORES_PATH}", candidate_model="{CANDIDATE_MODEL_PATH}", taxonomy_path="{TAXONOMY_PATH}", sdg_path="{DATA_PVC_SDG_PATH}", base_branch="", candidate_branch="", base_model_dir="{DATA_PVC_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE}, few_shots={FEW_SHOTS}, batch_size="{BATCH_SIZE}")',
     }
 
