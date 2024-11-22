@@ -1565,15 +1565,13 @@ def create_eval_job(
 from typing import *
 
 def run_mt_bench_op(
-    models_path_prefix: str,
     merge_system_user_message: bool,
     # generate_answers,judgment uses a magic word for its mt_bench evaluator  - 'auto'
     # with 'auto', number of gpus allocated for serving is calculated based on environment
     # https://github.com/instructlab/eval/blob/main/src/instructlab/eval/mt_bench.py#L36
     max_workers: str,
+    models_folder: str,
     output_path: str = "/output/mt_bench_data.json",
-    models_list: List[str] = None,
-    models_folder: Optional[str] = None,
     best_score_file: Optional[str] = None,
 ) -> NamedTuple("outputs", best_model=str, best_score=float):
     import json
@@ -1692,8 +1690,7 @@ def run_mt_bench_op(
 
     print(f"GPU Available: {gpu_available}, {gpu_name}")
 
-    if models_list is None and models_folder:
-        models_list = os.listdir(models_folder)
+    models_list = os.listdir(models_folder)
 
     judge_api_key = os.getenv("JUDGE_API_KEY", "")
     judge_model_name = os.getenv("JUDGE_NAME")
@@ -1718,7 +1715,7 @@ def run_mt_bench_op(
     models_list = [model for model in models_list if not model.endswith(".jsonl")]
     for model_name in models_list:
         print(f"Serving candidate model: {model_name}")
-        model_path = f"{models_path_prefix}/{model_name}"
+        model_path = f"{models_folder}/{model_name}"
 
         vllm_process, vllm_server = launch_vllm(model_path, gpu_count)
 
@@ -1770,18 +1767,18 @@ def run_mt_bench_op(
 
     # Rename the best model directory to "candidate_model" for the next step
     # So we know which model to use for the final evaluation
-    if os.path.exists(os.path.join(models_path_prefix, "candidate_model")):
+    if os.path.exists(os.path.join(models_folder, "candidate_model")):
         print("candidate_model already exists. Skipping renaming")
     else:
         os.rename(
-            os.path.join(models_path_prefix, best_model),
-            os.path.join(models_path_prefix, "candidate_model"),
+            os.path.join(models_folder, best_model),
+            os.path.join(models_folder, "candidate_model"),
         )
 
     return outputs(best_model=best_model, best_score=best_score)
 """
     exec_run_mt_bench_op_args = f"""
-run_mt_bench_op(best_score_file="{MT_BENCH_SCORES_PATH}",output_path="{MT_BENCH_OUTPUT_PATH}",models_folder="{CANDIDATE_MODEL_PATH_PREFIX}",models_path_prefix="{CANDIDATE_MODEL_PATH_PREFIX}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE})
+run_mt_bench_op(best_score_file="{MT_BENCH_SCORES_PATH}",output_path="{MT_BENCH_OUTPUT_PATH}",models_folder="{CANDIDATE_MODEL_PATH_PREFIX}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE})
 """
     exec_run_final_eval_op_command = """
 from typing import *

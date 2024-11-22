@@ -1,6 +1,5 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error,no-member,missing-function-docstring
-from typing import List
 
 from kfp import dsl
 
@@ -23,14 +22,6 @@ def pvc_to_model_op(model: dsl.Output[dsl.Model], pvc_path: str):
         ["/bin/sh", "-c"],
         [f"cp -r {pvc_path} {model.path}"],
     )
-
-
-@dsl.component(base_image=PYTHON_IMAGE, install_kfp_package=False)
-def list_models_in_directory_op(models_folder: str) -> List[str]:
-    import os
-
-    models = os.listdir(models_folder)
-    return models
 
 
 @dsl.component(
