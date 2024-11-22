@@ -503,7 +503,7 @@ def gen_standalone():
 
     Example usage: ''' $ python pipeline.py gen-standalone '''
     """
-    from os import path
+    from os import chmod, path
 
     import yaml
     from jinja2 import Template
@@ -595,6 +595,8 @@ def gen_standalone():
     standalone_script_path = path.join("standalone", GENERATED_STANDALONE_FILE_NAME)
     with open(standalone_script_path, "w", encoding="utf-8") as output_file:
         output_file.write(rendered_code)
+    # Make the rendered file executable
+    chmod(standalone_script_path, 0o755)
 
     click.echo(f"Successfully generated '{standalone_script_path}' script.")
 
