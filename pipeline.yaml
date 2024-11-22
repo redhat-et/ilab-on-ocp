@@ -304,38 +304,6 @@ components:
           artifactType:
             schemaTitle: system.Dataset
             schemaVersion: 0.0.1
-  comp-kubectl-apply-op:
-    executorLabel: exec-kubectl-apply-op
-    inputDefinitions:
-      parameters:
-        manifest:
-          parameterType: STRING
-  comp-kubectl-apply-op-2:
-    executorLabel: exec-kubectl-apply-op-2
-    inputDefinitions:
-      parameters:
-        manifest:
-          parameterType: STRING
-  comp-kubectl-wait-for-op:
-    executorLabel: exec-kubectl-wait-for-op
-    inputDefinitions:
-      parameters:
-        condition:
-          parameterType: STRING
-        kind:
-          parameterType: STRING
-        name:
-          parameterType: STRING
-  comp-kubectl-wait-for-op-2:
-    executorLabel: exec-kubectl-wait-for-op-2
-    inputDefinitions:
-      parameters:
-        condition:
-          parameterType: STRING
-        kind:
-          parameterType: STRING
-        name:
-          parameterType: STRING
   comp-list-models-in-directory-op:
     executorLabel: exec-list-models-in-directory-op
     inputDefinitions:
@@ -420,12 +388,6 @@ components:
           defaultValue: 42.0
           isOptional: true
           parameterType: NUMBER_INTEGER
-    outputDefinitions:
-      parameters:
-        manifest:
-          parameterType: STRING
-        name:
-          parameterType: STRING
   comp-pytorchjob-manifest-op-2:
     executorLabel: exec-pytorchjob-manifest-op-2
     inputDefinitions:
@@ -476,12 +438,6 @@ components:
           defaultValue: 42.0
           isOptional: true
           parameterType: NUMBER_INTEGER
-    outputDefinitions:
-      parameters:
-        manifest:
-          parameterType: STRING
-        name:
-          parameterType: STRING
   comp-run-final-eval-op:
     executorLabel: exec-run-final-eval-op
     inputDefinitions:
@@ -751,40 +707,6 @@ deploymentSpec:
         - /bin/sh
         - -c
         image: registry.access.redhat.com/ubi9/toolbox
-    exec-kubectl-apply-op:
-      container:
-        args:
-        - echo "{{$.inputs.parameters['manifest']}}" | kubectl apply -f -
-        command:
-        - /bin/sh
-        - -c
-        image: registry.redhat.io/openshift4/ose-cli
-    exec-kubectl-apply-op-2:
-      container:
-        args:
-        - echo "{{$.inputs.parameters['manifest']}}" | kubectl apply -f -
-        command:
-        - /bin/sh
-        - -c
-        image: registry.redhat.io/openshift4/ose-cli
-    exec-kubectl-wait-for-op:
-      container:
-        args:
-        - kubectl wait --for={{$.inputs.parameters['condition']}} {{$.inputs.parameters['kind']}}/{{$.inputs.parameters['name']}}
-          --timeout=24h
-        command:
-        - /bin/sh
-        - -c
-        image: registry.redhat.io/openshift4/ose-cli
-    exec-kubectl-wait-for-op-2:
-      container:
-        args:
-        - kubectl wait --for={{$.inputs.parameters['condition']}} {{$.inputs.parameters['kind']}}/{{$.inputs.parameters['name']}}
-          --timeout=24h
-        command:
-        - /bin/sh
-        - -c
-        image: registry.redhat.io/openshift4/ose-cli
     exec-list-models-in-directory-op:
       container:
         args:
@@ -849,28 +771,27 @@ deploymentSpec:
           \ = 2,\n    num_epochs: int = 2,\n    effective_batch_size: int = 3840,\n\
           \    learning_rate: float = 1e-4,\n    num_warmup_steps: int = 800,\n  \
           \  save_samples: int = 0,\n    max_batch_len: int = 20000,\n    seed: int\
-          \ = 42,\n) -> NamedTuple(\"outputs\", manifest=str, name=str):\n    import\
-          \ inspect\n    import os\n\n    def list_phase1_final_model():\n       \
-          \ model_dir = \"/output/phase_1/model/hf_format\"\n        models = os.listdir(model_dir)\n\
-          \        newest_idx = max(\n            (os.path.getmtime(f\"{model_dir}/{model}\"\
-          ), i)\n            for i, model in enumerate(models)\n        )[-1]\n  \
-          \      newest_model = models[newest_idx]\n        return f\"{model_dir}/{newest_model}\"\
-          \n\n    Outputs = NamedTuple(\"outputs\", manifest=str, name=str)\n    name\
-          \ = f\"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}\"\n\n    if\
-          \ phase_num == 1:\n        path_to_model = \"/input_model\"\n        path_to_data\
-          \ = \"/input_data/knowledge/data.jsonl\"\n    elif phase_num == 2:\n   \
-          \     path_to_model = list_phase1_final_model()\n        path_to_data =\
-          \ \"/input_data/skills/data.jsonl\"\n    else:\n        raise RuntimeError(f\"\
+          \ = 42,\n):\n    import inspect\n    import os\n    import time\n\n    import\
+          \ kubernetes\n    import urllib3\n    import yaml\n\n    def list_phase1_final_model():\n\
+          \        model_dir = \"/output/phase_1/model/hf_format\"\n        models\
+          \ = os.listdir(model_dir)\n        newest_idx = max(\n            (os.path.getmtime(f\"\
+          {model_dir}/{model}\"), i)\n            for i, model in enumerate(models)\n\
+          \        )[-1]\n        newest_model = models[newest_idx]\n        return\
+          \ f\"{model_dir}/{newest_model}\"\n\n    name = f\"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}\"\
+          \n\n    if phase_num == 1:\n        path_to_model = \"/input_model\"\n \
+          \       path_to_data = \"/input_data/knowledge/data.jsonl\"\n    elif phase_num\
+          \ == 2:\n        path_to_model = list_phase1_final_model()\n        path_to_data\
+          \ = \"/input_data/skills/data.jsonl\"\n    else:\n        raise RuntimeError(f\"\
           Unsupported value of {phase_num=}\")\n\n    image = \"quay.io/redhat-et/ilab:1.2\"\
           \n\n    manifest = inspect.cleandoc(\n        f\"\"\"\n        apiVersion:\
           \ kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n       \
-          \   name: {name}\n        spec:\n          nprocPerNode: \\\\\"{nproc_per_node}\\\
-          \\\"\n          pytorchReplicaSpecs:\n            Master:\n            \
-          \  replicas: 1\n              restartPolicy: OnFailure\n              template:\n\
-          \                metadata:\n                  annotations:\n           \
-          \         sidecar.istio.io/inject: 'false'\n                spec:\n    \
-          \              containers:\n                    - args:\n              \
-          \          - |\n                          echo \"Running phase {phase_num}\"\
+          \   name: {name}\n        spec:\n          nprocPerNode: \\\"{nproc_per_node}\\\
+          \"\n          pytorchReplicaSpecs:\n            Master:\n              replicas:\
+          \ 1\n              restartPolicy: OnFailure\n              template:\n \
+          \               metadata:\n                  annotations:\n            \
+          \        sidecar.istio.io/inject: 'false'\n                spec:\n     \
+          \             containers:\n                    - args:\n               \
+          \         - |\n                          echo \"Running phase {phase_num}\"\
           \n                          echo \"Using {path_to_model} model for training\"\
           \n                          echo \"Using {path_to_data} data for training\"\
           \n                          mkdir -p /output/phase_{phase_num}/model;\n\
@@ -902,40 +823,40 @@ deploymentSpec:
           \                          name: model\n                          readOnly:\
           \ true\n                        - mountPath: /output\n                 \
           \         name: output\n                      env:\n                   \
-          \     - name: NNODES\n                          value: \\\\\"{nnodes}\\\\\
-          \"\n                        - name: NPROC_PER_NODE\n                   \
-          \       value: \\\\\"{nproc_per_node}\\\\\"\n                        - name:\
-          \ XDG_CACHE_HOME\n                          value: /tmp\n              \
-          \          - name: TRITON_CACHE_DIR\n                          value: /tmp\n\
-          \                        - name: HF_HOME\n                          value:\
-          \ /tmp\n                        - name: TRANSFORMERS_CACHE\n           \
-          \               value: /tmp\n                      resources:\n        \
-          \                requests:\n                          cpu: 8\n         \
-          \                 \"nvidia.com/gpu\": {nproc_per_node}\n               \
-          \         limits:\n                          cpu: 8\n                  \
-          \        \"nvidia.com/gpu\": {nproc_per_node}\n                  volumes:\n\
-          \                    - name: input-data\n                      persistentVolumeClaim:\n\
-          \                        claimName: {input_pvc_name}\n                 \
-          \   - name: model\n                      persistentVolumeClaim:\n      \
-          \                  claimName: {model_pvc_name}\n                    - name:\
-          \ output\n                      persistentVolumeClaim:\n               \
-          \         claimName: {output_pvc_name}\n            Worker:\n          \
-          \    replicas: {nnodes-1}\n              restartPolicy: OnFailure\n    \
-          \          template:\n                metadata:\n                  annotations:\n\
-          \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
-          \                  containers:\n                    - args:\n          \
-          \              - |\n                          echo \"Running phase {phase_num}\"\
-          \n                          echo \"Using {path_to_model} model for training\"\
-          \n                          echo \"Using {path_to_data} data for training\"\
-          \n                          mkdir -p /tmp/model;\n                     \
-          \     torchrun --nnodes {nnodes} \\\n                            --nproc_per_node\
-          \ {nproc_per_node} \\\n                            --node_rank \\$(RANK)\
-          \ \\\n                            --rdzv_endpoint \\$(MASTER_ADDR):\\$(MASTER_PORT)\
-          \ \\\n                            -m instructlab.training.main_ds \\\n \
-          \                           --model_name_or_path={path_to_model} \\\n  \
-          \                          --data_path={path_to_data} \\\n             \
-          \               --output_dir=/tmp/model \\\n                           \
-          \ --num_epochs={num_epochs} \\\n                            --effective_batch_size={effective_batch_size}\
+          \     - name: NNODES\n                          value: \\\"{nnodes}\\\"\n\
+          \                        - name: NPROC_PER_NODE\n                      \
+          \    value: \\\"{nproc_per_node}\\\"\n                        - name: XDG_CACHE_HOME\n\
+          \                          value: /tmp\n                        - name:\
+          \ TRITON_CACHE_DIR\n                          value: /tmp\n            \
+          \            - name: HF_HOME\n                          value: /tmp\n  \
+          \                      - name: TRANSFORMERS_CACHE\n                    \
+          \      value: /tmp\n                      resources:\n                 \
+          \       requests:\n                          cpu: 8\n                  \
+          \        \"nvidia.com/gpu\": {nproc_per_node}\n                        limits:\n\
+          \                          cpu: 8\n                          \"nvidia.com/gpu\"\
+          : {nproc_per_node}\n                  volumes:\n                    - name:\
+          \ input-data\n                      persistentVolumeClaim:\n           \
+          \             claimName: {input_pvc_name}\n                    - name: model\n\
+          \                      persistentVolumeClaim:\n                        claimName:\
+          \ {model_pvc_name}\n                    - name: output\n               \
+          \       persistentVolumeClaim:\n                        claimName: {output_pvc_name}\n\
+          \            Worker:\n              replicas: {nnodes-1}\n             \
+          \ restartPolicy: OnFailure\n              template:\n                metadata:\n\
+          \                  annotations:\n                    sidecar.istio.io/inject:\
+          \ 'false'\n                spec:\n                  containers:\n      \
+          \              - args:\n                        - |\n                  \
+          \        echo \"Running phase {phase_num}\"\n                          echo\
+          \ \"Using {path_to_model} model for training\"\n                       \
+          \   echo \"Using {path_to_data} data for training\"\n                  \
+          \        mkdir -p /tmp/model;\n                          torchrun --nnodes\
+          \ {nnodes} \\\n                            --nproc_per_node {nproc_per_node}\
+          \ \\\n                            --node_rank \\$(RANK) \\\n           \
+          \                 --rdzv_endpoint \\$(MASTER_ADDR):\\$(MASTER_PORT) \\\n\
+          \                            -m instructlab.training.main_ds \\\n      \
+          \                      --model_name_or_path={path_to_model} \\\n       \
+          \                     --data_path={path_to_data} \\\n                  \
+          \          --output_dir=/tmp/model \\\n                            --num_epochs={num_epochs}\
+          \ \\\n                            --effective_batch_size={effective_batch_size}\
           \ \\\n                            --learning_rate={learning_rate} \\\n \
           \                           --num_warmup_steps={num_warmup_steps} \\\n \
           \                           --save_samples={save_samples} \\\n         \
@@ -955,12 +876,12 @@ deploymentSpec:
           \    - mountPath: /output\n                          name: output\n    \
           \                      readOnly: true\n                      env:\n    \
           \                    - name: NNODES\n                          value: \\\
-          \\\"{nnodes}\\\\\"\n                        - name: NPROC_PER_NODE\n   \
-          \                       value: \\\\\"{nproc_per_node}\\\\\"\n          \
-          \              - name: XDG_CACHE_HOME\n                          value:\
-          \ /tmp\n                        - name: TRITON_CACHE_DIR\n             \
-          \             value: /tmp\n                        - name: HF_HOME\n   \
-          \                       value: /tmp\n                        - name: TRANSFORMERS_CACHE\n\
+          \"{nnodes}\\\"\n                        - name: NPROC_PER_NODE\n       \
+          \                   value: \\\"{nproc_per_node}\\\"\n                  \
+          \      - name: XDG_CACHE_HOME\n                          value: /tmp\n \
+          \                       - name: TRITON_CACHE_DIR\n                     \
+          \     value: /tmp\n                        - name: HF_HOME\n           \
+          \               value: /tmp\n                        - name: TRANSFORMERS_CACHE\n\
           \                          value: /tmp\n                      resources:\n\
           \                        requests:\n                          cpu: 8\n \
           \                         \"nvidia.com/gpu\": {nproc_per_node}\n       \
@@ -972,7 +893,65 @@ deploymentSpec:
           \                        claimName: {model_pvc_name}\n                 \
           \   - name: output\n                      persistentVolumeClaim:\n     \
           \                   claimName: {output_pvc_name}\n        \"\"\"\n    )\n\
-          \n    return Outputs(manifest, name)\n\n"
+          \n    try:\n        manifest_yaml = yaml.safe_load(manifest)\n    except\
+          \ yaml.YAMLError as exc:\n        raise RuntimeError(f\"Error parsing manifest:\
+          \ {exc}\") from exc\n\n    # Discover the namespace in which the pod is\
+          \ running\n    with open(\n        \"/var/run/secrets/kubernetes.io/serviceaccount/namespace\"\
+          , \"r\", encoding=\"utf-8\"\n    ) as f:\n        namespace = f.read().strip()\n\
+          \        print(f\"The pod is running in the namespace: {namespace}\")\n\n\
+          \    try:\n        kubernetes.config.load_kube_config()\n        print(\"\
+          Loaded kube config\")\n    except kubernetes.config.ConfigException:\n \
+          \       print(\"Failed to load kube config. Trying in-cluster config\")\n\
+          \        kubernetes.config.load_incluster_config()\n\n    api = kubernetes.client.CustomObjectsApi()\n\
+          \    try:\n        api.create_namespaced_custom_object(\n            group=\"\
+          kubeflow.org\",\n            version=\"v1\",\n            namespace=namespace,\n\
+          \            plural=\"pytorchjobs\",\n            body=manifest_yaml,\n\
+          \        )\n    except kubernetes.client.rest.ApiException as exc:\n   \
+          \     if exc.status == 409:\n            print(\n                \"{} '{}/{}'\
+          \ already exists.\".format(\n                    manifest_yaml[\"kind\"\
+          ],\n                    namespace,\n                    manifest_yaml[\"\
+          metadata\"][\"name\"],\n                )\n            )\n        else:\n\
+          \            raise\n\n    # Get the CR status and wait for it to be completed\n\
+          \    w = kubernetes.watch.Watch()\n    exit_flag = False\n    start_time\
+          \ = time.time()\n    timeout_seconds = 24 * 60 * 60  # 24 hours\n\n    while\
+          \ not exit_flag:  # Keep the watch active\n        if time.time() - start_time\
+          \ > timeout_seconds:\n            raise RuntimeError(\n                \"\
+          Timeout (24h) reached waiting for the PytorchJob to complete.\"\n      \
+          \      )\n\n        try:\n            print(\"Watching for PytorchJob\"\
+          )\n            for event in w.stream(\n                api.list_namespaced_custom_object,\n\
+          \                group=\"kubeflow.org\",\n                version=\"v1\"\
+          ,\n                namespace=namespace,\n                plural=\"pytorchjobs\"\
+          ,\n                timeout_seconds=60,  # Timeout after 1 minute\n     \
+          \       ):\n                pytorchjob_event = event[\"object\"]\n     \
+          \           if (\n                    pytorchjob_event[\"metadata\"][\"\
+          name\"]\n                    != manifest_yaml[\"metadata\"][\"name\"]\n\
+          \                ):\n                    continue\n                pytorchjob_name\
+          \ = pytorchjob_event[\"metadata\"][\"name\"]\n\n                if (\n \
+          \                   \"status\" not in pytorchjob_event\n               \
+          \     or \"conditions\" not in pytorchjob_event[\"status\"]\n          \
+          \      ):\n                    continue\n                print(\n      \
+          \              f\"PytorchJob: {pytorchjob_name} - {pytorchjob_event['status'].get('conditions',\
+          \ 'No conditions yet')}\"\n                )\n                for job_condition\
+          \ in reversed(pytorchjob_event[\"status\"][\"conditions\"]):\n         \
+          \           if job_condition[\"type\"] == \"Succeeded\":\n             \
+          \           print(\n                            f\"PytorchJob '{pytorchjob_name}'\
+          \ completed successfully: {job_condition['reason']}\"\n                \
+          \        )\n                        print(f\"Training phase {phase_num}\
+          \ completed.\")\n                        w.stop()\n                    \
+          \    exit_flag = True\n                        # Break here to avoid going\
+          \ into other conditions, we are done\n                        break\n  \
+          \                  elif job_condition[\"type\"] == \"Failed\":\n       \
+          \                 print(\n                            f\"PytorchJob '{pytorchjob_name}'\
+          \ failed: {job_condition['reason']}\"\n                        )\n     \
+          \                   w.stop()\n                        raise RuntimeError(\"\
+          Job failed.\")\n        except kubernetes.client.exceptions.ApiException\
+          \ as e:\n            print(f\"API exception occurred: {str(e)}\")\n    \
+          \        time.sleep(5)  # Backoff before retrying\n        # Catches the\
+          \ following error:\n        # urllib3.exceptions.ProtocolError: (\"Connection\
+          \ broken: InvalidChunkLength\n        except urllib3.exceptions.ProtocolError\
+          \ as e:\n            print(f\"Connection broken reconnecting the watcher\
+          \ {str(e)}\")\n            time.sleep(5)  # Backoff before retrying\n  \
+          \      finally:\n            w.stop()\n\n"
         image: quay.io/modh/odh-generic-data-science-notebook:v3-2024b-20241111
     exec-pytorchjob-manifest-op-2:
       container:
@@ -999,28 +978,27 @@ deploymentSpec:
           \ = 2,\n    num_epochs: int = 2,\n    effective_batch_size: int = 3840,\n\
           \    learning_rate: float = 1e-4,\n    num_warmup_steps: int = 800,\n  \
           \  save_samples: int = 0,\n    max_batch_len: int = 20000,\n    seed: int\
-          \ = 42,\n) -> NamedTuple(\"outputs\", manifest=str, name=str):\n    import\
-          \ inspect\n    import os\n\n    def list_phase1_final_model():\n       \
-          \ model_dir = \"/output/phase_1/model/hf_format\"\n        models = os.listdir(model_dir)\n\
-          \        newest_idx = max(\n            (os.path.getmtime(f\"{model_dir}/{model}\"\
-          ), i)\n            for i, model in enumerate(models)\n        )[-1]\n  \
-          \      newest_model = models[newest_idx]\n        return f\"{model_dir}/{newest_model}\"\
-          \n\n    Outputs = NamedTuple(\"outputs\", manifest=str, name=str)\n    name\
-          \ = f\"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}\"\n\n    if\
-          \ phase_num == 1:\n        path_to_model = \"/input_model\"\n        path_to_data\
-          \ = \"/input_data/knowledge/data.jsonl\"\n    elif phase_num == 2:\n   \
-          \     path_to_model = list_phase1_final_model()\n        path_to_data =\
-          \ \"/input_data/skills/data.jsonl\"\n    else:\n        raise RuntimeError(f\"\
+          \ = 42,\n):\n    import inspect\n    import os\n    import time\n\n    import\
+          \ kubernetes\n    import urllib3\n    import yaml\n\n    def list_phase1_final_model():\n\
+          \        model_dir = \"/output/phase_1/model/hf_format\"\n        models\
+          \ = os.listdir(model_dir)\n        newest_idx = max(\n            (os.path.getmtime(f\"\
+          {model_dir}/{model}\"), i)\n            for i, model in enumerate(models)\n\
+          \        )[-1]\n        newest_model = models[newest_idx]\n        return\
+          \ f\"{model_dir}/{newest_model}\"\n\n    name = f\"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}\"\
+          \n\n    if phase_num == 1:\n        path_to_model = \"/input_model\"\n \
+          \       path_to_data = \"/input_data/knowledge/data.jsonl\"\n    elif phase_num\
+          \ == 2:\n        path_to_model = list_phase1_final_model()\n        path_to_data\
+          \ = \"/input_data/skills/data.jsonl\"\n    else:\n        raise RuntimeError(f\"\
           Unsupported value of {phase_num=}\")\n\n    image = \"quay.io/redhat-et/ilab:1.2\"\
           \n\n    manifest = inspect.cleandoc(\n        f\"\"\"\n        apiVersion:\
           \ kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n       \
-          \   name: {name}\n        spec:\n          nprocPerNode: \\\\\"{nproc_per_node}\\\
-          \\\"\n          pytorchReplicaSpecs:\n            Master:\n            \
-          \  replicas: 1\n              restartPolicy: OnFailure\n              template:\n\
-          \                metadata:\n                  annotations:\n           \
-          \         sidecar.istio.io/inject: 'false'\n                spec:\n    \
-          \              containers:\n                    - args:\n              \
-          \          - |\n                          echo \"Running phase {phase_num}\"\
+          \   name: {name}\n        spec:\n          nprocPerNode: \\\"{nproc_per_node}\\\
+          \"\n          pytorchReplicaSpecs:\n            Master:\n              replicas:\
+          \ 1\n              restartPolicy: OnFailure\n              template:\n \
+          \               metadata:\n                  annotations:\n            \
+          \        sidecar.istio.io/inject: 'false'\n                spec:\n     \
+          \             containers:\n                    - args:\n               \
+          \         - |\n                          echo \"Running phase {phase_num}\"\
           \n                          echo \"Using {path_to_model} model for training\"\
           \n                          echo \"Using {path_to_data} data for training\"\
           \n                          mkdir -p /output/phase_{phase_num}/model;\n\
@@ -1052,40 +1030,40 @@ deploymentSpec:
           \                          name: model\n                          readOnly:\
           \ true\n                        - mountPath: /output\n                 \
           \         name: output\n                      env:\n                   \
-          \     - name: NNODES\n                          value: \\\\\"{nnodes}\\\\\
-          \"\n                        - name: NPROC_PER_NODE\n                   \
-          \       value: \\\\\"{nproc_per_node}\\\\\"\n                        - name:\
-          \ XDG_CACHE_HOME\n                          value: /tmp\n              \
-          \          - name: TRITON_CACHE_DIR\n                          value: /tmp\n\
-          \                        - name: HF_HOME\n                          value:\
-          \ /tmp\n                        - name: TRANSFORMERS_CACHE\n           \
-          \               value: /tmp\n                      resources:\n        \
-          \                requests:\n                          cpu: 8\n         \
-          \                 \"nvidia.com/gpu\": {nproc_per_node}\n               \
-          \         limits:\n                          cpu: 8\n                  \
-          \        \"nvidia.com/gpu\": {nproc_per_node}\n                  volumes:\n\
-          \                    - name: input-data\n                      persistentVolumeClaim:\n\
-          \                        claimName: {input_pvc_name}\n                 \
-          \   - name: model\n                      persistentVolumeClaim:\n      \
-          \                  claimName: {model_pvc_name}\n                    - name:\
-          \ output\n                      persistentVolumeClaim:\n               \
-          \         claimName: {output_pvc_name}\n            Worker:\n          \
-          \    replicas: {nnodes-1}\n              restartPolicy: OnFailure\n    \
-          \          template:\n                metadata:\n                  annotations:\n\
-          \                    sidecar.istio.io/inject: 'false'\n                spec:\n\
-          \                  containers:\n                    - args:\n          \
-          \              - |\n                          echo \"Running phase {phase_num}\"\
-          \n                          echo \"Using {path_to_model} model for training\"\
-          \n                          echo \"Using {path_to_data} data for training\"\
-          \n                          mkdir -p /tmp/model;\n                     \
-          \     torchrun --nnodes {nnodes} \\\n                            --nproc_per_node\
-          \ {nproc_per_node} \\\n                            --node_rank \\$(RANK)\
-          \ \\\n                            --rdzv_endpoint \\$(MASTER_ADDR):\\$(MASTER_PORT)\
-          \ \\\n                            -m instructlab.training.main_ds \\\n \
-          \                           --model_name_or_path={path_to_model} \\\n  \
-          \                          --data_path={path_to_data} \\\n             \
-          \               --output_dir=/tmp/model \\\n                           \
-          \ --num_epochs={num_epochs} \\\n                            --effective_batch_size={effective_batch_size}\
+          \     - name: NNODES\n                          value: \\\"{nnodes}\\\"\n\
+          \                        - name: NPROC_PER_NODE\n                      \
+          \    value: \\\"{nproc_per_node}\\\"\n                        - name: XDG_CACHE_HOME\n\
+          \                          value: /tmp\n                        - name:\
+          \ TRITON_CACHE_DIR\n                          value: /tmp\n            \
+          \            - name: HF_HOME\n                          value: /tmp\n  \
+          \                      - name: TRANSFORMERS_CACHE\n                    \
+          \      value: /tmp\n                      resources:\n                 \
+          \       requests:\n                          cpu: 8\n                  \
+          \        \"nvidia.com/gpu\": {nproc_per_node}\n                        limits:\n\
+          \                          cpu: 8\n                          \"nvidia.com/gpu\"\
+          : {nproc_per_node}\n                  volumes:\n                    - name:\
+          \ input-data\n                      persistentVolumeClaim:\n           \
+          \             claimName: {input_pvc_name}\n                    - name: model\n\
+          \                      persistentVolumeClaim:\n                        claimName:\
+          \ {model_pvc_name}\n                    - name: output\n               \
+          \       persistentVolumeClaim:\n                        claimName: {output_pvc_name}\n\
+          \            Worker:\n              replicas: {nnodes-1}\n             \
+          \ restartPolicy: OnFailure\n              template:\n                metadata:\n\
+          \                  annotations:\n                    sidecar.istio.io/inject:\
+          \ 'false'\n                spec:\n                  containers:\n      \
+          \              - args:\n                        - |\n                  \
+          \        echo \"Running phase {phase_num}\"\n                          echo\
+          \ \"Using {path_to_model} model for training\"\n                       \
+          \   echo \"Using {path_to_data} data for training\"\n                  \
+          \        mkdir -p /tmp/model;\n                          torchrun --nnodes\
+          \ {nnodes} \\\n                            --nproc_per_node {nproc_per_node}\
+          \ \\\n                            --node_rank \\$(RANK) \\\n           \
+          \                 --rdzv_endpoint \\$(MASTER_ADDR):\\$(MASTER_PORT) \\\n\
+          \                            -m instructlab.training.main_ds \\\n      \
+          \                      --model_name_or_path={path_to_model} \\\n       \
+          \                     --data_path={path_to_data} \\\n                  \
+          \          --output_dir=/tmp/model \\\n                            --num_epochs={num_epochs}\
+          \ \\\n                            --effective_batch_size={effective_batch_size}\
           \ \\\n                            --learning_rate={learning_rate} \\\n \
           \                           --num_warmup_steps={num_warmup_steps} \\\n \
           \                           --save_samples={save_samples} \\\n         \
@@ -1105,12 +1083,12 @@ deploymentSpec:
           \    - mountPath: /output\n                          name: output\n    \
           \                      readOnly: true\n                      env:\n    \
           \                    - name: NNODES\n                          value: \\\
-          \\\"{nnodes}\\\\\"\n                        - name: NPROC_PER_NODE\n   \
-          \                       value: \\\\\"{nproc_per_node}\\\\\"\n          \
-          \              - name: XDG_CACHE_HOME\n                          value:\
-          \ /tmp\n                        - name: TRITON_CACHE_DIR\n             \
-          \             value: /tmp\n                        - name: HF_HOME\n   \
-          \                       value: /tmp\n                        - name: TRANSFORMERS_CACHE\n\
+          \"{nnodes}\\\"\n                        - name: NPROC_PER_NODE\n       \
+          \                   value: \\\"{nproc_per_node}\\\"\n                  \
+          \      - name: XDG_CACHE_HOME\n                          value: /tmp\n \
+          \                       - name: TRITON_CACHE_DIR\n                     \
+          \     value: /tmp\n                        - name: HF_HOME\n           \
+          \               value: /tmp\n                        - name: TRANSFORMERS_CACHE\n\
           \                          value: /tmp\n                      resources:\n\
           \                        requests:\n                          cpu: 8\n \
           \                         \"nvidia.com/gpu\": {nproc_per_node}\n       \
@@ -1122,7 +1100,65 @@ deploymentSpec:
           \                        claimName: {model_pvc_name}\n                 \
           \   - name: output\n                      persistentVolumeClaim:\n     \
           \                   claimName: {output_pvc_name}\n        \"\"\"\n    )\n\
-          \n    return Outputs(manifest, name)\n\n"
+          \n    try:\n        manifest_yaml = yaml.safe_load(manifest)\n    except\
+          \ yaml.YAMLError as exc:\n        raise RuntimeError(f\"Error parsing manifest:\
+          \ {exc}\") from exc\n\n    # Discover the namespace in which the pod is\
+          \ running\n    with open(\n        \"/var/run/secrets/kubernetes.io/serviceaccount/namespace\"\
+          , \"r\", encoding=\"utf-8\"\n    ) as f:\n        namespace = f.read().strip()\n\
+          \        print(f\"The pod is running in the namespace: {namespace}\")\n\n\
+          \    try:\n        kubernetes.config.load_kube_config()\n        print(\"\
+          Loaded kube config\")\n    except kubernetes.config.ConfigException:\n \
+          \       print(\"Failed to load kube config. Trying in-cluster config\")\n\
+          \        kubernetes.config.load_incluster_config()\n\n    api = kubernetes.client.CustomObjectsApi()\n\
+          \    try:\n        api.create_namespaced_custom_object(\n            group=\"\
+          kubeflow.org\",\n            version=\"v1\",\n            namespace=namespace,\n\
+          \            plural=\"pytorchjobs\",\n            body=manifest_yaml,\n\
+          \        )\n    except kubernetes.client.rest.ApiException as exc:\n   \
+          \     if exc.status == 409:\n            print(\n                \"{} '{}/{}'\
+          \ already exists.\".format(\n                    manifest_yaml[\"kind\"\
+          ],\n                    namespace,\n                    manifest_yaml[\"\
+          metadata\"][\"name\"],\n                )\n            )\n        else:\n\
+          \            raise\n\n    # Get the CR status and wait for it to be completed\n\
+          \    w = kubernetes.watch.Watch()\n    exit_flag = False\n    start_time\
+          \ = time.time()\n    timeout_seconds = 24 * 60 * 60  # 24 hours\n\n    while\
+          \ not exit_flag:  # Keep the watch active\n        if time.time() - start_time\
+          \ > timeout_seconds:\n            raise RuntimeError(\n                \"\
+          Timeout (24h) reached waiting for the PytorchJob to complete.\"\n      \
+          \      )\n\n        try:\n            print(\"Watching for PytorchJob\"\
+          )\n            for event in w.stream(\n                api.list_namespaced_custom_object,\n\
+          \                group=\"kubeflow.org\",\n                version=\"v1\"\
+          ,\n                namespace=namespace,\n                plural=\"pytorchjobs\"\
+          ,\n                timeout_seconds=60,  # Timeout after 1 minute\n     \
+          \       ):\n                pytorchjob_event = event[\"object\"]\n     \
+          \           if (\n                    pytorchjob_event[\"metadata\"][\"\
+          name\"]\n                    != manifest_yaml[\"metadata\"][\"name\"]\n\
+          \                ):\n                    continue\n                pytorchjob_name\
+          \ = pytorchjob_event[\"metadata\"][\"name\"]\n\n                if (\n \
+          \                   \"status\" not in pytorchjob_event\n               \
+          \     or \"conditions\" not in pytorchjob_event[\"status\"]\n          \
+          \      ):\n                    continue\n                print(\n      \
+          \              f\"PytorchJob: {pytorchjob_name} - {pytorchjob_event['status'].get('conditions',\
+          \ 'No conditions yet')}\"\n                )\n                for job_condition\
+          \ in reversed(pytorchjob_event[\"status\"][\"conditions\"]):\n         \
+          \           if job_condition[\"type\"] == \"Succeeded\":\n             \
+          \           print(\n                            f\"PytorchJob '{pytorchjob_name}'\
+          \ completed successfully: {job_condition['reason']}\"\n                \
+          \        )\n                        print(f\"Training phase {phase_num}\
+          \ completed.\")\n                        w.stop()\n                    \
+          \    exit_flag = True\n                        # Break here to avoid going\
+          \ into other conditions, we are done\n                        break\n  \
+          \                  elif job_condition[\"type\"] == \"Failed\":\n       \
+          \                 print(\n                            f\"PytorchJob '{pytorchjob_name}'\
+          \ failed: {job_condition['reason']}\"\n                        )\n     \
+          \                   w.stop()\n                        raise RuntimeError(\"\
+          Job failed.\")\n        except kubernetes.client.exceptions.ApiException\
+          \ as e:\n            print(f\"API exception occurred: {str(e)}\")\n    \
+          \        time.sleep(5)  # Backoff before retrying\n        # Catches the\
+          \ following error:\n        # urllib3.exceptions.ProtocolError: (\"Connection\
+          \ broken: InvalidChunkLength\n        except urllib3.exceptions.ProtocolError\
+          \ as e:\n            print(f\"Connection broken reconnecting the watcher\
+          \ {str(e)}\")\n            time.sleep(5)  # Backoff before retrying\n  \
+          \      finally:\n            w.stop()\n\n"
         image: quay.io/modh/odh-generic-data-science-notebook:v3-2024b-20241111
     exec-run-final-eval-op:
       container:
@@ -1769,85 +1805,13 @@ root:
         - data-processing-op
         taskInfo:
           name: knowledge-processed-data-to-artifact-op
-      kubectl-apply-op:
-        cachingOptions: {}
-        componentRef:
-          name: comp-kubectl-apply-op
-        dependentTasks:
-        - data-processing-op
-        - huggingface-importer-op
-        - pytorchjob-manifest-op
-        inputs:
-          parameters:
-            manifest:
-              taskOutputParameter:
-                outputParameterKey: manifest
-                producerTask: pytorchjob-manifest-op
-        taskInfo:
-          name: kubectl-apply-op
-      kubectl-apply-op-2:
-        cachingOptions: {}
-        componentRef:
-          name: comp-kubectl-apply-op-2
-        dependentTasks:
-        - pytorchjob-manifest-op-2
-        inputs:
-          parameters:
-            manifest:
-              taskOutputParameter:
-                outputParameterKey: manifest
-                producerTask: pytorchjob-manifest-op-2
-        taskInfo:
-          name: kubectl-apply-op-2
-      kubectl-wait-for-op:
-        cachingOptions: {}
-        componentRef:
-          name: comp-kubectl-wait-for-op
-        dependentTasks:
-        - kubectl-apply-op
-        - pytorchjob-manifest-op
-        inputs:
-          parameters:
-            condition:
-              runtimeValue:
-                constant: condition=Succeeded
-            kind:
-              runtimeValue:
-                constant: pytorchjobs
-            name:
-              taskOutputParameter:
-                outputParameterKey: name
-                producerTask: pytorchjob-manifest-op
-        taskInfo:
-          name: kubectl-wait-for-op
-      kubectl-wait-for-op-2:
-        cachingOptions: {}
-        componentRef:
-          name: comp-kubectl-wait-for-op-2
-        dependentTasks:
-        - kubectl-apply-op-2
-        - pytorchjob-manifest-op-2
-        inputs:
-          parameters:
-            condition:
-              runtimeValue:
-                constant: condition=Succeeded
-            kind:
-              runtimeValue:
-                constant: pytorchjobs
-            name:
-              taskOutputParameter:
-                outputParameterKey: name
-                producerTask: pytorchjob-manifest-op-2
-        taskInfo:
-          name: kubectl-wait-for-op-2
       list-models-in-directory-op:
         cachingOptions: {}
         componentRef:
           name: comp-list-models-in-directory-op
         dependentTasks:
         - createpvc-3
-        - kubectl-wait-for-op-2
+        - pytorchjob-manifest-op-2
         inputs:
           parameters:
             models_folder:
@@ -1892,6 +1856,8 @@ root:
         - createpvc
         - createpvc-2
         - createpvc-3
+        - data-processing-op
+        - huggingface-importer-op
         inputs:
           parameters:
             effective_batch_size:
@@ -1941,7 +1907,7 @@ root:
         - createpvc
         - createpvc-2
         - createpvc-3
-        - kubectl-wait-for-op
+        - pytorchjob-manifest-op
         inputs:
           parameters:
             effective_batch_size:

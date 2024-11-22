@@ -4,33 +4,7 @@ from typing import List
 
 from kfp import dsl
 
-from .consts import OC_IMAGE, PYTHON_IMAGE, TOOLBOX_IMAGE
-
-
-@dsl.container_component
-def kubectl_apply_op(manifest: str):
-    return dsl.ContainerSpec(
-        OC_IMAGE,
-        ["/bin/sh", "-c"],
-        [f'echo "{manifest}" | kubectl apply -f -'],
-    )
-
-
-@dsl.container_component
-def kubectl_wait_for_op(
-    condition: str,
-    kind: str,
-    name: str,
-    # namespace: Optional[str] = None,
-    # timeout: Optional[str] = None,
-):
-    return dsl.ContainerSpec(
-        OC_IMAGE,
-        ["/bin/sh", "-c"],
-        [
-            f"kubectl wait --for={condition} {kind}/{name} --timeout=24h",
-        ],
-    )
+from .consts import PYTHON_IMAGE, TOOLBOX_IMAGE
 
 
 @dsl.container_component
