@@ -3,7 +3,7 @@
 
 from kfp import dsl
 
-from .consts import PYTHON_IMAGE, TOOLBOX_IMAGE
+from .consts import PYTHON_IMAGE, RHELAI_IMAGE, TOOLBOX_IMAGE
 
 
 @dsl.container_component
@@ -24,12 +24,21 @@ def pvc_to_model_op(model: dsl.Output[dsl.Model], pvc_path: str):
     )
 
 
-@dsl.component(
-    base_image=PYTHON_IMAGE,
-    install_kfp_package=False,
-    packages_to_install=["huggingface_hub"],
-)
-def huggingface_importer_op(repo_name: str, model_path: str = "/model"):
-    from huggingface_hub import snapshot_download
+@dsl.container_component
+def model_to_pvc_op(model: dsl.Input[dsl.Model], pvc_path: str = "/model"):
+    return dsl.ContainerSpec(
+        TOOLBOX_IMAGE,
+        ["/bin/sh", "-c"],
+        [f"cp -r {model.path}/* {pvc_path}"],
+    )
 
-    snapshot_download(repo_id=repo_name, cache_dir="/tmp", local_dir=model_path)
+
+@dsl.container_component
+def ilab_importer_op(repository: str, release: str, base_model: dsl.Output[dsl.Model]):
+    return dsl.ContainerSpec(
+        RHELAI_IMAGE,
+        ["/bin/sh", "-c"],
+        [
+            f"ilab --config=DEFAULT model download --repository {repository} --release {release} --model-dir {base_model.path}"
+        ],
+    )
