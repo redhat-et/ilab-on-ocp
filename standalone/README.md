@@ -334,14 +334,11 @@ subcommands to run individual parts of the workflow separately. The full workflo
 and evaluating a model. To view all available commands, use `./standalone.py --help`.
 
 The script requires information regarding the location and method for accessing the SDG
-data/model/taxonomy tree and the evaluation Judge model serving endpoint. This information can be
-provided in two main ways:
+data/model/taxonomy tree and the evaluation Judge model serving endpoint.
 
-1. CLI Options or/and Environment Variables: Supply all necessary information via CLI options or environment variables.
-    * See [CLI Options](#cli-options) for full list. In particular `--sdg-object-store-*` and `--judge-serving-model-*` options.
-2. Kubernetes Secret: Provide the name of a Kubernetes secret that contains all relevant details
-   using the `--sdg-object-store-secret` option and `--judge-serving-model-secret` option.
-    *  See [Creating the Kubernetes Secret for S3 Details](#creating-the-kubernetes-secret-for-s3-details) for information on how to create the secret.
+This information can be provided using Kubernetes Secret by providing the name of a Kubernetes secret that contains all relevant details
+using the `--sdg-object-store-secret` option and `--judge-serving-model-secret` option.
+See [Creating the Kubernetes Secret for S3 Details](#creating-the-kubernetes-secret-for-s3-details) for information on how to create the secret.
 
 The examples below assume there is a secret in `my-namespace` named `sdg-data` that holds
 information about the S3 bucket and `judge-serving-details` secret that includes information about
@@ -403,25 +400,9 @@ evaluation
 * `--sdg-serving-model-secret`: The name of the Kubernetes Secret containing the SDG serving model
   details. **Optional** - Only valid when running Synthetic Data Generation inside the Kubernetes
   Cluster.
-* `--sdg-serving-model-endpoint`: The endpoint of the SDG serving model. **Optional** - Only valid
-  when running Synthetic Data Generation inside the Kubernetes Cluster.
-* `--sdg-serving-model-name`: The name of the model to use for Synthetic Data Generation.
-  **Optional**
-* `--sdg-serving-model-ca-cert`: Name of the Kubernetes ConfigMap containing the SDG serving model CA cert.
-  `SDG_SERVING_MODEL_CA_CERT` environment variable can be used as well. **Optional**
-* `--sdg-serving-model-ca-cert-cm-key`: Name of the Key in the Kubernetes ConfigMap containing the SDG serving model CA cert.
-  `SDG_SERVING_MODEL_CA_CERT_CM_KEY` environment variable can be used as well. **Optional**
-* `--sdg-serving-model-api-key`: The API key for the model to use for Synthetic Data Generation. **Optional**
 * `--sdg-sampling-size`: Allows you to tune how much data is used from the default data skills recipe. The sampling size
   represents the percentage of the sample to take, a value of 0.5 specifies a 50% value. This is useful for development
   purposes, when testing the whole iLab pipeline and model performance is not a concern." **Optional**
-* `--judge-serving-model-endpoint`: Serving endpoint for evaluation. e.g:
-  http://serving.kubeflow.svc.cluster.local:8080/v1 - **Optional**
-* `--judge-serving-model-name`: The name of the model to use for evaluation. **Optional**
-* `--judge-serving-model-api-key`: The API key for the model to evaluate. `JUDGE_SERVING_MODEL_API_KEY`
-  environment variable can be used as well. **Optional**
-* `--judge-serving-model-ca-cert`: Name of the Kubernetes ConfigMap containing the judge serving model CA cert. **Optional**
-* `--judge-serving-model-ca-cert-cm-key`: Name of the Key in the Kubernetes ConfigMap containing the judge serving model CA cert. **Optional**
 * `--judge-serving-model-secret`: The name of the Kubernetes Secret containing the judge serving model
   API key. **Optional** - If not provided, the script will expect the provided CLI options to evaluate the model.
 * `--force-pull`: Force pull the data (sdg data, model and taxonomy) from the object store even if it already
@@ -559,25 +540,6 @@ Optional keys:
 > [!WARNING]
 > Make sure the endpoint URL ends with /v1
 
-#### Running the Script Without Kubernetes Secret
-
-Alternatively, you can provide the necessary information directly via CLI options or environment,
-the script will use the provided information to fetch the SDG data and create its own Kubernetes
-Secret named `sdg-object-store-credentials` in the same namespace as the resources it interacts with (in this case, `my-namespace`).
-
-```bash
-export JUDGE_SERVING_MODEL_API_KEY=********
-
-./standalone.py run \
-  --namespace my-namespace \
-  --judge-serving-model-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
-  --judge-serving-model-name my-model \
-  --sdg-object-store-access-key key \
-  --sdg-object-store-secret-key key \
-  --sdg-object-store-bucket sdg-data \
-  --sdg-object-store-data-key data.tar.gz
-```
-
 ### Judge Model Details
 
 A judge model is assumed to be running external to the script. This is used for model evaluation.
@@ -591,12 +553,8 @@ A judge model is assumed to be running external to the script. This is used for 
 If you don't use the official AWS S3 endpoint, you can provide additional information about the object store:
 
 ```bash
-export JUDGE_SERVING_MODEL_API_KEY=********
-
 ./standalone.py run \
   --namespace my-namespace \
-  --judge-serving-model-endpoint http://serving.kubeflow.svc.cluster.local:8080/v1 \
-  --judge-serving-model-name my-model \
   --sdg-object-store-access-key key \
   --sdg-object-store-secret-key key \
   --sdg-object-store-bucket sdg-data \
