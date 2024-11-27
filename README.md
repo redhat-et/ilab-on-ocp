@@ -18,6 +18,23 @@ The following Operators must be installed on your OpenShift cluster:
 * [Red Hat OpenShift AI](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_cloud_service/1/html/installing_and_uninstalling_openshift_ai_cloud_service/installing-and-deploying-openshift-ai_install)
 * [Node Feature Discovery and NVIDIA GPU Operators](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_cloud_service/1/html/installing_and_uninstalling_openshift_ai_cloud_service/enabling-nvidia-gpus_install)
 
+#### Training operator
+Within the DataScienceCluster definition the following must be defined and set to managed under Spec -> Components.
+
+``` bash
+oc edit dsc
+      trainingoperator:
+        managementState: Managed
+```
+
+To verify the PytorchJob is available in the cluster run the following.
+
+```bash
+oc get pytorchjob
+```
+
+If an error is shown PyTorch is not available in cluster.
+
 #### Object Storage:
 
 Once the above operators have been successfully installed, you will need to set up object storage for your models and pipeline artifacts. This solution requires object storage to be in place through S3 compatible storage such as [Noobaa](https://www.noobaa.io/).
