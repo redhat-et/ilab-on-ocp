@@ -29,7 +29,7 @@ Before running the training and evaluation steps we must complete the following:
 
 ### Step 1 - Prepare data and push to object store
 
-* Create a tarball with the data (SDG-data), [model](https://huggingface.co/ibm-granite/granite-7b-base/tree/main) and [taxonomy](https://github.com/instructlab/taxonomy) and push them to your object store.
+* Create a tarball with the data (SDG-data), [model](https://catalog.redhat.com/software/containers/rhelai1/granite-7b-starter/667ebf10abaa082bcf96ea6a) and [taxonomy](https://github.com/instructlab/taxonomy) and push them to your object store.
 
   ```
   $ mkdir -p s3-data/{data,model,taxonomy}
@@ -81,6 +81,7 @@ Before running the training and evaluation steps we must complete the following:
 
 
 ### Step 2 - Create Judge model server
+`NOTE` : The judge model server deployment step is optional but you must create a secret containing the judge modelserver details. See: `Create a secret containing the judge model serving details` below.
 
 The judge model is used for model evaluation.
 
@@ -94,7 +95,7 @@ The judge model is used for model evaluation.
       Namespace: <data-science-project-name/namespace>
     ```
 
-* Upload [Prometheus-eval](https://huggingface.co/prometheus-eval/prometheus-8x7b-v2.0) (Judge-Model) to the same object storage as before .
+* Upload [Prometheus-eval](https://catalog.redhat.com/software/containers/rhelai1/prometheus-8x7b-v2-0/6682611224ba6617d472f451) (Judge-Model) to the same object storage as before .
 
     * This [script](https://github.com/opendatahub-io/ilab-on-ocp/blob/main/kubernetes_yaml/model_downloader/container_file/download_hf_model.py) can be used for uploading the model to object storage.
     * Update the MODEL and MODEL_PATH parameters if using a different model to that in the example.
