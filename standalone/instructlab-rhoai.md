@@ -43,9 +43,10 @@ Before running the training and evaluation steps we must complete the following:
   ```
 
 * Download ilab model repository in s3-data model direct
+
   ```
-  $ ilab model download --repository ibm-granite/granite-7b-base
-  $ cp -r <path-to-model-downloaded-dir>/ibm-granite/granite-7b-base/* s3-data/model
+  $ ilab model download --repository docker://registry.redhat.io/rhelai1/granite-7b-starter --release 1.2-1728663941
+  $ cp -r <path-to-model-downloaded-dir>/granite-7b-starter/* s3-data/model
   ```
 
 * Clone taxonomy repository (this could be any taxonomy repo and any branches in the given repo)
