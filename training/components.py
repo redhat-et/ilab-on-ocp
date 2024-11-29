@@ -92,7 +92,7 @@ def data_processing_op(
             )
         )
 
-    data_processing(train_args=skill_training_args)
+    #data_processing(train_args=skill_training_args)
     data_processing(train_args=knowledge_training_args)
 
 
@@ -119,6 +119,270 @@ def knowledge_processed_data_to_artifact_op(
         [f"cp -r {pvc_path} {knowledge_processed_data.path}"],
     )
 
+@dsl.component(base_image="quay.io/redhat-et/ilab:shrey", install_kfp_package=False)
+def pytorch_job_launcher(
+    model_pvc_name: str,
+    input_pvc_name: str,
+    output_pvc_name: str,
+    name_suffix: str,
+    phase_num: int,
+    nproc_per_node: int = 3,
+    nnodes: int = 2,
+    num_epochs: int = 2,
+    effective_batch_size: int = 3840,
+    learning_rate: float = 1e-4,
+    num_warmup_steps: int = 800,
+    save_samples: int = 0,
+    max_batch_len: int = 20000,
+    seed: int = 42,
+    kind: str = "PyTorchJob",
+    namespace: str = "ilab",
+    job_timeout_minutes: int = 86400,
+    delete_after_done: bool = True,
+):
+    import time
+    import datetime
+    import logging
+    from kubeflow.training import TrainingClient
+    from kubeflow.training.utils import utils
+    from kubeflow.training import models
+    import os
+
+    def list_phase1_final_model():
+      model_dir = "/output/phase_1/model/hf_format"
+      ilab_models = os.listdir(model_dir)
+      newest_idx = max(
+          (os.path.getmtime(f"{model_dir}/{model}"), i)
+          for i, model in enumerate(ilab_models)
+      )[-1]
+      newest_model = ilab_models[newest_idx]
+      return f"{model_dir}/{newest_model}"
+
+    if phase_num == 1:
+        path_to_model = "/input_model"
+        path_to_data = "/input_data/knowledge/data.jsonl"
+    elif phase_num == 2:
+        path_to_model = list_phase1_final_model()
+        path_to_data = "/input_data/skills/data.jsonl"
+    else:
+        raise RuntimeError(f"Unsupported value of {phase_num=}")
+
+    resources_per_worker = {"cpu": "8",
+                 "nvidia.com/gpu": nproc_per_node}
+    
+    base_image = "quay.io/redhat-et/ilab:1.2"
+    name = f"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}"
+    command = ["/bin/bash", "-c", "--"]
+
+    #(shanand): Condense this into 1 changeble arg list
+    master_args = [
+        "echo", f"Running phase {phase_num};",
+        "echo", f"Using {path_to_model} model for training;",
+        "echo", f"Using {path_to_data} data for training;",
+        "mkdir", "-p", f"/output/phase_{phase_num}/model;",
+        "mkdir", "-p", "/output/data;",
+        "torchrun",
+        "--nnodes", f"{nnodes}",
+        "--nproc_per_node", f"{nproc_per_node}",
+        "--node_rank", "$(RANK)",
+        "--rdzv_endpoint", "$(MASTER_ADDR):$(MASTER_PORT)",
+        "-m", "instructlab.training.main_ds",
+        "--model_name_or_path", f"{path_to_model}",
+        "--data_path", f"{path_to_data}",
+        "--output_dir", f"/output/phase_{phase_num}/model",
+        "--num_epochs", f"{num_epochs}",
+        "--effective_batch_size", f"{effective_batch_size}",
+        "--learning_rate", f"{learning_rate}",
+        "--num_warmup_steps", f"{num_warmup_steps}",
+        "--save_samples", f"{save_samples}",
+        "--log_level", "INFO",
+        "--max_batch_len", f"{max_batch_len}",
+        "--seed", f"{seed}",
+        "--cpu_offload_optimizer",
+        "--cpu_offload_params",
+        "--distributed_training_framework", "fsdp",
+        "--is_granite",
+        "--checkpoint_at_epoch"]
+    
+    worker_args = [
+        "echo", f"Running phase {phase_num};",
+        "echo", f"Using {path_to_model} model for training;",
+        "echo", f"Using {path_to_data} data for training;",
+        "mkdir", "-p", "/tmp/model;",
+        "torchrun",
+        "--nnodes", f"{nnodes}",
+        "--nproc_per_node", f"{nproc_per_node}",
+        "--node_rank", "$(RANK)",
+        "--rdzv_endpoint", "$(MASTER_ADDR):$(MASTER_PORT)",
+        "-m", "instructlab.training.main_ds",
+        "--model_name_or_path", f"{path_to_model}",
+        "--data_path", f"{path_to_data}",
+        "--output_dir", "/tmp/model",
+        "--num_epochs", f"{num_epochs}",
+        "--effective_batch_size", f"{effective_batch_size}",
+        "--learning_rate", f"{learning_rate}",
+        "--num_warmup_steps", f"{num_warmup_steps}",
+        "--save_samples", f"{save_samples}",
+        "--log_level", "INFO",
+        "--max_batch_len", f"{max_batch_len}",
+        "--seed", f"{seed}",
+        "--cpu_offload_optimizer",
+        "--cpu_offload_params",
+        "--distributed_training_framework", "fsdp",
+        "--is_granite",
+        "--checkpoint_at_epoch"]
+    
+    # Set volumes and volume  mounts
+    input_data_volume = models.V1Volume(name="input-data",
+                    persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(
+                        claim_name=input_pvc_name))
+    input_model_volume = models.V1Volume(name="model",
+                persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(
+                    claim_name=model_pvc_name))
+    output_volume = models.V1Volume(name="output-data",
+                persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(
+                    claim_name=output_pvc_name))
+
+    input_data_volume_mount = models.V1VolumeMount(mount_path="/input_data", name="input_data", read_only=True)
+    input_model_volume_mount = models.V1VolumeMount(mount_path="/input_model", name="input_model", read_only=True)
+    output_volume_mount_master = models.V1VolumeMount(mount_path="/output", name="output")
+    output_volume_mount_worker = models.V1VolumeMount(mount_path="/output", name="output", read_only=True)
+
+    # Set env variables
+    nnodes_var =  models.V1EnvVar(name="NNODES", value=f"{nnodes}")
+    nproc_per_node_var = models.V1EnvVar(name="NPROC_PER_NODE", value=f"nproc_per_node")
+    xdg_cache_var = models.V1EnvVar(name="XDG_CACHE_HOME", value="/tmp")
+    triton_cache_var = models.V1EnvVar(name="TRITON_CACHE_DIR", value="/tmp")
+    hf_home_var = models.V1EnvVar(name="HF_HOME", value="/tmp")
+    transformers_cache_var = models.V1EnvVar(name="TRANSFORMERS_CACHE", value="/tmp")
+
+
+    # Get master and worker container specs
+    master_container_spec = utils.get_container_spec(base_image=base_image,
+                                              name="pytorch",
+                                              resources=resources_per_worker,
+                                              volume_mounts=[input_data_volume_mount,
+                                                             input_model_volume_mount,
+                                                             output_volume_mount_master])
+    
+    master_container_spec.command = command
+    master_container_spec.args = master_args
+
+
+    master_container_spec.env = [nnodes_var,
+                                 nproc_per_node_var,
+                                 xdg_cache_var,
+                                 triton_cache_var,
+                                 hf_home_var,
+                                 transformers_cache_var]
+    
+    worker_container_spec = utils.get_container_spec(base_image=base_image,
+                                          name="pytorch",
+                                          resources=resources_per_worker,
+                                          volume_mounts=[input_data_volume_mount,
+                                                          input_model_volume_mount,
+                                                          output_volume_mount_worker])
+    worker_container_spec.command = command
+    worker_container_spec.args = worker_args
+    worker_container_spec.env = [nnodes_var,
+                                 nproc_per_node_var,
+                                 xdg_cache_var,
+                                 triton_cache_var,
+                                 hf_home_var,
+                                 transformers_cache_var]
+    
+    # create worker pod spec
+    worker_pod_template_spec = utils.get_pod_template_spec(
+        containers=[master_container_spec],
+        volumes=[input_data_volume, input_model_volume, output_volume],
+    )
+
+    # create master pod spec
+    master_pod_template_spec = utils.get_pod_template_spec(
+        containers=[worker_container_spec],
+        volumes=[input_data_volume, input_model_volume, output_volume],
+    )
+
+    # Create pytorch job spec
+    job_template = utils.get_pytorchjob_template(name=name,
+                                                 namespace=namespace,
+                                                 worker_pod_template_spec=worker_pod_template_spec,
+                                                 master_pod_template_spec=master_pod_template_spec,
+                                                 num_workers=nnodes-1,
+                                                 num_procs_per_worker=nproc_per_node)
+
+
+    # Run the pytorch job
+    logging.getLogger(__name__).setLevel(logging.INFO)
+    logging.info('Generating job template.')
+    logging.info('Creating TrainingClient.')
+
+    training_client = TrainingClient()
+
+    logging.info(f"Creating PyTorchJob in namespace: {namespace}")
+    training_client.create_job(job_template, namespace=namespace)
+
+    expected_conditions = ["Succeeded", "Failed"]
+    logging.info(
+        f'Monitoring job until status is any of {expected_conditions}.'
+    )
+
+    def wait_for_job_get_logs(
+        name: str,
+        namespace: str = None,
+        job_kind: str = None,
+        expected_conditions: list = ["Succeeded"],
+        wait_timeout: int = 600,
+        polling_interval: int = 15,
+        timeout: int = 1000
+    ) -> str:
+        log_lines = set()
+        for _ in range(round(wait_timeout / polling_interval)):
+            # We should get Job only once per cycle and check the statuses.
+            job = training_client.get_job(
+                name=name,
+                namespace=namespace,
+                job_kind=job_kind,
+                timeout=timeout,
+            )
+            # Get Job conditions.
+            conditions = training_client.get_job_conditions(
+                job=job, timeout=timeout, job_kind=job_kind
+            )
+            # Return Job when it reaches expected condition.
+            for expected_condition in expected_conditions:
+                if utils.has_condition(conditions, expected_condition):
+                    return conditions
+            
+            # Get logs dictionary
+            logs_dict, _ = training_client.get_job_logs(
+                name=name,
+                namespace=namespace,
+                job_kind=kind)
+
+            # Stream new log lines
+            for key, value in logs_dict.items():
+                if key not in log_lines:
+                    logging.info(key)
+                    log_lines.add(key)
+
+                for line in value.split("\n"):
+                    if line not in log_lines:
+                        logging.info(line)
+                        log_lines.add(line)
+
+            time.sleep(polling_interval)
+
+    wait_for_job_get_logs(
+        name=name,
+        namespace=namespace,
+        job_kind=kind,
+        expected_conditions=set(expected_conditions),
+        timeout=int(datetime.timedelta(minutes=job_timeout_minutes).total_seconds())
+    )
+    if delete_after_done:
+        logging.info('Deleting job after completion.')
+        training_client.delete_job(name, namespace)
 
 @dsl.component(base_image=PYTHON_IMAGE, install_kfp_package=False)
 def pytorchjob_manifest_op(
