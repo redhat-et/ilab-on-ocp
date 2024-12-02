@@ -71,10 +71,6 @@ def sdg_op(
 
     taxonomy_base = "main" if repo_branch or (repo_pr and int(repo_pr) > 0) else "empty"
 
-    print("Generating synthetic dataset for:")
-    print()
-    print(read_taxonomy(taxonomy_path, taxonomy_base))
-
     set_precomputed_skills_data_ratio(sampling_size=sdg_sampling_size)
 
     # generate_data has a magic word for its taxonomy_base argument - 'empty'
