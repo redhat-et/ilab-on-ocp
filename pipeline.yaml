@@ -645,7 +645,7 @@ deploymentSpec:
           \                max_seq_len=train_args.max_seq_len,\n                chat_tmpl_path=train_args.chat_tmpl_path,\n\
           \            )\n        )\n\n    data_processing(train_args=skill_training_args)\n\
           \    data_processing(train_args=knowledge_training_args)\n\n"
-        image: quay.io/redhat-et/ilab:1.2
+        image: quay.io/redhat-et/ilab:1.3
     exec-deletepvc:
       container:
         image: argostub/deletepvc
@@ -1376,7 +1376,7 @@ deploymentSpec:
           value: /tmp
         - name: HF_HOME
           value: /tmp
-        image: quay.io/redhat-et/ilab:1.2
+        image: quay.io/redhat-et/ilab:1.3
         resources:
           accelerator:
             count: '1'
@@ -1512,7 +1512,7 @@ deploymentSpec:
           value: /tmp
         - name: HF_HOME
           value: /tmp
-        image: quay.io/redhat-et/ilab:1.2
+        image: quay.io/redhat-et/ilab:1.3
         resources:
           accelerator:
             count: '1'
@@ -1569,7 +1569,7 @@ deploymentSpec:
           value: /tmp
         - name: HF_HOME
           value: /tmp
-        image: quay.io/redhat-et/ilab:1.2
+        image: quay.io/redhat-et/ilab:1.3
     exec-sdg-to-artifact-op:
       container:
         args:
