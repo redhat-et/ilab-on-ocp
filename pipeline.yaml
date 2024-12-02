@@ -6,10 +6,10 @@
 #    final_eval_few_shots: int [Default: 5.0]
 #    final_eval_max_workers: str [Default: 'auto']
 #    final_eval_merge_system_user_message: bool [Default: False]
-#    k8s_storage_class_name: str [Default: 'nfs-csi']
+#    k8s_storage_class_name: str [Default: 'standard']
 #    mt_bench_max_workers: str [Default: 'auto']
 #    mt_bench_merge_system_user_message: bool [Default: False]
-#    sdg_base_model: str [Default: 's3://ilab-pipeline-b1d4c2b1-ab00-4e7f-b985-697bda3df385/instructlab-base-importer/648f36d0-e3f0-43b8-8adb-530576beb675/ilab-importer-op/model/granite-7b-starter']
+#    sdg_base_model: str [Default: 's3://<BUCKET>/<PATH_TO_MODEL>']
 #    sdg_max_batch_len: int [Default: 20000.0]
 #    sdg_pipeline: str [Default: 'simple']
 #    sdg_repo_branch: str
@@ -2042,7 +2042,7 @@ root:
         isOptional: true
         parameterType: BOOLEAN
       k8s_storage_class_name:
-        defaultValue: nfs-csi
+        defaultValue: standard
         description: A Kubernetes StorageClass name for persistent volumes. Selected
           StorageClass must support RWX PersistentVolumes.
         isOptional: true
@@ -2060,7 +2060,7 @@ root:
         isOptional: true
         parameterType: BOOLEAN
       sdg_base_model:
-        defaultValue: s3://ilab-pipeline-b1d4c2b1-ab00-4e7f-b985-697bda3df385/instructlab-base-importer/648f36d0-e3f0-43b8-8adb-530576beb675/ilab-importer-op/model/granite-7b-starter
+        defaultValue: s3://<BUCKET>/<PATH_TO_MODEL>
         description: SDG parameter. LLM model used to generate the synthetic dataset
         isOptional: true
         parameterType: STRING
