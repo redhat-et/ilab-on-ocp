@@ -15,7 +15,7 @@
 #    sdg_repo_branch: str
 #    sdg_repo_pr: int
 #    sdg_repo_url: str [Default: 'https://github.com/instructlab/taxonomy.git']
-#    sdg_sample_size: float [Default: 1.0]
+#    sdg_sample_size: float
 #    sdg_scale_factor: int [Default: 2.0]
 #    train_effective_batch_size_phase_1: int [Default: 3840.0]
 #    train_effective_batch_size_phase_2: int [Default: 3840.0]
@@ -522,7 +522,6 @@ components:
           isOptional: true
           parameterType: STRING
         sdg_sampling_size:
-          defaultValue: 1.0
           isOptional: true
           parameterType: NUMBER_DOUBLE
         taxonomy_path:
@@ -1536,32 +1535,81 @@ deploymentSpec:
           \ *\n\ndef sdg_op(\n    num_instructions_to_generate: int,\n    pipeline:\
           \ str,\n    repo_branch: Optional[str],\n    repo_pr: Optional[int],\n \
           \   taxonomy_path: str = \"/data/taxonomy\",\n    sdg_path: str = \"/data/sdg\"\
-          ,\n    sdg_sampling_size: float = 1.0,\n):\n    from os import getenv, path\n\
-          \n    import openai\n    import yaml\n    from instructlab.sdg import generate_data\n\
-          \    from instructlab.sdg.utils.taxonomy import read_taxonomy\n\n    def\
-          \ set_precomputed_skills_data_ratio(sampling_size: float):\n        skills_recipe\
-          \ = \"/usr/share/instructlab/sdg/default_data_recipes/skills.yaml\"\n  \
-          \      if path.exists(skills_recipe):\n            with open(skills_recipe,\
-          \ \"r\") as file:\n                skills_yaml = yaml.load(file, Loader=yaml.Loader)\n\
-          \n            skills_yaml[\"datasets\"][0][\"sampling_size\"] = sampling_size\n\
-          \n            with open(skills_recipe, \"w\", encoding=\"utf-8\") as file:\n\
-          \                yaml.dump(skills_yaml, file)\n\n    api_key = getenv(\"\
-          api_key\")\n    model = getenv(\"model\")\n    endpoint = getenv(\"endpoint\"\
-          )\n\n    if sdg_ca_cert := getenv(\"SDG_CA_CERT_PATH\"):\n        import\
-          \ httpx\n\n        custom_http_client = httpx.Client(verify=sdg_ca_cert)\n\
+          ,\n    sdg_sampling_size: float = None,\n):\n    from os import getenv,\
+          \ path\n\n    import instructlab.sdg\n    import openai\n    import yaml\n\
+          \n    api_key = getenv(\"api_key\")\n    model = getenv(\"model\")\n   \
+          \ endpoint = getenv(\"endpoint\")\n\n    if sdg_ca_cert := getenv(\"SDG_CA_CERT_PATH\"\
+          ):\n        import httpx\n\n        custom_http_client = httpx.Client(verify=sdg_ca_cert)\n\
           \        client = openai.OpenAI(\n            base_url=endpoint, api_key=api_key,\
           \ http_client=custom_http_client\n        )\n    else:\n        client =\
           \ openai.OpenAI(base_url=endpoint, api_key=api_key)\n\n    taxonomy_base\
           \ = \"main\" if repo_branch or (repo_pr and int(repo_pr) > 0) else \"empty\"\
           \n\n    print(\"Generating synthetic dataset for:\")\n    print()\n    print(\n\
-          \        read_taxonomy(\n            taxonomy_path, taxonomy_base, document_output_dir=f\"\
-          {sdg_path}/documents\"\n        )\n    )\n\n    # sset_precomputed_skills_data_ratio(sampling_size=sdg_sampling_size)\n\
-          \n    # generate_data has a magic word for its taxonomy_base argument -\
-          \ 'empty'\n    # it allows generating from the whole repo, see:\n    # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230\n\
-          \    generate_data(\n        client=client,\n        num_instructions_to_generate=num_instructions_to_generate,\n\
-          \        output_dir=sdg_path,\n        taxonomy=taxonomy_path,\n       \
-          \ taxonomy_base=taxonomy_base,\n        model_name=model,\n        pipeline=pipeline,\n\
-          \        chunk_word_count=1000,\n        server_ctx_size=4096,\n    )\n\n"
+          \        instructlab.sdg.utils.taxonomy.read_taxonomy(\n            taxonomy_path,\
+          \ taxonomy_base, document_output_dir=f\"{sdg_path}/documents\"\n       \
+          \ )\n    )\n\n    # Generate synthetic dataset\n    if sdg_sampling_size\
+          \ is None:\n        # generate_data has a magic word for its taxonomy_base\
+          \ argument - 'empty'\n        # it allows generating from the whole repo,\
+          \ see:\n        # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230\n\
+          \        instructlab.sdg.generate_data(\n            client=client,\n  \
+          \          num_instructions_to_generate=num_instructions_to_generate,\n\
+          \            output_dir=sdg_path,\n            taxonomy=taxonomy_path,\n\
+          \            taxonomy_base=taxonomy_base,\n            model_name=model,\n\
+          \            pipeline=pipeline,\n            chunk_word_count=1000,\n  \
+          \          server_ctx_size=4096,\n        )\n    # Tweak precomputed skills\
+          \ data ratio if needed\n    else:\n        skills_recipe = \"/usr/share/instructlab/sdg/default_data_recipes/skills.yaml\"\
+          \n\n        def set_precomputed_skills_data_ratio(sampling_size: float,\
+          \ skills_recipe: str):\n            if path.exists(skills_recipe):\n   \
+          \             with open(skills_recipe, \"r\", encoding=\"utf-8\") as file:\n\
+          \                    skills_yaml = yaml.load(file, Loader=yaml.Loader)\n\
+          \n                skills_yaml[\"datasets\"][0][\"sampling_size\"] = sampling_size\n\
+          \n                with open(skills_recipe, \"w\", encoding=\"utf-8\") as\
+          \ file:\n                    yaml.dump(skills_yaml, file)\n\n        try:\n\
+          \            set_precomputed_skills_data_ratio(\n                sampling_size=sdg_sampling_size,\
+          \ skills_recipe=skills_recipe\n            )\n        except PermissionError:\n\
+          \            print(\"Failed to set precomputed skills data ratio: Permission\
+          \ denied\")\n            print(\"Attempting to override DataMixer class\
+          \ to set the ratio\")\n            import os\n            import shutil\n\
+          \            import tempfile\n\n            import xdg_base_dirs\n\n   \
+          \         # Create a temporary directory\n            with tempfile.TemporaryDirectory()\
+          \ as temp_dir:\n                # Create a default_data_recipes directory\n\
+          \                temp_dir = path.join(temp_dir, \"default_data_recipes\"\
+          )\n                os.mkdir(temp_dir)\n\n                # Copy default_data_recipes/skills.yaml\
+          \ to the temporary directory\n                shutil.copy(skills_recipe,\
+          \ temp_dir)\n\n                # Also copy the current pipeline directory\
+          \ to the temporary directory - it's a small\n                # directory\
+          \ like 28KB\n                # This isn't needed if the pipeline is either\
+          \ \"full\" or \"simple\" but it's future-proofing\n                data_dirs\
+          \ = [\n                    os.path.join(str(dir), \"instructlab\", \"sdg\"\
+          )\n                    for dir in xdg_base_dirs.xdg_data_dirs()\n      \
+          \          ]\n                temp_pipeline_dir = path.join(temp_dir, \"\
+          pipeline\")\n                os.mkdir(temp_pipeline_dir)\n             \
+          \   for d in data_dirs:\n                    pipeline_path = os.path.join(d,\
+          \ \"pipelines\", pipeline)\n                    if os.path.exists(pipeline_path):\n\
+          \                        shutil.copytree(pipeline_path, temp_pipeline_dir)\n\
+          \                        break\n\n                # Build new skills.yaml\
+          \ path\n                new_skills_recipe = path.join(temp_dir, \"skills.yaml\"\
+          )\n                print(f\"New skills recipe path: {new_skills_recipe}\"\
+          )\n\n                # Override XDG_DATA_DIRS with the temporary directory\n\
+          \                # This allows SDG to read the new skills.yaml since it's\
+          \ looking into XDG_DATA_DIRS\n                # and looks for a default_data_recipes\
+          \ directory with a skills.yaml file\n                os.environ[\"XDG_DATA_DIRS\"\
+          ] = f\"{temp_dir}\"\n\n                # Try to set the precomputed skills\
+          \ data ratio again\n                try:\n                    set_precomputed_skills_data_ratio(\n\
+          \                        sampling_size=sdg_sampling_size, skills_recipe=new_skills_recipe\n\
+          \                    )\n                    print(\"Successfully set precomputed\
+          \ skills data ratio\")\n\n                    # generate_data has a magic\
+          \ word for its taxonomy_base argument - 'empty'\n                    # it\
+          \ allows generating from the whole repo, see:\n                    # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230\n\
+          \                    instructlab.sdg.generate_data(\n                  \
+          \      client=client,\n                        num_instructions_to_generate=num_instructions_to_generate,\n\
+          \                        output_dir=sdg_path,\n                        taxonomy=taxonomy_path,\n\
+          \                        taxonomy_base=taxonomy_base,\n                \
+          \        model_name=model,\n                        pipeline=pipeline,\n\
+          \                        chunk_word_count=1000,\n                      \
+          \  server_ctx_size=4096,\n                    )\n                except\
+          \ Exception as e:\n                    print(f\"Failed to set precomputed\
+          \ skills data ratio: {e}\")\n                    raise\n\n"
         env:
         - name: HOME
           value: /tmp
@@ -2091,7 +2139,6 @@ root:
         isOptional: true
         parameterType: STRING
       sdg_sample_size:
-        defaultValue: 1.0
         description: SDG parameter. Represents the sdg skills recipe sampling size
           as percentage in decimal form.
         isOptional: true

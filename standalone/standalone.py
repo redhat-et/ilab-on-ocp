@@ -1130,25 +1130,13 @@ def sdg_op(
     repo_pr: Optional[int],
     taxonomy_path: str = "/data/taxonomy",
     sdg_path: str = "/data/sdg",
-    sdg_sampling_size: float = 1.0,
+    sdg_sampling_size: float = None,
 ):
     from os import getenv, path
 
+    import instructlab.sdg
     import openai
     import yaml
-    from instructlab.sdg import generate_data
-    from instructlab.sdg.utils.taxonomy import read_taxonomy
-
-    def set_precomputed_skills_data_ratio(sampling_size: float):
-        skills_recipe = "/usr/share/instructlab/sdg/default_data_recipes/skills.yaml"
-        if path.exists(skills_recipe):
-            with open(skills_recipe, "r") as file:
-                skills_yaml = yaml.load(file, Loader=yaml.Loader)
-
-            skills_yaml["datasets"][0]["sampling_size"] = sampling_size
-
-            with open(skills_recipe, "w", encoding="utf-8") as file:
-                yaml.dump(skills_yaml, file)
 
     api_key = getenv("api_key")
     model = getenv("model")
@@ -1168,24 +1156,112 @@ def sdg_op(
 
     print("Generating synthetic dataset for:")
     print()
-    print(read_taxonomy(taxonomy_path, taxonomy_base))
-
-    set_precomputed_skills_data_ratio(sampling_size=sdg_sampling_size)
-
-    # generate_data has a magic word for its taxonomy_base argument - 'empty'
-    # it allows generating from the whole repo, see:
-    # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230
-    generate_data(
-        client=client,
-        num_instructions_to_generate=num_instructions_to_generate,
-        output_dir=sdg_path,
-        taxonomy=taxonomy_path,
-        taxonomy_base=taxonomy_base,
-        model_name=model,
-        pipeline=pipeline,
-        chunk_word_count=1000,
-        server_ctx_size=4096,
+    print(
+        instructlab.sdg.utils.taxonomy.read_taxonomy(
+            taxonomy_path, taxonomy_base, document_output_dir=f"{sdg_path}/documents"
+        )
     )
+
+    # Generate synthetic dataset
+    if sdg_sampling_size is None:
+        # generate_data has a magic word for its taxonomy_base argument - 'empty'
+        # it allows generating from the whole repo, see:
+        # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230
+        instructlab.sdg.generate_data(
+            client=client,
+            num_instructions_to_generate=num_instructions_to_generate,
+            output_dir=sdg_path,
+            taxonomy=taxonomy_path,
+            taxonomy_base=taxonomy_base,
+            model_name=model,
+            pipeline=pipeline,
+            chunk_word_count=1000,
+            server_ctx_size=4096,
+        )
+    # Tweak precomputed skills data ratio if needed
+    else:
+        skills_recipe = "/usr/share/instructlab/sdg/default_data_recipes/skills.yaml"
+
+        def set_precomputed_skills_data_ratio(sampling_size: float, skills_recipe: str):
+            if path.exists(skills_recipe):
+                with open(skills_recipe, "r", encoding="utf-8") as file:
+                    skills_yaml = yaml.load(file, Loader=yaml.Loader)
+
+                skills_yaml["datasets"][0]["sampling_size"] = sampling_size
+
+                with open(skills_recipe, "w", encoding="utf-8") as file:
+                    yaml.dump(skills_yaml, file)
+
+        try:
+            set_precomputed_skills_data_ratio(
+                sampling_size=sdg_sampling_size, skills_recipe=skills_recipe
+            )
+        except PermissionError:
+            print("Failed to set precomputed skills data ratio: Permission denied")
+            print("Attempting to override DataMixer class to set the ratio")
+            import os
+            import shutil
+            import tempfile
+
+            import xdg_base_dirs
+
+            # Create a temporary directory
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Create a default_data_recipes directory
+                temp_dir = path.join(temp_dir, "default_data_recipes")
+                os.mkdir(temp_dir)
+
+                # Copy default_data_recipes/skills.yaml to the temporary directory
+                shutil.copy(skills_recipe, temp_dir)
+
+                # Also copy the current pipeline directory to the temporary directory - it's a small
+                # directory like 28KB
+                # This isn't needed if the pipeline is either "full" or "simple" but it's future-proofing
+                data_dirs = [
+                    os.path.join(str(dir), "instructlab", "sdg")
+                    for dir in xdg_base_dirs.xdg_data_dirs()
+                ]
+                temp_pipeline_dir = path.join(temp_dir, "pipeline")
+                os.mkdir(temp_pipeline_dir)
+                for d in data_dirs:
+                    pipeline_path = os.path.join(d, "pipelines", pipeline)
+                    if os.path.exists(pipeline_path):
+                        shutil.copytree(pipeline_path, temp_pipeline_dir)
+                        break
+
+                # Build new skills.yaml path
+                new_skills_recipe = path.join(temp_dir, "skills.yaml")
+                print(f"New skills recipe path: {new_skills_recipe}")
+
+                # Override XDG_DATA_DIRS with the temporary directory
+                # This allows SDG to read the new skills.yaml since it's looking into XDG_DATA_DIRS
+                # and looks for a default_data_recipes directory with a skills.yaml file
+                os.environ["XDG_DATA_DIRS"] = f"{temp_dir}"
+
+                # Try to set the precomputed skills data ratio again
+                try:
+                    set_precomputed_skills_data_ratio(
+                        sampling_size=sdg_sampling_size, skills_recipe=new_skills_recipe
+                    )
+                    print("Successfully set precomputed skills data ratio")
+
+                    # generate_data has a magic word for its taxonomy_base argument - 'empty'
+                    # it allows generating from the whole repo, see:
+                    # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230
+                    instructlab.sdg.generate_data(
+                        client=client,
+                        num_instructions_to_generate=num_instructions_to_generate,
+                        output_dir=sdg_path,
+                        taxonomy=taxonomy_path,
+                        taxonomy_base=taxonomy_base,
+                        model_name=model,
+                        pipeline=pipeline,
+                        chunk_word_count=1000,
+                        server_ctx_size=4096,
+                    )
+                except Exception as e:
+                    print(f"Failed to set precomputed skills data ratio: {e}")
+                    raise
 """
     exec_sdg_op_args = f"""
 sdg_op(num_instructions_to_generate={num_instructions_to_generate}, pipeline="{sdg_pipeline}", repo_branch="{exec_git_clone_op_repo_branch or ""}", repo_pr={exec_git_clone_op_repo_pr or 0}, taxonomy_path="{TAXONOMY_DATA_PATH}", sdg_path="{DATA_PVC_SDG_PATH}", sdg_sampling_size={sdg_sampling_size})
