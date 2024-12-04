@@ -343,12 +343,12 @@ components:
           artifactType:
             schemaTitle: system.Artifact
             schemaVersion: 0.0.1
-  comp-pytorch-job-launcher:
-    executorLabel: exec-pytorch-job-launcher
+  comp-pytorch-job-launcher-op:
+    executorLabel: exec-pytorch-job-launcher-op
     inputDefinitions:
       parameters:
         delete_after_done:
-          defaultValue: true
+          defaultValue: false
           isOptional: true
           parameterType: BOOLEAN
         effective_batch_size:
@@ -357,7 +357,7 @@ components:
           parameterType: NUMBER_INTEGER
         input_pvc_name:
           parameterType: STRING
-        job_timeout_minutes:
+        job_timeout:
           defaultValue: 86400.0
           isOptional: true
           parameterType: NUMBER_INTEGER
@@ -409,12 +409,12 @@ components:
           defaultValue: 42.0
           isOptional: true
           parameterType: NUMBER_INTEGER
-  comp-pytorch-job-launcher-2:
-    executorLabel: exec-pytorch-job-launcher-2
+  comp-pytorch-job-launcher-op-2:
+    executorLabel: exec-pytorch-job-launcher-op-2
     inputDefinitions:
       parameters:
         delete_after_done:
-          defaultValue: true
+          defaultValue: false
           isOptional: true
           parameterType: BOOLEAN
         effective_batch_size:
@@ -423,7 +423,7 @@ components:
           parameterType: NUMBER_INTEGER
         input_pvc_name:
           parameterType: STRING
-        job_timeout_minutes:
+        job_timeout:
           defaultValue: 86400.0
           isOptional: true
           parameterType: NUMBER_INTEGER
@@ -675,7 +675,7 @@ deploymentSpec:
           \               data_output_path=train_args.data_output_dir,\n         \
           \       model_path=train_args.model_path,\n                data_path=train_args.data_path,\n\
           \                max_seq_len=train_args.max_seq_len,\n                chat_tmpl_path=train_args.chat_tmpl_path,\n\
-          \            )\n        )\n\n    #data_processing(train_args=skill_training_args)\n\
+          \            )\n        )\n\n    data_processing(train_args=skill_training_args)\n\
           \    data_processing(train_args=knowledge_training_args)\n\n"
         env:
         - name: XDG_CACHE_HOME
@@ -743,13 +743,13 @@ deploymentSpec:
         - /bin/sh
         - -c
         image: registry.access.redhat.com/ubi9/toolbox
-    exec-pytorch-job-launcher:
+    exec-pytorch-job-launcher-op:
       container:
         args:
         - --executor_input
         - '{{$}}'
         - --function_to_execute
-        - pytorch_job_launcher
+        - pytorch_job_launcher_op
         command:
         - sh
         - -ec
@@ -762,79 +762,87 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef pytorch_job_launcher(\n    model_pvc_name: str,\n    input_pvc_name:\
+          \ *\n\ndef pytorch_job_launcher_op(\n    model_pvc_name: str,\n    input_pvc_name:\
           \ str,\n    output_pvc_name: str,\n    name_suffix: str,\n    phase_num:\
           \ int,\n    nproc_per_node: int = 3,\n    nnodes: int = 2,\n    num_epochs:\
           \ int = 2,\n    effective_batch_size: int = 3840,\n    learning_rate: float\
           \ = 1e-4,\n    num_warmup_steps: int = 800,\n    save_samples: int = 0,\n\
           \    max_batch_len: int = 20000,\n    seed: int = 42,\n    kind: str = \"\
-          PyTorchJob\",\n    namespace: str = \"ilab\",\n    job_timeout_minutes:\
-          \ int = 86400,\n    delete_after_done: bool = True,\n):\n    import time\n\
-          \    import datetime\n    import logging\n    from kubeflow.training import\
-          \ TrainingClient\n    from kubeflow.training.utils import utils\n    from\
-          \ kubeflow.training import models\n    import os\n\n    def list_phase1_final_model():\n\
-          \      model_dir = \"/output/phase_1/model/hf_format\"\n      ilab_models\
-          \ = os.listdir(model_dir)\n      newest_idx = max(\n          (os.path.getmtime(f\"\
-          {model_dir}/{model}\"), i)\n          for i, model in enumerate(ilab_models)\n\
-          \      )[-1]\n      newest_model = ilab_models[newest_idx]\n      return\
-          \ f\"{model_dir}/{newest_model}\"\n\n    if phase_num == 1:\n        path_to_model\
-          \ = \"/input_model\"\n        path_to_data = \"/input_data/knowledge/data.jsonl\"\
-          \n    elif phase_num == 2:\n        path_to_model = list_phase1_final_model()\n\
-          \        path_to_data = \"/input_data/skills/data.jsonl\"\n    else:\n \
-          \       raise RuntimeError(f\"Unsupported value of {phase_num=}\")\n\n \
-          \   resources_per_worker = {\"cpu\": \"8\",\n                 \"nvidia.com/gpu\"\
-          : nproc_per_node}\n\n    base_image = \"quay.io/redhat-et/ilab:1.2\"\n \
-          \   name = f\"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}\"\n \
-          \   command = [\"/bin/bash\", \"-c\", \"--\"]\n\n    #(shanand): Condense\
-          \ this into 1 changeble arg list\n    master_args = [\n        \"echo\"\
-          , f\"Running phase {phase_num};\",\n        \"echo\", f\"Using {path_to_model}\
-          \ model for training;\",\n        \"echo\", f\"Using {path_to_data} data\
-          \ for training;\",\n        \"mkdir\", \"-p\", f\"/output/phase_{phase_num}/model;\"\
-          ,\n        \"mkdir\", \"-p\", \"/output/data;\",\n        \"torchrun\",\n\
-          \        \"--nnodes\", f\"{nnodes}\",\n        \"--nproc_per_node\", f\"\
-          {nproc_per_node}\",\n        \"--node_rank\", \"$(RANK)\",\n        \"--rdzv_endpoint\"\
-          , \"$(MASTER_ADDR):$(MASTER_PORT)\",\n        \"-m\", \"instructlab.training.main_ds\"\
-          ,\n        \"--model_name_or_path\", f\"{path_to_model}\",\n        \"--data_path\"\
-          , f\"{path_to_data}\",\n        \"--output_dir\", f\"/output/phase_{phase_num}/model\"\
-          ,\n        \"--num_epochs\", f\"{num_epochs}\",\n        \"--effective_batch_size\"\
-          , f\"{effective_batch_size}\",\n        \"--learning_rate\", f\"{learning_rate}\"\
-          ,\n        \"--num_warmup_steps\", f\"{num_warmup_steps}\",\n        \"\
-          --save_samples\", f\"{save_samples}\",\n        \"--log_level\", \"INFO\"\
-          ,\n        \"--max_batch_len\", f\"{max_batch_len}\",\n        \"--seed\"\
-          , f\"{seed}\",\n        \"--cpu_offload_optimizer\",\n        \"--cpu_offload_params\"\
-          ,\n        \"--distributed_training_framework\", \"fsdp\",\n        \"--is_granite\"\
-          ,\n        \"--checkpoint_at_epoch\"]\n\n    worker_args = [\n        \"\
-          echo\", f\"Running phase {phase_num};\",\n        \"echo\", f\"Using {path_to_model}\
-          \ model for training;\",\n        \"echo\", f\"Using {path_to_data} data\
-          \ for training;\",\n        \"mkdir\", \"-p\", \"/tmp/model;\",\n      \
-          \  \"torchrun\",\n        \"--nnodes\", f\"{nnodes}\",\n        \"--nproc_per_node\"\
-          , f\"{nproc_per_node}\",\n        \"--node_rank\", \"$(RANK)\",\n      \
-          \  \"--rdzv_endpoint\", \"$(MASTER_ADDR):$(MASTER_PORT)\",\n        \"-m\"\
-          , \"instructlab.training.main_ds\",\n        \"--model_name_or_path\", f\"\
-          {path_to_model}\",\n        \"--data_path\", f\"{path_to_data}\",\n    \
-          \    \"--output_dir\", \"/tmp/model\",\n        \"--num_epochs\", f\"{num_epochs}\"\
-          ,\n        \"--effective_batch_size\", f\"{effective_batch_size}\",\n  \
-          \      \"--learning_rate\", f\"{learning_rate}\",\n        \"--num_warmup_steps\"\
-          , f\"{num_warmup_steps}\",\n        \"--save_samples\", f\"{save_samples}\"\
-          ,\n        \"--log_level\", \"INFO\",\n        \"--max_batch_len\", f\"\
-          {max_batch_len}\",\n        \"--seed\", f\"{seed}\",\n        \"--cpu_offload_optimizer\"\
-          ,\n        \"--cpu_offload_params\",\n        \"--distributed_training_framework\"\
-          , \"fsdp\",\n        \"--is_granite\",\n        \"--checkpoint_at_epoch\"\
-          ]\n\n    # Set volumes and volume  mounts\n    input_data_volume = models.V1Volume(name=\"\
+          PyTorchJob\",\n    namespace: str = \"ilab\",\n    job_timeout: int = 86400,\n\
+          \    delete_after_done: bool = False,\n):\n    import time\n    import logging\n\
+          \    from kubeflow.training import TrainingClient\n    from kubeflow.training.utils\
+          \ import utils\n    from kubeflow.training import models\n    import os\n\
+          \n    def list_phase1_final_model():\n      model_dir = \"/output/phase_1/model/hf_format\"\
+          \n      ilab_models = os.listdir(model_dir)\n      newest_idx = max(\n \
+          \         (os.path.getmtime(f\"{model_dir}/{model}\"), i)\n          for\
+          \ i, model in enumerate(ilab_models)\n      )[-1]\n      newest_model =\
+          \ ilab_models[newest_idx]\n      return f\"{model_dir}/{newest_model}\"\n\
+          \n    if phase_num == 1:\n        path_to_model = \"/input_model\"\n   \
+          \     path_to_data = \"/input_data/knowledge/data.jsonl\"\n    elif phase_num\
+          \ == 2:\n        path_to_model = list_phase1_final_model()\n        path_to_data\
+          \ = \"/input_data/skills/data.jsonl\"\n    else:\n        raise RuntimeError(f\"\
+          Unsupported value of {phase_num=}\")\n\n    resources_per_worker = {\"cpu\"\
+          : \"8\",\n                 \"nvidia.com/gpu\": nproc_per_node}\n\n    base_image\
+          \ = \"quay.io/redhat-et/ilab:shrey\"\n    name = f\"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}\"\
+          \n    command = [\"/bin/bash\", \"-c\", \"--\"]\n\n    master_args = [f\"\
+          \"\"echo \"Running phase {phase_num}\"\n                        echo \"\
+          Using {path_to_model} model for training\"\n                        echo\
+          \ \"Using {path_to_data} data for training\"\n                        mkdir\
+          \ -p /output/phase_{phase_num}/model;\n                        mkdir -p\
+          \ /output/data;\n                        torchrun --nnodes {nnodes} \\\n\
+          \                            --nproc_per_node {nproc_per_node} \\\n    \
+          \                        --node_rank \\$(RANK) \\\n                    \
+          \        --rdzv_endpoint \\$(MASTER_ADDR):\\$(MASTER_PORT) \\\n        \
+          \                    -m instructlab.training.main_ds \\\n              \
+          \              --model_name_or_path={path_to_model} \\\n               \
+          \             --data_path={path_to_data} \\\n                          \
+          \  --output_dir=/output/phase_{phase_num}/model \\\n                   \
+          \         --num_epochs={num_epochs} \\\n                            --effective_batch_size={effective_batch_size}\
+          \ \\\n                            --learning_rate={learning_rate} \\\n \
+          \                           --num_warmup_steps={num_warmup_steps} \\\n \
+          \                           --save_samples={save_samples} \\\n         \
+          \                   --log_level=INFO \\\n                            --max_batch_len={max_batch_len}\
+          \ \\\n                            --seed={seed} \\\n                   \
+          \         --cpu_offload_optimizer \\\n                            --cpu_offload_params\
+          \ \\\n                            --distributed_training_framework fsdp\
+          \ \\\n                            --is_granite \\\n                    \
+          \        --checkpoint_at_epoch\n\"\"\"]\n\n    worker_args = [f\"\"\"echo\
+          \ \"Running phase {phase_num}\"\n                          echo \"Using\
+          \ {path_to_model} model for training\"\n                          echo \"\
+          Using {path_to_data} data for training\"\n                          mkdir\
+          \ -p /tmp/model;\n                          torchrun --nnodes {nnodes} \\\
+          \n                            --nproc_per_node {nproc_per_node} \\\n   \
+          \                         --node_rank \\$(RANK) \\\n                   \
+          \         --rdzv_endpoint \\$(MASTER_ADDR):\\$(MASTER_PORT) \\\n       \
+          \                     -m instructlab.training.main_ds \\\n             \
+          \               --model_name_or_path={path_to_model} \\\n              \
+          \              --data_path={path_to_data} \\\n                         \
+          \   --output_dir=/tmp/model \\\n                            --num_epochs={num_epochs}\
+          \ \\\n                            --effective_batch_size={effective_batch_size}\
+          \ \\\n                            --learning_rate={learning_rate} \\\n \
+          \                           --num_warmup_steps={num_warmup_steps} \\\n \
+          \                           --save_samples={save_samples} \\\n         \
+          \                   --log_level=INFO \\\n                            --max_batch_len={max_batch_len}\
+          \ \\\n                            --seed={seed} \\\n                   \
+          \         --cpu_offload_optimizer \\\n                            --cpu_offload_params\
+          \ \\\n                            --distributed_training_framework fsdp\
+          \ \\\n                            --is_granite \\\n                    \
+          \        --checkpoint_at_epoch\n                   \"\"\"]\n\n    # Set\
+          \ volumes and volume  mounts\n    input_data_volume = models.V1Volume(name=\"\
           input-data\",\n                    persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(\n\
           \                        claim_name=input_pvc_name))\n    input_model_volume\
           \ = models.V1Volume(name=\"model\",\n                persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(\n\
           \                    claim_name=model_pvc_name))\n    output_volume = models.V1Volume(name=\"\
-          output-data\",\n                persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(\n\
+          output\",\n                persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(\n\
           \                    claim_name=output_pvc_name))\n\n    input_data_volume_mount\
-          \ = models.V1VolumeMount(mount_path=\"/input_data\", name=\"input_data\"\
+          \ = models.V1VolumeMount(mount_path=\"/input_data\", name=\"input-data\"\
           , read_only=True)\n    input_model_volume_mount = models.V1VolumeMount(mount_path=\"\
-          /input_model\", name=\"input_model\", read_only=True)\n    output_volume_mount_master\
+          /input_model\", name=\"model\", read_only=True)\n    output_volume_mount_master\
           \ = models.V1VolumeMount(mount_path=\"/output\", name=\"output\")\n    output_volume_mount_worker\
           \ = models.V1VolumeMount(mount_path=\"/output\", name=\"output\", read_only=True)\n\
           \n    # Set env variables\n    nnodes_var =  models.V1EnvVar(name=\"NNODES\"\
           , value=f\"{nnodes}\")\n    nproc_per_node_var = models.V1EnvVar(name=\"\
-          NPROC_PER_NODE\", value=f\"nproc_per_node\")\n    xdg_cache_var = models.V1EnvVar(name=\"\
+          NPROC_PER_NODE\", value=f\"{nproc_per_node}\")\n    xdg_cache_var = models.V1EnvVar(name=\"\
           XDG_CACHE_HOME\", value=\"/tmp\")\n    triton_cache_var = models.V1EnvVar(name=\"\
           TRITON_CACHE_DIR\", value=\"/tmp\")\n    hf_home_var = models.V1EnvVar(name=\"\
           HF_HOME\", value=\"/tmp\")\n    transformers_cache_var = models.V1EnvVar(name=\"\
@@ -845,35 +853,37 @@ deploymentSpec:
           \                                              volume_mounts=[input_data_volume_mount,\n\
           \                                                             input_model_volume_mount,\n\
           \                                                             output_volume_mount_master])\n\
-          \n    master_container_spec.command = command\n    master_container_spec.args\
-          \ = master_args\n\n\n    master_container_spec.env = [nnodes_var,\n    \
-          \                             nproc_per_node_var,\n                    \
-          \             xdg_cache_var,\n                                 triton_cache_var,\n\
-          \                                 hf_home_var,\n                       \
-          \          transformers_cache_var]\n\n    worker_container_spec = utils.get_container_spec(base_image=base_image,\n\
-          \                                          name=\"pytorch\",\n         \
-          \                                 resources=resources_per_worker,\n    \
-          \                                      volume_mounts=[input_data_volume_mount,\n\
-          \                                                          input_model_volume_mount,\n\
+          \n   # In the next release of kubeflow-training, the command \n   # and\
+          \ the args will be a part of utils.get_container_spec function\n    master_container_spec.command\
+          \ = command\n    master_container_spec.args = master_args\n\n\n    master_container_spec.env\
+          \ = [nnodes_var,\n                                 nproc_per_node_var,\n\
+          \                                 xdg_cache_var,\n                     \
+          \            triton_cache_var,\n                                 hf_home_var,\n\
+          \                                 transformers_cache_var]\n\n    worker_container_spec\
+          \ = utils.get_container_spec(base_image=base_image,\n                  \
+          \                        name=\"pytorch\",\n                           \
+          \               resources=resources_per_worker,\n                      \
+          \                    volume_mounts=[input_data_volume_mount,\n         \
+          \                                                 input_model_volume_mount,\n\
           \                                                          output_volume_mount_worker])\n\
           \    worker_container_spec.command = command\n    worker_container_spec.args\
           \ = worker_args\n    worker_container_spec.env = [nnodes_var,\n        \
           \                         nproc_per_node_var,\n                        \
           \         xdg_cache_var,\n                                 triton_cache_var,\n\
           \                                 hf_home_var,\n                       \
-          \          transformers_cache_var]\n\n    # create worker pod spec\n   \
-          \ worker_pod_template_spec = utils.get_pod_template_spec(\n        containers=[master_container_spec],\n\
+          \          transformers_cache_var]\n\n    # create master pod spec\n   \
+          \ master_pod_template_spec = utils.get_pod_template_spec(\n        containers=[master_container_spec],\n\
           \        volumes=[input_data_volume, input_model_volume, output_volume],\n\
-          \    )\n\n    # create master pod spec\n    master_pod_template_spec = utils.get_pod_template_spec(\n\
+          \    )\n\n    # create worker pod spec\n    worker_pod_template_spec = utils.get_pod_template_spec(\n\
           \        containers=[worker_container_spec],\n        volumes=[input_data_volume,\
           \ input_model_volume, output_volume],\n    )\n\n    # Create pytorch job\
           \ spec\n    job_template = utils.get_pytorchjob_template(name=name,\n  \
           \                                               namespace=namespace,\n \
           \                                                worker_pod_template_spec=worker_pod_template_spec,\n\
           \                                                 master_pod_template_spec=master_pod_template_spec,\n\
-          \                                                 num_workers=nnodes-1,\n\
+          \                                                 num_workers=nnodes,\n\
           \                                                 num_procs_per_worker=nproc_per_node)\n\
-          \n\n    # Run the pytorch job\n    logging.getLogger(__name__).setLevel(logging.INFO)\n\
+          \n    print(job_template.to_str())\n    # Run the pytorch job\n    logging.getLogger(__name__).setLevel(logging.INFO)\n\
           \    logging.info('Generating job template.')\n    logging.info('Creating\
           \ TrainingClient.')\n\n    training_client = TrainingClient()\n\n    logging.info(f\"\
           Creating PyTorchJob in namespace: {namespace}\")\n    training_client.create_job(job_template,\
@@ -903,17 +913,18 @@ deploymentSpec:
           \         logging.info(line)\n                        log_lines.add(line)\n\
           \n            time.sleep(polling_interval)\n\n    wait_for_job_get_logs(\n\
           \        name=name,\n        namespace=namespace,\n        job_kind=kind,\n\
-          \        expected_conditions=set(expected_conditions),\n        timeout=int(datetime.timedelta(minutes=job_timeout_minutes).total_seconds())\n\
-          \    )\n    if delete_after_done:\n        logging.info('Deleting job after\
-          \ completion.')\n        training_client.delete_job(name, namespace)\n\n"
+          \        expected_conditions=set(expected_conditions),\n        wait_timeout=job_timeout,\n\
+          \        timeout=job_timeout\n    )\n    if delete_after_done:\n       \
+          \ logging.info('Deleting job after completion.')\n        training_client.delete_job(name,\
+          \ namespace)\n\n"
         image: quay.io/redhat-et/ilab:shrey
-    exec-pytorch-job-launcher-2:
+    exec-pytorch-job-launcher-op-2:
       container:
         args:
         - --executor_input
         - '{{$}}'
         - --function_to_execute
-        - pytorch_job_launcher
+        - pytorch_job_launcher_op
         command:
         - sh
         - -ec
@@ -926,79 +937,87 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef pytorch_job_launcher(\n    model_pvc_name: str,\n    input_pvc_name:\
+          \ *\n\ndef pytorch_job_launcher_op(\n    model_pvc_name: str,\n    input_pvc_name:\
           \ str,\n    output_pvc_name: str,\n    name_suffix: str,\n    phase_num:\
           \ int,\n    nproc_per_node: int = 3,\n    nnodes: int = 2,\n    num_epochs:\
           \ int = 2,\n    effective_batch_size: int = 3840,\n    learning_rate: float\
           \ = 1e-4,\n    num_warmup_steps: int = 800,\n    save_samples: int = 0,\n\
           \    max_batch_len: int = 20000,\n    seed: int = 42,\n    kind: str = \"\
-          PyTorchJob\",\n    namespace: str = \"ilab\",\n    job_timeout_minutes:\
-          \ int = 86400,\n    delete_after_done: bool = True,\n):\n    import time\n\
-          \    import datetime\n    import logging\n    from kubeflow.training import\
-          \ TrainingClient\n    from kubeflow.training.utils import utils\n    from\
-          \ kubeflow.training import models\n    import os\n\n    def list_phase1_final_model():\n\
-          \      model_dir = \"/output/phase_1/model/hf_format\"\n      ilab_models\
-          \ = os.listdir(model_dir)\n      newest_idx = max(\n          (os.path.getmtime(f\"\
-          {model_dir}/{model}\"), i)\n          for i, model in enumerate(ilab_models)\n\
-          \      )[-1]\n      newest_model = ilab_models[newest_idx]\n      return\
-          \ f\"{model_dir}/{newest_model}\"\n\n    if phase_num == 1:\n        path_to_model\
-          \ = \"/input_model\"\n        path_to_data = \"/input_data/knowledge/data.jsonl\"\
-          \n    elif phase_num == 2:\n        path_to_model = list_phase1_final_model()\n\
-          \        path_to_data = \"/input_data/skills/data.jsonl\"\n    else:\n \
-          \       raise RuntimeError(f\"Unsupported value of {phase_num=}\")\n\n \
-          \   resources_per_worker = {\"cpu\": \"8\",\n                 \"nvidia.com/gpu\"\
-          : nproc_per_node}\n\n    base_image = \"quay.io/redhat-et/ilab:1.2\"\n \
-          \   name = f\"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}\"\n \
-          \   command = [\"/bin/bash\", \"-c\", \"--\"]\n\n    #(shanand): Condense\
-          \ this into 1 changeble arg list\n    master_args = [\n        \"echo\"\
-          , f\"Running phase {phase_num};\",\n        \"echo\", f\"Using {path_to_model}\
-          \ model for training;\",\n        \"echo\", f\"Using {path_to_data} data\
-          \ for training;\",\n        \"mkdir\", \"-p\", f\"/output/phase_{phase_num}/model;\"\
-          ,\n        \"mkdir\", \"-p\", \"/output/data;\",\n        \"torchrun\",\n\
-          \        \"--nnodes\", f\"{nnodes}\",\n        \"--nproc_per_node\", f\"\
-          {nproc_per_node}\",\n        \"--node_rank\", \"$(RANK)\",\n        \"--rdzv_endpoint\"\
-          , \"$(MASTER_ADDR):$(MASTER_PORT)\",\n        \"-m\", \"instructlab.training.main_ds\"\
-          ,\n        \"--model_name_or_path\", f\"{path_to_model}\",\n        \"--data_path\"\
-          , f\"{path_to_data}\",\n        \"--output_dir\", f\"/output/phase_{phase_num}/model\"\
-          ,\n        \"--num_epochs\", f\"{num_epochs}\",\n        \"--effective_batch_size\"\
-          , f\"{effective_batch_size}\",\n        \"--learning_rate\", f\"{learning_rate}\"\
-          ,\n        \"--num_warmup_steps\", f\"{num_warmup_steps}\",\n        \"\
-          --save_samples\", f\"{save_samples}\",\n        \"--log_level\", \"INFO\"\
-          ,\n        \"--max_batch_len\", f\"{max_batch_len}\",\n        \"--seed\"\
-          , f\"{seed}\",\n        \"--cpu_offload_optimizer\",\n        \"--cpu_offload_params\"\
-          ,\n        \"--distributed_training_framework\", \"fsdp\",\n        \"--is_granite\"\
-          ,\n        \"--checkpoint_at_epoch\"]\n\n    worker_args = [\n        \"\
-          echo\", f\"Running phase {phase_num};\",\n        \"echo\", f\"Using {path_to_model}\
-          \ model for training;\",\n        \"echo\", f\"Using {path_to_data} data\
-          \ for training;\",\n        \"mkdir\", \"-p\", \"/tmp/model;\",\n      \
-          \  \"torchrun\",\n        \"--nnodes\", f\"{nnodes}\",\n        \"--nproc_per_node\"\
-          , f\"{nproc_per_node}\",\n        \"--node_rank\", \"$(RANK)\",\n      \
-          \  \"--rdzv_endpoint\", \"$(MASTER_ADDR):$(MASTER_PORT)\",\n        \"-m\"\
-          , \"instructlab.training.main_ds\",\n        \"--model_name_or_path\", f\"\
-          {path_to_model}\",\n        \"--data_path\", f\"{path_to_data}\",\n    \
-          \    \"--output_dir\", \"/tmp/model\",\n        \"--num_epochs\", f\"{num_epochs}\"\
-          ,\n        \"--effective_batch_size\", f\"{effective_batch_size}\",\n  \
-          \      \"--learning_rate\", f\"{learning_rate}\",\n        \"--num_warmup_steps\"\
-          , f\"{num_warmup_steps}\",\n        \"--save_samples\", f\"{save_samples}\"\
-          ,\n        \"--log_level\", \"INFO\",\n        \"--max_batch_len\", f\"\
-          {max_batch_len}\",\n        \"--seed\", f\"{seed}\",\n        \"--cpu_offload_optimizer\"\
-          ,\n        \"--cpu_offload_params\",\n        \"--distributed_training_framework\"\
-          , \"fsdp\",\n        \"--is_granite\",\n        \"--checkpoint_at_epoch\"\
-          ]\n\n    # Set volumes and volume  mounts\n    input_data_volume = models.V1Volume(name=\"\
+          PyTorchJob\",\n    namespace: str = \"ilab\",\n    job_timeout: int = 86400,\n\
+          \    delete_after_done: bool = False,\n):\n    import time\n    import logging\n\
+          \    from kubeflow.training import TrainingClient\n    from kubeflow.training.utils\
+          \ import utils\n    from kubeflow.training import models\n    import os\n\
+          \n    def list_phase1_final_model():\n      model_dir = \"/output/phase_1/model/hf_format\"\
+          \n      ilab_models = os.listdir(model_dir)\n      newest_idx = max(\n \
+          \         (os.path.getmtime(f\"{model_dir}/{model}\"), i)\n          for\
+          \ i, model in enumerate(ilab_models)\n      )[-1]\n      newest_model =\
+          \ ilab_models[newest_idx]\n      return f\"{model_dir}/{newest_model}\"\n\
+          \n    if phase_num == 1:\n        path_to_model = \"/input_model\"\n   \
+          \     path_to_data = \"/input_data/knowledge/data.jsonl\"\n    elif phase_num\
+          \ == 2:\n        path_to_model = list_phase1_final_model()\n        path_to_data\
+          \ = \"/input_data/skills/data.jsonl\"\n    else:\n        raise RuntimeError(f\"\
+          Unsupported value of {phase_num=}\")\n\n    resources_per_worker = {\"cpu\"\
+          : \"8\",\n                 \"nvidia.com/gpu\": nproc_per_node}\n\n    base_image\
+          \ = \"quay.io/redhat-et/ilab:shrey\"\n    name = f\"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}\"\
+          \n    command = [\"/bin/bash\", \"-c\", \"--\"]\n\n    master_args = [f\"\
+          \"\"echo \"Running phase {phase_num}\"\n                        echo \"\
+          Using {path_to_model} model for training\"\n                        echo\
+          \ \"Using {path_to_data} data for training\"\n                        mkdir\
+          \ -p /output/phase_{phase_num}/model;\n                        mkdir -p\
+          \ /output/data;\n                        torchrun --nnodes {nnodes} \\\n\
+          \                            --nproc_per_node {nproc_per_node} \\\n    \
+          \                        --node_rank \\$(RANK) \\\n                    \
+          \        --rdzv_endpoint \\$(MASTER_ADDR):\\$(MASTER_PORT) \\\n        \
+          \                    -m instructlab.training.main_ds \\\n              \
+          \              --model_name_or_path={path_to_model} \\\n               \
+          \             --data_path={path_to_data} \\\n                          \
+          \  --output_dir=/output/phase_{phase_num}/model \\\n                   \
+          \         --num_epochs={num_epochs} \\\n                            --effective_batch_size={effective_batch_size}\
+          \ \\\n                            --learning_rate={learning_rate} \\\n \
+          \                           --num_warmup_steps={num_warmup_steps} \\\n \
+          \                           --save_samples={save_samples} \\\n         \
+          \                   --log_level=INFO \\\n                            --max_batch_len={max_batch_len}\
+          \ \\\n                            --seed={seed} \\\n                   \
+          \         --cpu_offload_optimizer \\\n                            --cpu_offload_params\
+          \ \\\n                            --distributed_training_framework fsdp\
+          \ \\\n                            --is_granite \\\n                    \
+          \        --checkpoint_at_epoch\n\"\"\"]\n\n    worker_args = [f\"\"\"echo\
+          \ \"Running phase {phase_num}\"\n                          echo \"Using\
+          \ {path_to_model} model for training\"\n                          echo \"\
+          Using {path_to_data} data for training\"\n                          mkdir\
+          \ -p /tmp/model;\n                          torchrun --nnodes {nnodes} \\\
+          \n                            --nproc_per_node {nproc_per_node} \\\n   \
+          \                         --node_rank \\$(RANK) \\\n                   \
+          \         --rdzv_endpoint \\$(MASTER_ADDR):\\$(MASTER_PORT) \\\n       \
+          \                     -m instructlab.training.main_ds \\\n             \
+          \               --model_name_or_path={path_to_model} \\\n              \
+          \              --data_path={path_to_data} \\\n                         \
+          \   --output_dir=/tmp/model \\\n                            --num_epochs={num_epochs}\
+          \ \\\n                            --effective_batch_size={effective_batch_size}\
+          \ \\\n                            --learning_rate={learning_rate} \\\n \
+          \                           --num_warmup_steps={num_warmup_steps} \\\n \
+          \                           --save_samples={save_samples} \\\n         \
+          \                   --log_level=INFO \\\n                            --max_batch_len={max_batch_len}\
+          \ \\\n                            --seed={seed} \\\n                   \
+          \         --cpu_offload_optimizer \\\n                            --cpu_offload_params\
+          \ \\\n                            --distributed_training_framework fsdp\
+          \ \\\n                            --is_granite \\\n                    \
+          \        --checkpoint_at_epoch\n                   \"\"\"]\n\n    # Set\
+          \ volumes and volume  mounts\n    input_data_volume = models.V1Volume(name=\"\
           input-data\",\n                    persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(\n\
           \                        claim_name=input_pvc_name))\n    input_model_volume\
           \ = models.V1Volume(name=\"model\",\n                persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(\n\
           \                    claim_name=model_pvc_name))\n    output_volume = models.V1Volume(name=\"\
-          output-data\",\n                persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(\n\
+          output\",\n                persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(\n\
           \                    claim_name=output_pvc_name))\n\n    input_data_volume_mount\
-          \ = models.V1VolumeMount(mount_path=\"/input_data\", name=\"input_data\"\
+          \ = models.V1VolumeMount(mount_path=\"/input_data\", name=\"input-data\"\
           , read_only=True)\n    input_model_volume_mount = models.V1VolumeMount(mount_path=\"\
-          /input_model\", name=\"input_model\", read_only=True)\n    output_volume_mount_master\
+          /input_model\", name=\"model\", read_only=True)\n    output_volume_mount_master\
           \ = models.V1VolumeMount(mount_path=\"/output\", name=\"output\")\n    output_volume_mount_worker\
           \ = models.V1VolumeMount(mount_path=\"/output\", name=\"output\", read_only=True)\n\
           \n    # Set env variables\n    nnodes_var =  models.V1EnvVar(name=\"NNODES\"\
           , value=f\"{nnodes}\")\n    nproc_per_node_var = models.V1EnvVar(name=\"\
-          NPROC_PER_NODE\", value=f\"nproc_per_node\")\n    xdg_cache_var = models.V1EnvVar(name=\"\
+          NPROC_PER_NODE\", value=f\"{nproc_per_node}\")\n    xdg_cache_var = models.V1EnvVar(name=\"\
           XDG_CACHE_HOME\", value=\"/tmp\")\n    triton_cache_var = models.V1EnvVar(name=\"\
           TRITON_CACHE_DIR\", value=\"/tmp\")\n    hf_home_var = models.V1EnvVar(name=\"\
           HF_HOME\", value=\"/tmp\")\n    transformers_cache_var = models.V1EnvVar(name=\"\
@@ -1009,35 +1028,37 @@ deploymentSpec:
           \                                              volume_mounts=[input_data_volume_mount,\n\
           \                                                             input_model_volume_mount,\n\
           \                                                             output_volume_mount_master])\n\
-          \n    master_container_spec.command = command\n    master_container_spec.args\
-          \ = master_args\n\n\n    master_container_spec.env = [nnodes_var,\n    \
-          \                             nproc_per_node_var,\n                    \
-          \             xdg_cache_var,\n                                 triton_cache_var,\n\
-          \                                 hf_home_var,\n                       \
-          \          transformers_cache_var]\n\n    worker_container_spec = utils.get_container_spec(base_image=base_image,\n\
-          \                                          name=\"pytorch\",\n         \
-          \                                 resources=resources_per_worker,\n    \
-          \                                      volume_mounts=[input_data_volume_mount,\n\
-          \                                                          input_model_volume_mount,\n\
+          \n   # In the next release of kubeflow-training, the command \n   # and\
+          \ the args will be a part of utils.get_container_spec function\n    master_container_spec.command\
+          \ = command\n    master_container_spec.args = master_args\n\n\n    master_container_spec.env\
+          \ = [nnodes_var,\n                                 nproc_per_node_var,\n\
+          \                                 xdg_cache_var,\n                     \
+          \            triton_cache_var,\n                                 hf_home_var,\n\
+          \                                 transformers_cache_var]\n\n    worker_container_spec\
+          \ = utils.get_container_spec(base_image=base_image,\n                  \
+          \                        name=\"pytorch\",\n                           \
+          \               resources=resources_per_worker,\n                      \
+          \                    volume_mounts=[input_data_volume_mount,\n         \
+          \                                                 input_model_volume_mount,\n\
           \                                                          output_volume_mount_worker])\n\
           \    worker_container_spec.command = command\n    worker_container_spec.args\
           \ = worker_args\n    worker_container_spec.env = [nnodes_var,\n        \
           \                         nproc_per_node_var,\n                        \
           \         xdg_cache_var,\n                                 triton_cache_var,\n\
           \                                 hf_home_var,\n                       \
-          \          transformers_cache_var]\n\n    # create worker pod spec\n   \
-          \ worker_pod_template_spec = utils.get_pod_template_spec(\n        containers=[master_container_spec],\n\
+          \          transformers_cache_var]\n\n    # create master pod spec\n   \
+          \ master_pod_template_spec = utils.get_pod_template_spec(\n        containers=[master_container_spec],\n\
           \        volumes=[input_data_volume, input_model_volume, output_volume],\n\
-          \    )\n\n    # create master pod spec\n    master_pod_template_spec = utils.get_pod_template_spec(\n\
+          \    )\n\n    # create worker pod spec\n    worker_pod_template_spec = utils.get_pod_template_spec(\n\
           \        containers=[worker_container_spec],\n        volumes=[input_data_volume,\
           \ input_model_volume, output_volume],\n    )\n\n    # Create pytorch job\
           \ spec\n    job_template = utils.get_pytorchjob_template(name=name,\n  \
           \                                               namespace=namespace,\n \
           \                                                worker_pod_template_spec=worker_pod_template_spec,\n\
           \                                                 master_pod_template_spec=master_pod_template_spec,\n\
-          \                                                 num_workers=nnodes-1,\n\
+          \                                                 num_workers=nnodes,\n\
           \                                                 num_procs_per_worker=nproc_per_node)\n\
-          \n\n    # Run the pytorch job\n    logging.getLogger(__name__).setLevel(logging.INFO)\n\
+          \n    print(job_template.to_str())\n    # Run the pytorch job\n    logging.getLogger(__name__).setLevel(logging.INFO)\n\
           \    logging.info('Generating job template.')\n    logging.info('Creating\
           \ TrainingClient.')\n\n    training_client = TrainingClient()\n\n    logging.info(f\"\
           Creating PyTorchJob in namespace: {namespace}\")\n    training_client.create_job(job_template,\
@@ -1067,9 +1088,10 @@ deploymentSpec:
           \         logging.info(line)\n                        log_lines.add(line)\n\
           \n            time.sleep(polling_interval)\n\n    wait_for_job_get_logs(\n\
           \        name=name,\n        namespace=namespace,\n        job_kind=kind,\n\
-          \        expected_conditions=set(expected_conditions),\n        timeout=int(datetime.timedelta(minutes=job_timeout_minutes).total_seconds())\n\
-          \    )\n    if delete_after_done:\n        logging.info('Deleting job after\
-          \ completion.')\n        training_client.delete_job(name, namespace)\n\n"
+          \        expected_conditions=set(expected_conditions),\n        wait_timeout=job_timeout,\n\
+          \        timeout=job_timeout\n    )\n    if delete_after_done:\n       \
+          \ logging.info('Deleting job after completion.')\n        training_client.delete_job(name,\
+          \ namespace)\n\n"
         image: quay.io/redhat-et/ilab:shrey
     exec-run-final-eval-op:
       container:
@@ -1811,10 +1833,10 @@ root:
                 constant: /output/mt_bench_data.json
         taskInfo:
           name: pvc-to-mt-bench-op
-      pytorch-job-launcher:
+      pytorch-job-launcher-op:
         cachingOptions: {}
         componentRef:
-          name: comp-pytorch-job-launcher
+          name: comp-pytorch-job-launcher-op
         dependentTasks:
         - createpvc
         - createpvc-2
@@ -1861,16 +1883,16 @@ root:
             seed:
               componentInputParameter: train_seed
         taskInfo:
-          name: pytorch-job-launcher
-      pytorch-job-launcher-2:
+          name: pytorch-job-launcher-op
+      pytorch-job-launcher-op-2:
         cachingOptions: {}
         componentRef:
-          name: comp-pytorch-job-launcher-2
+          name: comp-pytorch-job-launcher-op-2
         dependentTasks:
         - createpvc
         - createpvc-2
         - createpvc-3
-        - pytorch-job-launcher
+        - pytorch-job-launcher-op
         inputs:
           parameters:
             effective_batch_size:
@@ -1911,7 +1933,7 @@ root:
             seed:
               componentInputParameter: train_seed
         taskInfo:
-          name: pytorch-job-launcher-2
+          name: pytorch-job-launcher-op-2
       run-final-eval-op:
         cachingOptions:
           enableCache: true
@@ -1950,7 +1972,7 @@ root:
           name: comp-run-mt-bench-op
         dependentTasks:
         - createpvc-3
-        - pytorch-job-launcher-2
+        - pytorch-job-launcher-op-2
         inputs:
           parameters:
             max_workers:
@@ -2232,7 +2254,7 @@ platforms:
             taskOutputParameter:
               outputParameterKey: name
               producerTask: createpvc-3
-        exec-pytorch-job-launcher-2:
+        exec-pytorch-job-launcher-op-2:
           pvcMount:
           - mountPath: /output
             taskOutputParameter:

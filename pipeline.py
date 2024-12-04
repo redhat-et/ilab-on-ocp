@@ -51,7 +51,7 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         from training.faked import (
             data_processing_op,
             knowledge_processed_data_to_artifact_op,
-            pytorchjob_manifest_op,
+            pytorch_job_launcher_op,
             skills_processed_data_to_artifact_op,
         )
         from utils.faked import (
@@ -63,7 +63,7 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         from training import (
             data_processing_op,
             knowledge_processed_data_to_artifact_op,
-            pytorch_job_launcher,
+            pytorch_job_launcher_op,
             skills_processed_data_to_artifact_op,
         )
         from utils import (
@@ -278,7 +278,7 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         # Training 1
         # Using pvc_create_task.output as PyTorchJob name since dsl.PIPELINE_* global variables do not template/work in KFP v2
         # https://github.com/kubeflow/pipelines/issues/10453
-        training_phase_1 = pytorch_job_launcher(
+        training_phase_1 = pytorch_job_launcher_op(
             model_pvc_name=model_pvc_task.output,
             input_pvc_name=sdg_input_pvc_task.output,
             name_suffix=sdg_input_pvc_task.output,
@@ -298,7 +298,7 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         training_phase_1.set_caching_options(False)
 
         #### Train 2
-        training_phase_2 = pytorch_job_launcher(
+        training_phase_2 = pytorch_job_launcher_op(
             model_pvc_name=model_pvc_task.output,
             input_pvc_name=sdg_input_pvc_task.output,
             name_suffix=sdg_input_pvc_task.output,
