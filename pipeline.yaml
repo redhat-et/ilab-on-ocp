@@ -645,6 +645,9 @@ deploymentSpec:
           \                max_seq_len=train_args.max_seq_len,\n                chat_tmpl_path=train_args.chat_tmpl_path,\n\
           \            )\n        )\n\n    data_processing(train_args=skill_training_args)\n\
           \    data_processing(train_args=knowledge_training_args)\n\n"
+        env:
+        - name: XDG_CACHE_HOME
+          value: /tmp
         image: quay.io/redhat-et/ilab:1.3
     exec-deletepvc:
       container:
@@ -773,29 +776,28 @@ deploymentSpec:
           \                        --log_level=INFO \\\n                         \
           \     --max_batch_len={max_batch_len} \\\n                             \
           \ --seed={seed} \\\n                              --cpu_offload_optimizer\
-          \ \\\n                              --cpu_offload_params \\\n          \
-          \                    --distributed_training_framework fsdp \\\n        \
-          \                      --is_granite \\\n                              --checkpoint_at_epoch\n\
-          \                      command:\n                        - /bin/bash\n \
-          \                       - '-c'\n                        - '--'\n       \
-          \               image: {image}\n                      name: pytorch\n  \
-          \                    volumeMounts:\n                        - mountPath:\
-          \ /input_data\n                          name: input-data\n            \
-          \              readOnly: true\n                        - mountPath: /input_model\n\
-          \                          name: model\n                          readOnly:\
-          \ true\n                        - mountPath: /output\n                 \
-          \         name: output\n                      env:\n                   \
-          \     - name: NNODES\n                          value: \\\"{nnodes}\\\"\n\
-          \                        - name: NPROC_PER_NODE\n                      \
-          \    value: \\\"{nproc_per_node}\\\"\n                        - name: XDG_CACHE_HOME\n\
+          \ \\\n                              --cpu_offload_params_fsdp \\\n     \
+          \                         --distributed_training_framework fsdp \\\n   \
+          \                           --checkpoint_at_epoch\n                    \
+          \  command:\n                        - /bin/bash\n                     \
+          \   - '-c'\n                        - '--'\n                      image:\
+          \ {image}\n                      name: pytorch\n                      volumeMounts:\n\
+          \                        - mountPath: /input_data\n                    \
+          \      name: input-data\n                          readOnly: true\n    \
+          \                    - mountPath: /input_model\n                       \
+          \   name: model\n                          readOnly: true\n            \
+          \            - mountPath: /output\n                          name: output\n\
+          \                      env:\n                        - name: NNODES\n  \
+          \                        value: \\\"{nnodes}\\\"\n                     \
+          \   - name: NPROC_PER_NODE\n                          value: \\\"{nproc_per_node}\\\
+          \"\n                        - name: XDG_CACHE_HOME\n                   \
+          \       value: /tmp\n                        - name: TRITON_CACHE_DIR\n\
           \                          value: /tmp\n                        - name:\
-          \ TRITON_CACHE_DIR\n                          value: /tmp\n            \
-          \            - name: HF_HOME\n                          value: /tmp\n  \
-          \                      - name: TRANSFORMERS_CACHE\n                    \
-          \      value: /tmp\n                      resources:\n                 \
-          \       requests:\n                          cpu: 8\n                  \
-          \        \"nvidia.com/gpu\": {nproc_per_node}\n                        limits:\n\
-          \                          cpu: 8\n                          \"nvidia.com/gpu\"\
+          \ HF_HOME\n                          value: /tmp\n                     \
+          \   - name: TRANSFORMERS_CACHE\n                          value: /tmp\n\
+          \                      resources:\n                        requests:\n \
+          \                         \"nvidia.com/gpu\": {nproc_per_node}\n       \
+          \                 limits:\n                          \"nvidia.com/gpu\"\
           : {nproc_per_node}\n                  volumes:\n                    - name:\
           \ input-data\n                      persistentVolumeClaim:\n           \
           \             claimName: {input_pvc_name}\n                    - name: model\n\
@@ -824,41 +826,39 @@ deploymentSpec:
           \                           --save_samples={save_samples} \\\n         \
           \                   --log_level=INFO \\\n                            --max_batch_len={max_batch_len}\
           \ \\\n                            --seed={seed} \\\n                   \
-          \         --cpu_offload_optimizer \\\n                            --cpu_offload_params\
+          \         --cpu_offload_optimizer \\\n                            --cpu_offload_params_fsdp\
           \ \\\n                            --distributed_training_framework fsdp\
-          \ \\\n                            --is_granite \\\n                    \
-          \        --checkpoint_at_epoch\n                      command:\n       \
-          \                 - /bin/bash\n                        - '-c'\n        \
-          \                - '--'\n                      image: {image}\n        \
-          \              name: pytorch\n                      volumeMounts:\n    \
-          \                    - mountPath: /input_data\n                        \
-          \  name: input-data\n                          readOnly: true\n        \
-          \                - mountPath: /input_model\n                          name:\
-          \ model\n                          readOnly: true\n                    \
-          \    - mountPath: /output\n                          name: output\n    \
-          \                      readOnly: true\n                      env:\n    \
-          \                    - name: NNODES\n                          value: \\\
-          \"{nnodes}\\\"\n                        - name: NPROC_PER_NODE\n       \
-          \                   value: \\\"{nproc_per_node}\\\"\n                  \
-          \      - name: XDG_CACHE_HOME\n                          value: /tmp\n \
-          \                       - name: TRITON_CACHE_DIR\n                     \
-          \     value: /tmp\n                        - name: HF_HOME\n           \
-          \               value: /tmp\n                        - name: TRANSFORMERS_CACHE\n\
+          \ \\\n                            --checkpoint_at_epoch\n              \
+          \        command:\n                        - /bin/bash\n               \
+          \         - '-c'\n                        - '--'\n                     \
+          \ image: {image}\n                      name: pytorch\n                \
+          \      volumeMounts:\n                        - mountPath: /input_data\n\
+          \                          name: input-data\n                          readOnly:\
+          \ true\n                        - mountPath: /input_model\n            \
+          \              name: model\n                          readOnly: true\n \
+          \                       - mountPath: /output\n                         \
+          \ name: output\n                          readOnly: true\n             \
+          \         env:\n                        - name: NNODES\n               \
+          \           value: \\\"{nnodes}\\\"\n                        - name: NPROC_PER_NODE\n\
+          \                          value: \\\"{nproc_per_node}\\\"\n           \
+          \             - name: XDG_CACHE_HOME\n                          value: /tmp\n\
+          \                        - name: TRITON_CACHE_DIR\n                    \
+          \      value: /tmp\n                        - name: HF_HOME\n          \
+          \                value: /tmp\n                        - name: TRANSFORMERS_CACHE\n\
           \                          value: /tmp\n                      resources:\n\
-          \                        requests:\n                          cpu: 8\n \
-          \                         \"nvidia.com/gpu\": {nproc_per_node}\n       \
-          \                 limits:\n                          cpu: 8\n          \
-          \                \"nvidia.com/gpu\": {nproc_per_node}\n                \
-          \  volumes:\n                    - name: input-data\n                  \
-          \    persistentVolumeClaim:\n                        claimName: {input_pvc_name}\n\
-          \                    - name: model\n                      persistentVolumeClaim:\n\
-          \                        claimName: {model_pvc_name}\n                 \
-          \   - name: output\n                      persistentVolumeClaim:\n     \
-          \                   claimName: {output_pvc_name}\n        \"\"\"\n    )\n\
-          \n    try:\n        manifest_yaml = yaml.safe_load(manifest)\n    except\
-          \ yaml.YAMLError as exc:\n        raise RuntimeError(f\"Error parsing manifest:\
-          \ {exc}\") from exc\n\n    # Discover the namespace in which the pod is\
-          \ running\n    with open(\n        \"/var/run/secrets/kubernetes.io/serviceaccount/namespace\"\
+          \                        requests:\n                          \"nvidia.com/gpu\"\
+          : {nproc_per_node}\n                        limits:\n                  \
+          \        \"nvidia.com/gpu\": {nproc_per_node}\n                  volumes:\n\
+          \                    - name: input-data\n                      persistentVolumeClaim:\n\
+          \                        claimName: {input_pvc_name}\n                 \
+          \   - name: model\n                      persistentVolumeClaim:\n      \
+          \                  claimName: {model_pvc_name}\n                    - name:\
+          \ output\n                      persistentVolumeClaim:\n               \
+          \         claimName: {output_pvc_name}\n        \"\"\"\n    )\n\n    try:\n\
+          \        manifest_yaml = yaml.safe_load(manifest)\n    except yaml.YAMLError\
+          \ as exc:\n        raise RuntimeError(f\"Error parsing manifest: {exc}\"\
+          ) from exc\n\n    # Discover the namespace in which the pod is running\n\
+          \    with open(\n        \"/var/run/secrets/kubernetes.io/serviceaccount/namespace\"\
           , \"r\", encoding=\"utf-8\"\n    ) as f:\n        namespace = f.read().strip()\n\
           \        print(f\"The pod is running in the namespace: {namespace}\")\n\n\
           \    try:\n        kubernetes.config.load_kube_config()\n        print(\"\
@@ -980,29 +980,28 @@ deploymentSpec:
           \                        --log_level=INFO \\\n                         \
           \     --max_batch_len={max_batch_len} \\\n                             \
           \ --seed={seed} \\\n                              --cpu_offload_optimizer\
-          \ \\\n                              --cpu_offload_params \\\n          \
-          \                    --distributed_training_framework fsdp \\\n        \
-          \                      --is_granite \\\n                              --checkpoint_at_epoch\n\
-          \                      command:\n                        - /bin/bash\n \
-          \                       - '-c'\n                        - '--'\n       \
-          \               image: {image}\n                      name: pytorch\n  \
-          \                    volumeMounts:\n                        - mountPath:\
-          \ /input_data\n                          name: input-data\n            \
-          \              readOnly: true\n                        - mountPath: /input_model\n\
-          \                          name: model\n                          readOnly:\
-          \ true\n                        - mountPath: /output\n                 \
-          \         name: output\n                      env:\n                   \
-          \     - name: NNODES\n                          value: \\\"{nnodes}\\\"\n\
-          \                        - name: NPROC_PER_NODE\n                      \
-          \    value: \\\"{nproc_per_node}\\\"\n                        - name: XDG_CACHE_HOME\n\
+          \ \\\n                              --cpu_offload_params_fsdp \\\n     \
+          \                         --distributed_training_framework fsdp \\\n   \
+          \                           --checkpoint_at_epoch\n                    \
+          \  command:\n                        - /bin/bash\n                     \
+          \   - '-c'\n                        - '--'\n                      image:\
+          \ {image}\n                      name: pytorch\n                      volumeMounts:\n\
+          \                        - mountPath: /input_data\n                    \
+          \      name: input-data\n                          readOnly: true\n    \
+          \                    - mountPath: /input_model\n                       \
+          \   name: model\n                          readOnly: true\n            \
+          \            - mountPath: /output\n                          name: output\n\
+          \                      env:\n                        - name: NNODES\n  \
+          \                        value: \\\"{nnodes}\\\"\n                     \
+          \   - name: NPROC_PER_NODE\n                          value: \\\"{nproc_per_node}\\\
+          \"\n                        - name: XDG_CACHE_HOME\n                   \
+          \       value: /tmp\n                        - name: TRITON_CACHE_DIR\n\
           \                          value: /tmp\n                        - name:\
-          \ TRITON_CACHE_DIR\n                          value: /tmp\n            \
-          \            - name: HF_HOME\n                          value: /tmp\n  \
-          \                      - name: TRANSFORMERS_CACHE\n                    \
-          \      value: /tmp\n                      resources:\n                 \
-          \       requests:\n                          cpu: 8\n                  \
-          \        \"nvidia.com/gpu\": {nproc_per_node}\n                        limits:\n\
-          \                          cpu: 8\n                          \"nvidia.com/gpu\"\
+          \ HF_HOME\n                          value: /tmp\n                     \
+          \   - name: TRANSFORMERS_CACHE\n                          value: /tmp\n\
+          \                      resources:\n                        requests:\n \
+          \                         \"nvidia.com/gpu\": {nproc_per_node}\n       \
+          \                 limits:\n                          \"nvidia.com/gpu\"\
           : {nproc_per_node}\n                  volumes:\n                    - name:\
           \ input-data\n                      persistentVolumeClaim:\n           \
           \             claimName: {input_pvc_name}\n                    - name: model\n\
@@ -1031,41 +1030,39 @@ deploymentSpec:
           \                           --save_samples={save_samples} \\\n         \
           \                   --log_level=INFO \\\n                            --max_batch_len={max_batch_len}\
           \ \\\n                            --seed={seed} \\\n                   \
-          \         --cpu_offload_optimizer \\\n                            --cpu_offload_params\
+          \         --cpu_offload_optimizer \\\n                            --cpu_offload_params_fsdp\
           \ \\\n                            --distributed_training_framework fsdp\
-          \ \\\n                            --is_granite \\\n                    \
-          \        --checkpoint_at_epoch\n                      command:\n       \
-          \                 - /bin/bash\n                        - '-c'\n        \
-          \                - '--'\n                      image: {image}\n        \
-          \              name: pytorch\n                      volumeMounts:\n    \
-          \                    - mountPath: /input_data\n                        \
-          \  name: input-data\n                          readOnly: true\n        \
-          \                - mountPath: /input_model\n                          name:\
-          \ model\n                          readOnly: true\n                    \
-          \    - mountPath: /output\n                          name: output\n    \
-          \                      readOnly: true\n                      env:\n    \
-          \                    - name: NNODES\n                          value: \\\
-          \"{nnodes}\\\"\n                        - name: NPROC_PER_NODE\n       \
-          \                   value: \\\"{nproc_per_node}\\\"\n                  \
-          \      - name: XDG_CACHE_HOME\n                          value: /tmp\n \
-          \                       - name: TRITON_CACHE_DIR\n                     \
-          \     value: /tmp\n                        - name: HF_HOME\n           \
-          \               value: /tmp\n                        - name: TRANSFORMERS_CACHE\n\
+          \ \\\n                            --checkpoint_at_epoch\n              \
+          \        command:\n                        - /bin/bash\n               \
+          \         - '-c'\n                        - '--'\n                     \
+          \ image: {image}\n                      name: pytorch\n                \
+          \      volumeMounts:\n                        - mountPath: /input_data\n\
+          \                          name: input-data\n                          readOnly:\
+          \ true\n                        - mountPath: /input_model\n            \
+          \              name: model\n                          readOnly: true\n \
+          \                       - mountPath: /output\n                         \
+          \ name: output\n                          readOnly: true\n             \
+          \         env:\n                        - name: NNODES\n               \
+          \           value: \\\"{nnodes}\\\"\n                        - name: NPROC_PER_NODE\n\
+          \                          value: \\\"{nproc_per_node}\\\"\n           \
+          \             - name: XDG_CACHE_HOME\n                          value: /tmp\n\
+          \                        - name: TRITON_CACHE_DIR\n                    \
+          \      value: /tmp\n                        - name: HF_HOME\n          \
+          \                value: /tmp\n                        - name: TRANSFORMERS_CACHE\n\
           \                          value: /tmp\n                      resources:\n\
-          \                        requests:\n                          cpu: 8\n \
-          \                         \"nvidia.com/gpu\": {nproc_per_node}\n       \
-          \                 limits:\n                          cpu: 8\n          \
-          \                \"nvidia.com/gpu\": {nproc_per_node}\n                \
-          \  volumes:\n                    - name: input-data\n                  \
-          \    persistentVolumeClaim:\n                        claimName: {input_pvc_name}\n\
-          \                    - name: model\n                      persistentVolumeClaim:\n\
-          \                        claimName: {model_pvc_name}\n                 \
-          \   - name: output\n                      persistentVolumeClaim:\n     \
-          \                   claimName: {output_pvc_name}\n        \"\"\"\n    )\n\
-          \n    try:\n        manifest_yaml = yaml.safe_load(manifest)\n    except\
-          \ yaml.YAMLError as exc:\n        raise RuntimeError(f\"Error parsing manifest:\
-          \ {exc}\") from exc\n\n    # Discover the namespace in which the pod is\
-          \ running\n    with open(\n        \"/var/run/secrets/kubernetes.io/serviceaccount/namespace\"\
+          \                        requests:\n                          \"nvidia.com/gpu\"\
+          : {nproc_per_node}\n                        limits:\n                  \
+          \        \"nvidia.com/gpu\": {nproc_per_node}\n                  volumes:\n\
+          \                    - name: input-data\n                      persistentVolumeClaim:\n\
+          \                        claimName: {input_pvc_name}\n                 \
+          \   - name: model\n                      persistentVolumeClaim:\n      \
+          \                  claimName: {model_pvc_name}\n                    - name:\
+          \ output\n                      persistentVolumeClaim:\n               \
+          \         claimName: {output_pvc_name}\n        \"\"\"\n    )\n\n    try:\n\
+          \        manifest_yaml = yaml.safe_load(manifest)\n    except yaml.YAMLError\
+          \ as exc:\n        raise RuntimeError(f\"Error parsing manifest: {exc}\"\
+          ) from exc\n\n    # Discover the namespace in which the pod is running\n\
+          \    with open(\n        \"/var/run/secrets/kubernetes.io/serviceaccount/namespace\"\
           , \"r\", encoding=\"utf-8\"\n    ) as f:\n        namespace = f.read().strip()\n\
           \        print(f\"The pod is running in the namespace: {namespace}\")\n\n\
           \    try:\n        kubernetes.config.load_kube_config()\n        print(\"\
@@ -1556,8 +1553,9 @@ deploymentSpec:
           \ http_client=custom_http_client\n        )\n    else:\n        client =\
           \ openai.OpenAI(base_url=endpoint, api_key=api_key)\n\n    taxonomy_base\
           \ = \"main\" if repo_branch or (repo_pr and int(repo_pr) > 0) else \"empty\"\
-          \n\n    print(\"Generating synthetic dataset for:\")\n    print()\n    print(read_taxonomy(taxonomy_path,\
-          \ taxonomy_base))\n\n    set_precomputed_skills_data_ratio(sampling_size=sdg_sampling_size)\n\
+          \n\n    print(\"Generating synthetic dataset for:\")\n    print()\n    print(\n\
+          \        read_taxonomy(\n            taxonomy_path, taxonomy_base, document_output_dir=f\"\
+          {sdg_path}/documents\"\n        )\n    )\n\n    # sset_precomputed_skills_data_ratio(sampling_size=sdg_sampling_size)\n\
           \n    # generate_data has a magic word for its taxonomy_base argument -\
           \ 'empty'\n    # it allows generating from the whole repo, see:\n    # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230\n\
           \    generate_data(\n        client=client,\n        num_instructions_to_generate=num_instructions_to_generate,\n\

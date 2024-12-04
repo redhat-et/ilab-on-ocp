@@ -271,6 +271,7 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
         data_processing_task.after(model_to_pvc_task, sdg_task)
         data_processing_task.set_caching_options(False)
+        data_processing_task.set_env_variable("XDG_CACHE_HOME", "/tmp")
 
         set_image_pull_secrets(data_processing_task, [IMAGE_PULL_SECRET])
 

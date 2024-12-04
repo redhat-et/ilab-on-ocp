@@ -73,9 +73,13 @@ def sdg_op(
 
     print("Generating synthetic dataset for:")
     print()
-    print(read_taxonomy(taxonomy_path, taxonomy_base))
+    print(
+        read_taxonomy(
+            taxonomy_path, taxonomy_base, document_output_dir=f"{sdg_path}/documents"
+        )
+    )
 
-    set_precomputed_skills_data_ratio(sampling_size=sdg_sampling_size)
+    # sset_precomputed_skills_data_ratio(sampling_size=sdg_sampling_size)
 
     # generate_data has a magic word for its taxonomy_base argument - 'empty'
     # it allows generating from the whole repo, see:
