@@ -8,9 +8,10 @@ from kfp import dsl
 from utils.consts import PYTHON_IMAGE, RHELAI_IMAGE, TOOLBOX_IMAGE
 
 
-@dsl.component(base_image=RHELAI_IMAGE,
-               install_kfp_package=False,
-               )
+@dsl.component(
+    base_image=RHELAI_IMAGE,
+    install_kfp_package=False,
+)
 def data_processing_op(
     model_path: str = "/model",
     sdg_path: str = "/data/sdg",
@@ -121,6 +122,7 @@ def knowledge_processed_data_to_artifact_op(
         [f"cp -r {pvc_path} {knowledge_processed_data.path}"],
     )
 
+
 # Change base image to the RHOAI python image with kubeflow_training once available
 @dsl.component(base_image="quay.io/redhat-et/ilab:shrey", install_kfp_package=False)
 def pytorch_job_launcher_op(
@@ -149,14 +151,14 @@ def pytorch_job_launcher_op(
     import os
 
     def list_phase1_final_model():
-      model_dir = "/output/phase_1/model/hf_format"
-      ilab_models = os.listdir(model_dir)
-      newest_idx = max(
-          (os.path.getmtime(f"{model_dir}/{model}"), i)
-          for i, model in enumerate(ilab_models)
-      )[-1]
-      newest_model = ilab_models[newest_idx]
-      return f"{model_dir}/{newest_model}"
+        model_dir = "/output/phase_1/model/hf_format"
+        ilab_models = os.listdir(model_dir)
+        newest_idx = max(
+            (os.path.getmtime(f"{model_dir}/{model}"), i)
+            for i, model in enumerate(ilab_models)
+        )[-1]
+        newest_model = ilab_models[newest_idx]
+        return f"{model_dir}/{newest_model}"
 
     if phase_num == 1:
         path_to_model = "/input_model"
@@ -167,14 +169,14 @@ def pytorch_job_launcher_op(
     else:
         raise RuntimeError(f"Unsupported value of {phase_num=}")
 
-    resources_per_worker = {"cpu": "8",
-                 "nvidia.com/gpu": nproc_per_node}
-    
+    resources_per_worker = {"cpu": "8", "nvidia.com/gpu": nproc_per_node}
+
     base_image = "quay.io/redhat-et/ilab:shrey"
     name = f"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}"
     command = ["/bin/bash", "-c", "--"]
 
-    master_args = [f"""echo "Running phase {phase_num}"
+    master_args = [
+        f"""echo "Running phase {phase_num}"
                         echo "Using {path_to_model} model for training"
                         echo "Using {path_to_data} data for training"
                         mkdir -p /output/phase_{phase_num}/model;
@@ -200,9 +202,11 @@ def pytorch_job_launcher_op(
                             --distributed_training_framework fsdp \
                             --is_granite \
                             --checkpoint_at_epoch
-"""]
-    
-    worker_args = [f"""echo "Running phase {phase_num}"
+"""
+    ]
+
+    worker_args = [
+        f"""echo "Running phase {phase_num}"
                           echo "Using {path_to_model} model for training"
                           echo "Using {path_to_data} data for training"
                           mkdir -p /tmp/model;
@@ -227,69 +231,99 @@ def pytorch_job_launcher_op(
                             --distributed_training_framework fsdp \
                             --is_granite \
                             --checkpoint_at_epoch
-                   """]
-    
-    # Set volumes and volume  mounts
-    input_data_volume = models.V1Volume(name="input-data",
-                    persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(
-                        claim_name=input_pvc_name))
-    input_model_volume = models.V1Volume(name="model",
-                persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(
-                    claim_name=model_pvc_name))
-    output_volume = models.V1Volume(name="output",
-                persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(
-                    claim_name=output_pvc_name))
+                   """
+    ]
 
-    input_data_volume_mount = models.V1VolumeMount(mount_path="/input_data", name="input-data", read_only=True)
-    input_model_volume_mount = models.V1VolumeMount(mount_path="/input_model", name="model", read_only=True)
-    output_volume_mount_master = models.V1VolumeMount(mount_path="/output", name="output")
-    output_volume_mount_worker = models.V1VolumeMount(mount_path="/output", name="output", read_only=True)
+    # Set volumes and volume  mounts
+    input_data_volume = models.V1Volume(
+        name="input-data",
+        persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(
+            claim_name=input_pvc_name
+        ),
+    )
+    input_model_volume = models.V1Volume(
+        name="model",
+        persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(
+            claim_name=model_pvc_name
+        ),
+    )
+    output_volume = models.V1Volume(
+        name="output",
+        persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(
+            claim_name=output_pvc_name
+        ),
+    )
+
+    input_data_volume_mount = models.V1VolumeMount(
+        mount_path="/input_data", name="input-data", read_only=True
+    )
+    input_model_volume_mount = models.V1VolumeMount(
+        mount_path="/input_model", name="model", read_only=True
+    )
+    output_volume_mount_master = models.V1VolumeMount(
+        mount_path="/output", name="output"
+    )
+    output_volume_mount_worker = models.V1VolumeMount(
+        mount_path="/output", name="output", read_only=True
+    )
 
     # Set env variables
-    nnodes_var =  models.V1EnvVar(name="NNODES", value=f"{nnodes}")
-    nproc_per_node_var = models.V1EnvVar(name="NPROC_PER_NODE", value=f"{nproc_per_node}")
+    nnodes_var = models.V1EnvVar(name="NNODES", value=f"{nnodes}")
+    nproc_per_node_var = models.V1EnvVar(
+        name="NPROC_PER_NODE", value=f"{nproc_per_node}"
+    )
     xdg_cache_var = models.V1EnvVar(name="XDG_CACHE_HOME", value="/tmp")
     triton_cache_var = models.V1EnvVar(name="TRITON_CACHE_DIR", value="/tmp")
     hf_home_var = models.V1EnvVar(name="HF_HOME", value="/tmp")
     transformers_cache_var = models.V1EnvVar(name="TRANSFORMERS_CACHE", value="/tmp")
 
-
     # Get master and worker container specs
-    master_container_spec = utils.get_container_spec(base_image=base_image,
-                                              name="pytorch",
-                                              resources=resources_per_worker,
-                                              volume_mounts=[input_data_volume_mount,
-                                                             input_model_volume_mount,
-                                                             output_volume_mount_master])
-    
-   # In the next release of kubeflow-training, the command 
-   # and the args will be a part of utils.get_container_spec function
+    master_container_spec = utils.get_container_spec(
+        base_image=base_image,
+        name="pytorch",
+        resources=resources_per_worker,
+        volume_mounts=[
+            input_data_volume_mount,
+            input_model_volume_mount,
+            output_volume_mount_master,
+        ],
+    )
+
+    # In the next release of kubeflow-training, the command
+    # and the args will be a part of utils.get_container_spec function
     master_container_spec.command = command
     master_container_spec.args = master_args
 
+    master_container_spec.env = [
+        nnodes_var,
+        nproc_per_node_var,
+        xdg_cache_var,
+        triton_cache_var,
+        hf_home_var,
+        transformers_cache_var,
+    ]
 
-    master_container_spec.env = [nnodes_var,
-                                 nproc_per_node_var,
-                                 xdg_cache_var,
-                                 triton_cache_var,
-                                 hf_home_var,
-                                 transformers_cache_var]
-    
-    worker_container_spec = utils.get_container_spec(base_image=base_image,
-                                          name="pytorch",
-                                          resources=resources_per_worker,
-                                          volume_mounts=[input_data_volume_mount,
-                                                          input_model_volume_mount,
-                                                          output_volume_mount_worker])
+    worker_container_spec = utils.get_container_spec(
+        base_image=base_image,
+        name="pytorch",
+        resources=resources_per_worker,
+        volume_mounts=[
+            input_data_volume_mount,
+            input_model_volume_mount,
+            output_volume_mount_worker,
+        ],
+    )
     worker_container_spec.command = command
     worker_container_spec.args = worker_args
-    worker_container_spec.env = [nnodes_var,
-                                 nproc_per_node_var,
-                                 xdg_cache_var,
-                                 triton_cache_var,
-                                 hf_home_var,
-                                 transformers_cache_var]
-    
+    worker_container_spec.env = [
+        nnodes_var,
+        nproc_per_node_var,
+        xdg_cache_var,
+        triton_cache_var,
+        hf_home_var,
+        transformers_cache_var,
+    ]
+
     # create master pod spec
     master_pod_template_spec = utils.get_pod_template_spec(
         containers=[master_container_spec],
@@ -303,22 +337,24 @@ def pytorch_job_launcher_op(
     )
 
     logging.getLogger(__name__).setLevel(logging.INFO)
-    logging.info('Generating job template.')
-    logging.info('Creating TrainingClient.')
+    logging.info("Generating job template.")
+    logging.info("Creating TrainingClient.")
 
     # Initialize training client
     # This also finds the namespace from /var/run/secrets/kubernetes.io/serviceaccount/namespace
-    # And it also loads the kube config 
+    # And it also loads the kube config
     training_client = TrainingClient()
     namespace = training_client.namespace
 
     # Create pytorch job spec
-    job_template = utils.get_pytorchjob_template(name=name,
-                                                 namespace=namespace,
-                                                 worker_pod_template_spec=worker_pod_template_spec,
-                                                 master_pod_template_spec=master_pod_template_spec,
-                                                 num_workers=nnodes,
-                                                 num_procs_per_worker=nproc_per_node)
+    job_template = utils.get_pytorchjob_template(
+        name=name,
+        namespace=namespace,
+        worker_pod_template_spec=worker_pod_template_spec,
+        master_pod_template_spec=master_pod_template_spec,
+        num_workers=nnodes,
+        num_procs_per_worker=nproc_per_node,
+    )
 
     print(job_template.to_str())
 
@@ -328,9 +364,7 @@ def pytorch_job_launcher_op(
     training_client.create_job(job_template, namespace=namespace)
 
     expected_conditions = ["Succeeded", "Failed"]
-    logging.info(
-        f'Monitoring job until status is any of {expected_conditions}.'
-    )
+    logging.info(f"Monitoring job until status is any of {expected_conditions}.")
 
     def wait_for_job_get_logs(
         name: str,
@@ -339,7 +373,7 @@ def pytorch_job_launcher_op(
         expected_conditions: list = ["Succeeded"],
         wait_timeout: int = 600,
         polling_interval: int = 15,
-        timeout: int = 1000
+        timeout: int = 1000,
     ) -> str:
         log_lines = set()
         for _ in range(round(wait_timeout / polling_interval)):
@@ -358,12 +392,11 @@ def pytorch_job_launcher_op(
             for expected_condition in expected_conditions:
                 if utils.has_condition(conditions, expected_condition):
                     return conditions
-            
+
             # Get logs dictionary
             logs_dict, _ = training_client.get_job_logs(
-                name=name,
-                namespace=namespace,
-                job_kind=kind)
+                name=name, namespace=namespace, job_kind=kind
+            )
 
             # Stream new log lines
             for key, value in logs_dict.items():
@@ -384,10 +417,10 @@ def pytorch_job_launcher_op(
         job_kind="PyTorchJob",
         expected_conditions=set(expected_conditions),
         wait_timeout=job_timeout,
-        timeout=job_timeout
+        timeout=job_timeout,
     )
     if delete_after_done:
-        logging.info('Deleting job after completion.')
+        logging.info("Deleting job after completion.")
         training_client.delete_job(name, namespace)
 
 @dsl.component(base_image=PYTHON_IMAGE, install_kfp_package=False)
