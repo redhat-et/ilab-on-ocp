@@ -1198,7 +1198,7 @@ def sdg_op(
             )
         except PermissionError:
             print("Failed to set precomputed skills data ratio: Permission denied")
-            print("Attempting to override DataMixer class to set the ratio")
+            print("Attempting to move default data recipes to temporary directory")
             import os
             import shutil
             import tempfile
@@ -1226,7 +1226,11 @@ def sdg_op(
                 for d in data_dirs:
                     pipeline_path = os.path.join(d, "pipelines", pipeline)
                     if os.path.exists(pipeline_path):
-                        shutil.copytree(pipeline_path, temp_pipeline_dir)
+                        shutil.copytree(
+                            pipeline_path,
+                            temp_pipeline_dir,
+                            dirs_exist_ok=True,
+                        )
                         break
 
                 # Build new skills.yaml path
@@ -1243,7 +1247,9 @@ def sdg_op(
                     set_precomputed_skills_data_ratio(
                         sampling_size=sdg_sampling_size, skills_recipe=new_skills_recipe
                     )
-                    print("Successfully set precomputed skills data ratio")
+                    print(
+                        f"Successfully set precomputed skills data ratio to {sdg_sampling_size}"
+                    )
 
                     # generate_data has a magic word for its taxonomy_base argument - 'empty'
                     # it allows generating from the whole repo, see:
