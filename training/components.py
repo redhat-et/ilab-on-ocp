@@ -8,7 +8,9 @@ from kfp import dsl
 from utils.consts import PYTHON_IMAGE, RHELAI_IMAGE, TOOLBOX_IMAGE
 
 
-@dsl.component(base_image=RHELAI_IMAGE, install_kfp_package=False)
+@dsl.component(base_image=RHELAI_IMAGE,
+               install_kfp_package=False,
+               )
 def data_processing_op(
     model_path: str = "/model",
     sdg_path: str = "/data/sdg",
@@ -119,6 +121,7 @@ def knowledge_processed_data_to_artifact_op(
         [f"cp -r {pvc_path} {knowledge_processed_data.path}"],
     )
 
+# Change base image to the RHOAI python image with kubeflow_training once available
 @dsl.component(base_image="quay.io/redhat-et/ilab:shrey", install_kfp_package=False)
 def pytorch_job_launcher_op(
     model_pvc_name: str,
@@ -135,8 +138,6 @@ def pytorch_job_launcher_op(
     save_samples: int = 0,
     max_batch_len: int = 20000,
     seed: int = 42,
-    kind: str = "PyTorchJob",
-    namespace: str = "ilab",
     job_timeout: int = 86400,
     delete_after_done: bool = False,
 ):
@@ -301,6 +302,16 @@ def pytorch_job_launcher_op(
         volumes=[input_data_volume, input_model_volume, output_volume],
     )
 
+    logging.getLogger(__name__).setLevel(logging.INFO)
+    logging.info('Generating job template.')
+    logging.info('Creating TrainingClient.')
+
+    # Initialize training client
+    # This also finds the namespace from /var/run/secrets/kubernetes.io/serviceaccount/namespace
+    # And it also loads the kube config 
+    training_client = TrainingClient()
+    namespace = training_client.namespace
+
     # Create pytorch job spec
     job_template = utils.get_pytorchjob_template(name=name,
                                                  namespace=namespace,
@@ -310,12 +321,8 @@ def pytorch_job_launcher_op(
                                                  num_procs_per_worker=nproc_per_node)
 
     print(job_template.to_str())
-    # Run the pytorch job
-    logging.getLogger(__name__).setLevel(logging.INFO)
-    logging.info('Generating job template.')
-    logging.info('Creating TrainingClient.')
 
-    training_client = TrainingClient()
+    # Run the pytorch job
 
     logging.info(f"Creating PyTorchJob in namespace: {namespace}")
     training_client.create_job(job_template, namespace=namespace)
@@ -374,7 +381,7 @@ def pytorch_job_launcher_op(
     wait_for_job_get_logs(
         name=name,
         namespace=namespace,
-        job_kind=kind,
+        job_kind="PyTorchJob",
         expected_conditions=set(expected_conditions),
         wait_timeout=job_timeout,
         timeout=job_timeout
