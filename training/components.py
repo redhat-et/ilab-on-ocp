@@ -167,7 +167,7 @@ def pytorchjob_manifest_op(
     else:
         raise RuntimeError(f"Unsupported value of {phase_num=}")
 
-    image = "quay.io/redhat-et/ilab:1.2"
+    image = "quay.io/redhat-et/ilab:1.3"
 
     manifest = inspect.cleandoc(
         f"""
@@ -211,9 +211,8 @@ def pytorchjob_manifest_op(
                               --max_batch_len={max_batch_len} \
                               --seed={seed} \
                               --cpu_offload_optimizer \
-                              --cpu_offload_params \
+                              --cpu_offload_params_fsdp \
                               --distributed_training_framework fsdp \
-                              --is_granite \
                               --checkpoint_at_epoch
                       command:
                         - /bin/bash
@@ -245,10 +244,8 @@ def pytorchjob_manifest_op(
                           value: /tmp
                       resources:
                         requests:
-                          cpu: 8
                           "nvidia.com/gpu": {nproc_per_node}
                         limits:
-                          cpu: 8
                           "nvidia.com/gpu": {nproc_per_node}
                   volumes:
                     - name: input-data
@@ -292,9 +289,8 @@ def pytorchjob_manifest_op(
                             --max_batch_len={max_batch_len} \
                             --seed={seed} \
                             --cpu_offload_optimizer \
-                            --cpu_offload_params \
+                            --cpu_offload_params_fsdp \
                             --distributed_training_framework fsdp \
-                            --is_granite \
                             --checkpoint_at_epoch
                       command:
                         - /bin/bash
@@ -327,10 +323,8 @@ def pytorchjob_manifest_op(
                           value: /tmp
                       resources:
                         requests:
-                          cpu: 8
                           "nvidia.com/gpu": {nproc_per_node}
                         limits:
-                          cpu: 8
                           "nvidia.com/gpu": {nproc_per_node}
                   volumes:
                     - name: input-data
