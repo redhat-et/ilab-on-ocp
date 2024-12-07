@@ -17,33 +17,21 @@ def run_mt_bench_op(
     models_folder: str,
     output_path: str = "/output/mt_bench_data.json",
     best_score_file: Optional[str] = None,
+    use_tls: bool = False,
 ) -> NamedTuple("outputs", best_model=str, best_score=float):
     import json
     import os
+    import httpx
     import subprocess
 
     import torch
     from instructlab.eval.mt_bench import MTBenchEvaluator
 
-    if judge_ca_cert := os.getenv("JUDGE_CA_CERT_PATH"):
-        import httpx
-        import openai
-
-        # Create a custom HTTP client
-        class CustomHttpClient(httpx.Client):
-            def __init__(self, *args, **kwargs):
-                # Use the custom CA certificate
-                kwargs.setdefault("verify", judge_ca_cert)
-                super().__init__(*args, **kwargs)
-
-        # Create a new OpenAI class that uses the custom HTTP client
-        class CustomOpenAI(openai.OpenAI):
-            def __init__(self, *args, **kwargs):
-                custom_client = CustomHttpClient()
-                super().__init__(http_client=custom_client, *args, **kwargs)
-
-        # Monkey patch the OpenAI class in the openai module, so that the eval lib can use it
-        openai.OpenAI = CustomOpenAI
+    judge_api_key = os.getenv("JUDGE_API_KEY", "")
+    judge_model_name = os.getenv("JUDGE_NAME")
+    judge_endpoint = os.getenv("JUDGE_ENDPOINT")
+    judge_ca_cert = os.getenv("JUDGE_CA_CERT_PATH")
+    judge_http_client = httpx.Client(verify=judge_ca_cert) if use_tls else None
 
     def launch_vllm(
         model_path: str, gpu_count: int, retries: int = 120, delay: int = 10
@@ -136,10 +124,6 @@ def run_mt_bench_op(
 
     models_list = os.listdir(models_folder)
 
-    judge_api_key = os.getenv("JUDGE_API_KEY", "")
-    judge_model_name = os.getenv("JUDGE_NAME")
-    judge_endpoint = os.getenv("JUDGE_ENDPOINT")
-
     scores = {}
     all_mt_bench_data = []
 
@@ -175,6 +159,7 @@ def run_mt_bench_op(
             server_url=vllm_server,
             serving_gpus=gpu_count,
             max_workers=max_workers,
+            http_client=judge_http_client,
         )
 
         shutdown_vllm(vllm_process)
@@ -184,6 +169,7 @@ def run_mt_bench_op(
             api_key=judge_api_key,
             serving_gpus=gpu_count,
             max_workers=max_workers,
+            http_client=judge_http_client,
         )
 
         mt_bench_data = {

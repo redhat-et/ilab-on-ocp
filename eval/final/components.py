@@ -20,9 +20,11 @@ def run_final_eval_op(
     candidate_model: str = None,
     taxonomy_path: str = "/input/taxonomy",
     sdg_path: str = "/input/sdg",
+    use_tls: bool = False,
 ):
     import json
     import os
+    import httpx
     import subprocess
 
     import torch
@@ -30,25 +32,11 @@ def run_final_eval_op(
     from instructlab.eval.mt_bench import MTBenchBranchEvaluator
     from instructlab.model.evaluate import qa_pairs_to_qna_to_avg_scores, sort_score
 
-    if judge_ca_cert := os.getenv("JUDGE_CA_CERT_PATH"):
-        import httpx
-        import openai
-
-        # Create a custom HTTP client
-        class CustomHttpClient(httpx.Client):
-            def __init__(self, *args, **kwargs):
-                # Use the custom CA certificate
-                kwargs.setdefault("verify", judge_ca_cert)
-                super().__init__(*args, **kwargs)
-
-        # Create a new OpenAI class that uses the custom HTTP client
-        class CustomOpenAI(openai.OpenAI):
-            def __init__(self, *args, **kwargs):
-                custom_client = CustomHttpClient()
-                super().__init__(http_client=custom_client, *args, **kwargs)
-
-        # Monkey patch the OpenAI class in the openai module, so that the eval lib can use it
-        openai.OpenAI = CustomOpenAI
+    judge_api_key = os.getenv("JUDGE_API_KEY", "")
+    judge_model_name = os.getenv("JUDGE_NAME")
+    judge_endpoint = os.getenv("JUDGE_ENDPOINT")
+    judge_ca_cert = os.getenv("JUDGE_CA_CERT_PATH")
+    judge_http_client = httpx.Client(verify=judge_ca_cert) if use_tls else None
 
     print("Starting Final Eval...")
 
@@ -408,6 +396,7 @@ def run_final_eval_op(
             server_url=vllm_server,
             serving_gpus=gpu_count,
             max_workers=max_workers,
+            http_client=judge_http_client,
         )
 
         shutdown_vllm(vllm_process)
@@ -418,6 +407,7 @@ def run_final_eval_op(
             api_key=judge_api_key,
             serving_gpus=gpu_count,
             max_workers=max_workers,
+            http_client=judge_http_client,
         )
 
         qa_pairs_and_errors.append((overall_score, qa_pairs, error_rate))
