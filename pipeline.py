@@ -115,7 +115,7 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         sdg_scale_factor: int = 2,  # Renamed upstream https://github.com/instructlab/instructlab/blob/f7d40f6ed5112d59132dd832bd332fa6fbbe7010/src/instructlab/configuration.py#L279-L290
         sdg_pipeline: str = SDG_PIPELINE,
         sdg_max_batch_len: int = MAX_BATCH_LEN,
-        sdg_sample_size: float = None,
+        sdg_sample_size: float = 1.0,
         # Training phase
         train_nproc_per_node: int = 3,
         train_nnodes: int = 2,

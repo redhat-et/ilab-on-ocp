@@ -1130,7 +1130,7 @@ def sdg_op(
     repo_pr: Optional[int],
     taxonomy_path: str = "/data/taxonomy",
     sdg_path: str = "/data/sdg",
-    sdg_sampling_size: float = None,
+    sdg_sampling_size: float = 1.0,
 ):
     from os import getenv, path
 
@@ -1163,7 +1163,8 @@ def sdg_op(
     )
 
     # Generate synthetic dataset
-    if sdg_sampling_size is None:
+    # 1.0 is the default size
+    if sdg_sampling_size == 1.0:
         # generate_data has a magic word for its taxonomy_base argument - 'empty'
         # it allows generating from the whole repo, see:
         # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230

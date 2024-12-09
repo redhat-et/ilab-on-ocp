@@ -15,7 +15,7 @@
 #    sdg_repo_branch: str
 #    sdg_repo_pr: int
 #    sdg_repo_url: str [Default: 'https://github.com/instructlab/taxonomy.git']
-#    sdg_sample_size: float
+#    sdg_sample_size: float [Default: 1.0]
 #    sdg_scale_factor: int [Default: 2.0]
 #    train_effective_batch_size_phase_1: int [Default: 3840.0]
 #    train_effective_batch_size_phase_2: int [Default: 3840.0]
@@ -522,6 +522,7 @@ components:
           isOptional: true
           parameterType: STRING
         sdg_sampling_size:
+          defaultValue: 1.0
           isOptional: true
           parameterType: NUMBER_DOUBLE
         taxonomy_path:
@@ -1535,10 +1536,10 @@ deploymentSpec:
           \ *\n\ndef sdg_op(\n    num_instructions_to_generate: int,\n    pipeline:\
           \ str,\n    repo_branch: Optional[str],\n    repo_pr: Optional[int],\n \
           \   taxonomy_path: str = \"/data/taxonomy\",\n    sdg_path: str = \"/data/sdg\"\
-          ,\n    sdg_sampling_size: float = None,\n):\n    from os import getenv,\
-          \ path\n\n    import instructlab.sdg\n    import openai\n    import yaml\n\
-          \n    api_key = getenv(\"api_key\")\n    model = getenv(\"model\")\n   \
-          \ endpoint = getenv(\"endpoint\")\n\n    if sdg_ca_cert := getenv(\"SDG_CA_CERT_PATH\"\
+          ,\n    sdg_sampling_size: float = 1.0,\n):\n    from os import getenv, path\n\
+          \n    import instructlab.sdg\n    import openai\n    import yaml\n\n   \
+          \ api_key = getenv(\"api_key\")\n    model = getenv(\"model\")\n    endpoint\
+          \ = getenv(\"endpoint\")\n\n    if sdg_ca_cert := getenv(\"SDG_CA_CERT_PATH\"\
           ):\n        import httpx\n\n        custom_http_client = httpx.Client(verify=sdg_ca_cert)\n\
           \        client = openai.OpenAI(\n            base_url=endpoint, api_key=api_key,\
           \ http_client=custom_http_client\n        )\n    else:\n        client =\
@@ -1547,10 +1548,10 @@ deploymentSpec:
           \n\n    print(\"Generating synthetic dataset for:\")\n    print()\n    print(\n\
           \        instructlab.sdg.utils.taxonomy.read_taxonomy(\n            taxonomy_path,\
           \ taxonomy_base, document_output_dir=f\"{sdg_path}/documents\"\n       \
-          \ )\n    )\n\n    # Generate synthetic dataset\n    if sdg_sampling_size\
-          \ is None:\n        # generate_data has a magic word for its taxonomy_base\
-          \ argument - 'empty'\n        # it allows generating from the whole repo,\
-          \ see:\n        # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230\n\
+          \ )\n    )\n\n    # Generate synthetic dataset\n    # 1.0 is the default\
+          \ size\n    if sdg_sampling_size == 1.0:\n        # generate_data has a\
+          \ magic word for its taxonomy_base argument - 'empty'\n        # it allows\
+          \ generating from the whole repo, see:\n        # https://github.com/instructlab/sdg/blob/c6a9e74a1618b1077cd38e713b8aaed8b7c0c8ce/src/instructlab/sdg/utils/taxonomy.py#L230\n\
           \        instructlab.sdg.generate_data(\n            client=client,\n  \
           \          num_instructions_to_generate=num_instructions_to_generate,\n\
           \            output_dir=sdg_path,\n            taxonomy=taxonomy_path,\n\
@@ -2142,6 +2143,7 @@ root:
         isOptional: true
         parameterType: STRING
       sdg_sample_size:
+        defaultValue: 1.0
         description: SDG parameter. Represents the sdg skills recipe sampling size
           as percentage in decimal form.
         isOptional: true
