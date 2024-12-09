@@ -1,0 +1,15 @@
+[project]
+name = "ilab-on-ocp"
+version = "0.1.0"
+description = "Run the iLab workflow on RHOAI"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.1.7",
+    "jinja2>=3.1.4",
+    "kfp-kubernetes>=1.4.0",
+    "kfp==2.9.0",
+    "kubernetes==30.1.0",
+    "pre-commit>=4.0.1",
+    "ruff>=0.8.2",
+]

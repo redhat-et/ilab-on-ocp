@@ -16,16 +16,10 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          cache: pipenv
-
-      - name: Setup Pipenv
-        uses: tiagovrtr/actions-pipenv@v1
-        with:
-          pipenv-version: "v2024.1.0"
 
       - name: Configure caching
         uses: actions/cache@v4
@@ -35,13 +29,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pipenv sync
+          uv sync
 
       - name: Run pre-commit
         run: |
-          pipenv run pre-commit run --all-files
+          uv run pre-commit run --all-files
 
       - name: Test if pipeline is up-to-date
         run: |
-          pipenv run make pipeline
+          uv run make pipeline
           git diff --exit-code || (echo "Pipeline is not up-to-date. Please run 'make pipeline' and commit the changes." && exit 1)
