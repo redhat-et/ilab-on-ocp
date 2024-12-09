@@ -1,0 +1,37 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  annotations:
+    openshift.io/display-name: candidate
+    serving.knative.openshift.io/enablePassthrough: "true"
+    sidecar.istio.io/inject: "true"
+    sidecar.istio.io/rewriteAppHTTPProbers: "true"
+  finalizers:
+  - inferenceservice.finalizers
+  generation: 2
+  labels:
+    opendatahub.io/dashboard: "true"
+  name: candidatemodel
+  namespace: ilab
+spec:
+  predictor:
+    maxReplicas: 1
+    minReplicas: 1
+    model:
+      modelFormat:
+        name: vLLM
+      name: ""
+      resources:
+        limits:
+          cpu: "2"
+          memory: 8Gi
+          nvidia.com/gpu: "1"
+        requests:
+          cpu: "1"
+          memory: 4Gi
+          nvidia.com/gpu: "1"
+      runtime: candidatemodel
+      storage:
+        key: aws-connection-ilab-s3
+        # Update path to match canddidate-server location
+        path: xxxxxxxx/xxxxxxxxx/pvc-to-model-op/model/phase_2/model/hf_format/candidate_model/
