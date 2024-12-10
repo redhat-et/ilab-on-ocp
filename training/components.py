@@ -126,6 +126,7 @@ def knowledge_processed_data_to_artifact_op(
 # Change base image to the RHOAI python image with kubeflow_training once available
 @dsl.component(base_image="quay.io/redhat-et/ilab:shrey", install_kfp_package=False)
 def pytorch_job_launcher_op(
+    pytorchjob_output_yaml: dsl.Output[dsl.Artifact],
     model_pvc_name: str,
     input_pvc_name: str,
     output_pvc_name: str,
@@ -169,9 +170,9 @@ def pytorch_job_launcher_op(
     else:
         raise RuntimeError(f"Unsupported value of {phase_num=}")
 
-    resources_per_worker = {"cpu": "8", "nvidia.com/gpu": nproc_per_node}
+    resources_per_worker = {"nvidia.com/gpu": nproc_per_node}
 
-    base_image = RHELAI_IMAGE
+    base_image = "quay.io/redhat-et/ilab:1.3"
     name = f"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}"
     command = ["/bin/bash", "-c", "--"]
 
@@ -198,11 +199,10 @@ def pytorch_job_launcher_op(
                             --max_batch_len={max_batch_len} \
                             --seed={seed} \
                             --cpu_offload_optimizer \
-                            --cpu_offload_params \
+                            --cpu_offload_params_fsdp \
                             --distributed_training_framework fsdp \
-                            --is_granite \
                             --checkpoint_at_epoch
-"""
+            """
     ]
 
     worker_args = [
@@ -227,11 +227,10 @@ def pytorch_job_launcher_op(
                             --max_batch_len={max_batch_len} \
                             --seed={seed} \
                             --cpu_offload_optimizer \
-                            --cpu_offload_params \
+                            --cpu_offload_params_fsdp \
                             --distributed_training_framework fsdp \
-                            --is_granite \
                             --checkpoint_at_epoch
-                   """
+            """
     ]
 
     # Set volumes
@@ -344,11 +343,11 @@ def pytorch_job_launcher_op(
         num_workers=nnodes,
         num_procs_per_worker=nproc_per_node,
     )
-
-    print(job_template.to_str())
+    # Save the pytorch job yaml for record keeping and debugging
+    with open(pytorchjob_output_yaml.path, "w", encoding="utf-8") as f:
+        f.write(job_template.to_str(), f)
 
     # Run the pytorch job
-
     logging.info(f"Creating PyTorchJob in namespace: {namespace}")
     training_client.create_job(job_template, namespace=namespace)
 
