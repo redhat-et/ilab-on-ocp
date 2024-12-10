@@ -23,31 +23,10 @@ JUDGE_SECRET = "judge-server"
 MOCKED_STAGES = ["sdg", "train", "eval"]
 PIPELINE_FILE_NAME = "pipeline.yaml"
 IMPORTER_PIPELINE_FILE_NAME = "importer-pipeline.yaml"
-SDG_PIPELINE = "simple"
 IMAGE_PULL_SECRET = "redhat-et-ilab-botty-pull-secret"
 STANDALONE_TEMPLATE_FILE_NAME = "standalone.tpl"
 GENERATED_STANDALONE_FILE_NAME = "standalone.py"
 DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
-
-# eval args
-FEW_SHOTS = 5
-# BATCH_SIZE can also be an int, for example "8" is converted to an int in eval/final
-BATCH_SIZE = "auto"
-MAX_WORKERS = "auto"
-MERGE_SYSTEM_USER_MESSAGE = False
-
-# training args
-NUM_EPOCHS_PHASE_1 = 2
-NUM_EPOCHS_PHASE_2 = 2
-EFFECTIVE_BATCH_SIZE_PHASE_1 = 3840
-EFFECTIVE_BATCH_SIZE_PHASE_2 = 3840
-LEARNING_RATE_PHASE_1 = 1e-4
-LEARNING_RATE_PHASE_2 = 1e-4
-NUM_WARMUP_STEPS_PHASE_1 = 100
-NUM_WARMUP_STEPS_PHASE_2 = 100
-SAVE_SAMPLES = 0
-MAX_BATCH_LEN = 20000
-SEED = 42
 
 
 def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
@@ -112,32 +91,32 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             int
         ] = None,  # FIXME: https://issues.redhat.com/browse/RHOAIRFE-467
         sdg_base_model: str = "s3://<BUCKET>/<PATH_TO_MODEL>",
-        sdg_scale_factor: int = 2,  # Renamed upstream https://github.com/instructlab/instructlab/blob/f7d40f6ed5112d59132dd832bd332fa6fbbe7010/src/instructlab/configuration.py#L279-L290
-        sdg_pipeline: str = SDG_PIPELINE,
-        sdg_max_batch_len: int = MAX_BATCH_LEN,
-        sdg_sample_size: float = 1.0,
+        sdg_scale_factor: int = 30,  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L125
+        sdg_pipeline: str = "full",  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L122
+        sdg_max_batch_len: int = 5000,  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L334
+        sdg_sample_size: float = 1.0,  # FIXME: Not present in default config. Not configurable upstream at this point, capability added via https://github.com/instructlab/sdg/pull/432
         # Training phase
-        train_nproc_per_node: int = 3,
-        train_nnodes: int = 2,
-        train_num_epochs_phase_1: int = NUM_EPOCHS_PHASE_1,
-        train_num_epochs_phase_2: int = NUM_EPOCHS_PHASE_2,
-        train_effective_batch_size_phase_1: int = EFFECTIVE_BATCH_SIZE_PHASE_1,
-        train_effective_batch_size_phase_2: int = EFFECTIVE_BATCH_SIZE_PHASE_2,
-        train_learning_rate_phase_1: float = LEARNING_RATE_PHASE_1,
-        train_learning_rate_phase_2: float = LEARNING_RATE_PHASE_2,
-        train_num_warmup_steps_phase_1: int = NUM_WARMUP_STEPS_PHASE_1,
-        train_num_warmup_steps_phase_2: int = NUM_WARMUP_STEPS_PHASE_2,
-        train_save_samples: int = SAVE_SAMPLES,
-        train_max_batch_len: int = MAX_BATCH_LEN,
-        train_seed: int = SEED,
+        train_nproc_per_node: int = 2,  # FIXME: Not present in default config. Arbitrary value chosen to demonstrate multi-node multi-gpu capabilities. Needs proper reference architecture justification.
+        train_nnodes: int = 2,  # FIXME: Not present in default config. Arbitrary value chosen to demonstrate multi-node multi-gpu capabilities. Needs proper reference architecture justification.
+        train_num_epochs_phase_1: int = 7,  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L364
+        train_num_epochs_phase_2: int = 10,  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L377
+        train_effective_batch_size_phase_1: int = 128,  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L357
+        train_effective_batch_size_phase_2: int = 3840,  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L371
+        train_learning_rate_phase_1: float = 2e-05,  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L360
+        train_learning_rate_phase_2: float = 6e-06,  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L374
+        train_num_warmup_steps_phase_1: int = 1000,  # https://github.com/instructlab/training/blob/v0.6.1/src/instructlab/training/main_ds.py#L874
+        train_num_warmup_steps_phase_2: int = 1000,  # https://github.com/instructlab/training/blob/v0.6.1/src/instructlab/training/main_ds.py#L874
+        train_save_samples: int = 250000,  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L393
+        train_max_batch_len: int = 5000,  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L334
+        train_seed: int = 42,  # https://github.com/instructlab/training/blob/v0.6.1/src/instructlab/training/main_ds.py#L901
         # MT Bench
-        mt_bench_max_workers: str = MAX_WORKERS,
-        mt_bench_merge_system_user_message: bool = MERGE_SYSTEM_USER_MESSAGE,
+        mt_bench_max_workers: str = "auto",  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L74
+        mt_bench_merge_system_user_message: bool = False,  # https://github.com/instructlab/instructlab/blob/v0.21.2/src/instructlab/model/evaluate.py#L474
         # Final evaluation
-        final_eval_max_workers: str = MAX_WORKERS,
-        final_eval_few_shots: int = FEW_SHOTS,
-        final_eval_batch_size: str = BATCH_SIZE,
-        final_eval_merge_system_user_message: bool = MERGE_SYSTEM_USER_MESSAGE,
+        final_eval_max_workers: str = "auto",  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L74
+        final_eval_few_shots: int = 5,  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L56
+        final_eval_batch_size: str = "auto",  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L52
+        final_eval_merge_system_user_message: bool = False,  # https://github.com/instructlab/instructlab/blob/v0.21.2/src/instructlab/model/evaluate.py#L474
         # Other options
         k8s_storage_class_name: str = "standard",  # FIXME: https://github.com/kubeflow/pipelines/issues/11396, https://issues.redhat.com/browse/RHOAIRFE-470
     ):
@@ -558,7 +537,13 @@ def run(mock, experiment, run_name, param):
     dev_arguments = {
         "k8s_storage_class_name": "nfs-csi",
         "sdg_base_model": "s3://ilab-pipeline-b1d4c2b1-ab00-4e7f-b985-697bda3df385/instructlab-base-importer/648f36d0-e3f0-43b8-8adb-530576beb675/ilab-importer-op/model/granite-7b-starter",
-        "train_nproc_per_node": 2,
+        "train_num_epochs_phase_1": 2,
+        "train_num_epochs_phase_2": 2,
+        "train_num_warmup_steps_phase_1": 100,
+        "train_num_warmup_steps_phase_2": 100,
+        "train_learning_rate_phase_1": 1e-4,
+        "train_learning_rate_phase_2": 1e-4,
+        "sdg_sample_size": 0.0002,
     }
 
     try:
