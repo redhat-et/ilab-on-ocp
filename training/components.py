@@ -252,7 +252,7 @@ def pytorch_job_launcher_op(
             persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(
                 claim_name=output_pvc_name
             ),
-        )
+        ),
     ]
 
     # Set volume mounts
@@ -260,31 +260,23 @@ def pytorch_job_launcher_op(
         models.V1VolumeMount(
             mount_path="/input_data", name="input-data", read_only=True
         ),
-        models.V1VolumeMount(
-            mount_path="/input_model", name="model", read_only=True
-        )
+        models.V1VolumeMount(mount_path="/input_model", name="model", read_only=True),
     ]
     volume_mounts_master = volume_mounts_common.append(
-        models.V1VolumeMount(
-            mount_path="/output", name="output"
-        )
+        models.V1VolumeMount(mount_path="/output", name="output")
     )
     volume_mounts_worker = volume_mounts_common.append(
-        models.V1VolumeMount(
-            mount_path="/output", name="output", read_only=True
-        )
+        models.V1VolumeMount(mount_path="/output", name="output", read_only=True)
     )
 
     # Set env variables
     env_vars = [
         models.V1EnvVar(name="NNODES", value=f"{nnodes}"),
-        models.V1EnvVar(
-            name="NPROC_PER_NODE", value=f"{nproc_per_node}"
-        ),
+        models.V1EnvVar(name="NPROC_PER_NODE", value=f"{nproc_per_node}"),
         models.V1EnvVar(name="XDG_CACHE_HOME", value="/tmp"),
         models.V1EnvVar(name="TRITON_CACHE_DIR", value="/tmp"),
         models.V1EnvVar(name="HF_HOME", value="/tmp"),
-        models.V1EnvVar(name="TRANSFORMERS_CACHE", value="/tmp")
+        models.V1EnvVar(name="TRANSFORMERS_CACHE", value="/tmp"),
     ]
 
     # Get master and worker container specs
