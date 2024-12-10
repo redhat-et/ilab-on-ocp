@@ -146,18 +146,18 @@ def pytorch_job_launcher_op(
     import time
     import logging
     from kubeflow.training import TrainingClient
-    from kubeflow.training.utils import utils
+    from kubeflow.training.utils import utils as kfto_utils
     from kubeflow.training import models
     import os
 
     def list_phase1_final_model():
         model_dir = "/output/phase_1/model/hf_format"
-        ilab_models = os.listdir(model_dir)
+        model_list = os.listdir(model_dir)
         newest_idx = max(
             (os.path.getmtime(f"{model_dir}/{model}"), i)
-            for i, model in enumerate(ilab_models)
+            for i, model in enumerate(model_list)
         )[-1]
-        newest_model = ilab_models[newest_idx]
+        newest_model = model_list[newest_idx]
         return f"{model_dir}/{newest_model}"
 
     if phase_num == 1:
@@ -171,7 +171,7 @@ def pytorch_job_launcher_op(
 
     resources_per_worker = {"cpu": "8", "nvidia.com/gpu": nproc_per_node}
 
-    base_image = "quay.io/redhat-et/ilab:shrey"
+    base_image = RHELAI_IMAGE
     name = f"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}"
     command = ["/bin/bash", "-c", "--"]
 
@@ -234,106 +234,95 @@ def pytorch_job_launcher_op(
                    """
     ]
 
-    # Set volumes and volume  mounts
-    input_data_volume = models.V1Volume(
-        name="input-data",
-        persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(
-            claim_name=input_pvc_name
+    # Set volumes
+    volumes = [
+        models.V1Volume(
+            name="input-data",
+            persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(
+                claim_name=input_pvc_name
+            ),
         ),
-    )
-    input_model_volume = models.V1Volume(
-        name="model",
-        persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(
-            claim_name=model_pvc_name
+        models.V1Volume(
+            name="model",
+            persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(
+                claim_name=model_pvc_name
+            ),
         ),
-    )
-    output_volume = models.V1Volume(
-        name="output",
-        persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(
-            claim_name=output_pvc_name
-        ),
-    )
+        models.V1Volume(
+            name="output",
+            persistent_volume_claim=models.V1PersistentVolumeClaimVolumeSource(
+                claim_name=output_pvc_name
+            ),
+        )
+    ]
 
-    input_data_volume_mount = models.V1VolumeMount(
-        mount_path="/input_data", name="input-data", read_only=True
+    # Set volume mounts
+    volume_mounts_common = [
+        models.V1VolumeMount(
+            mount_path="/input_data", name="input-data", read_only=True
+        ),
+        models.V1VolumeMount(
+            mount_path="/input_model", name="model", read_only=True
+        )
+    ]
+    volume_mounts_master = volume_mounts_common.append(
+        models.V1VolumeMount(
+            mount_path="/output", name="output"
+        )
     )
-    input_model_volume_mount = models.V1VolumeMount(
-        mount_path="/input_model", name="model", read_only=True
-    )
-    output_volume_mount_master = models.V1VolumeMount(
-        mount_path="/output", name="output"
-    )
-    output_volume_mount_worker = models.V1VolumeMount(
-        mount_path="/output", name="output", read_only=True
+    volume_mounts_worker = volume_mounts_common.append(
+        models.V1VolumeMount(
+            mount_path="/output", name="output", read_only=True
+        )
     )
 
     # Set env variables
-    nnodes_var = models.V1EnvVar(name="NNODES", value=f"{nnodes}")
-    nproc_per_node_var = models.V1EnvVar(
-        name="NPROC_PER_NODE", value=f"{nproc_per_node}"
-    )
-    xdg_cache_var = models.V1EnvVar(name="XDG_CACHE_HOME", value="/tmp")
-    triton_cache_var = models.V1EnvVar(name="TRITON_CACHE_DIR", value="/tmp")
-    hf_home_var = models.V1EnvVar(name="HF_HOME", value="/tmp")
-    transformers_cache_var = models.V1EnvVar(name="TRANSFORMERS_CACHE", value="/tmp")
+    env_vars = [
+        models.V1EnvVar(name="NNODES", value=f"{nnodes}"),
+        models.V1EnvVar(
+            name="NPROC_PER_NODE", value=f"{nproc_per_node}"
+        ),
+        models.V1EnvVar(name="XDG_CACHE_HOME", value="/tmp"),
+        models.V1EnvVar(name="TRITON_CACHE_DIR", value="/tmp"),
+        models.V1EnvVar(name="HF_HOME", value="/tmp"),
+        models.V1EnvVar(name="TRANSFORMERS_CACHE", value="/tmp")
+    ]
 
     # Get master and worker container specs
-    master_container_spec = utils.get_container_spec(
+    master_container_spec = kfto_utils.get_container_spec(
         base_image=base_image,
         name="pytorch",
         resources=resources_per_worker,
-        volume_mounts=[
-            input_data_volume_mount,
-            input_model_volume_mount,
-            output_volume_mount_master,
-        ],
+        volume_mounts=volume_mounts_master,
     )
 
     # In the next release of kubeflow-training, the command
-    # and the args will be a part of utils.get_container_spec function
+    # and the args will be a part of kfto_utils.get_container_spec function
     master_container_spec.command = command
     master_container_spec.args = master_args
 
-    master_container_spec.env = [
-        nnodes_var,
-        nproc_per_node_var,
-        xdg_cache_var,
-        triton_cache_var,
-        hf_home_var,
-        transformers_cache_var,
-    ]
+    master_container_spec.env = env_vars
 
-    worker_container_spec = utils.get_container_spec(
+    worker_container_spec = kfto_utils.get_container_spec(
         base_image=base_image,
         name="pytorch",
         resources=resources_per_worker,
-        volume_mounts=[
-            input_data_volume_mount,
-            input_model_volume_mount,
-            output_volume_mount_worker,
-        ],
+        volume_mounts=volume_mounts_worker,
     )
     worker_container_spec.command = command
     worker_container_spec.args = worker_args
-    worker_container_spec.env = [
-        nnodes_var,
-        nproc_per_node_var,
-        xdg_cache_var,
-        triton_cache_var,
-        hf_home_var,
-        transformers_cache_var,
-    ]
+    worker_container_spec.env = env_vars
 
     # create master pod spec
-    master_pod_template_spec = utils.get_pod_template_spec(
+    master_pod_template_spec = kfto_utils.get_pod_template_spec(
         containers=[master_container_spec],
-        volumes=[input_data_volume, input_model_volume, output_volume],
+        volumes=volumes,
     )
 
     # create worker pod spec
-    worker_pod_template_spec = utils.get_pod_template_spec(
+    worker_pod_template_spec = kfto_utils.get_pod_template_spec(
         containers=[worker_container_spec],
-        volumes=[input_data_volume, input_model_volume, output_volume],
+        volumes=volumes,
     )
 
     logging.getLogger(__name__).setLevel(logging.INFO)
@@ -347,7 +336,7 @@ def pytorch_job_launcher_op(
     namespace = training_client.namespace
 
     # Create pytorch job spec
-    job_template = utils.get_pytorchjob_template(
+    job_template = kfto_utils.get_pytorchjob_template(
         name=name,
         namespace=namespace,
         worker_pod_template_spec=worker_pod_template_spec,
@@ -390,7 +379,7 @@ def pytorch_job_launcher_op(
             )
             # Return Job when it reaches expected condition.
             for expected_condition in expected_conditions:
-                if utils.has_condition(conditions, expected_condition):
+                if kfto_utils.has_condition(conditions, expected_condition):
                     return conditions
 
             # Get logs dictionary
