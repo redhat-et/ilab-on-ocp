@@ -1,11 +1,11 @@
 # type: ignore
 # pylint: disable=import-outside-toplevel,missing-function-docstring
 
-from typing import NamedTuple, Optional
+from typing import Optional
 
 from kfp import dsl
 
-from utils.consts import PYTHON_IMAGE, RHELAI_IMAGE, TOOLBOX_IMAGE
+from utils.consts import RHELAI_IMAGE, TOOLBOX_IMAGE
 
 
 @dsl.component(
@@ -375,7 +375,7 @@ def pytorch_job_launcher_op(
 
             # Get logs dictionary
             logs_dict, _ = training_client.get_job_logs(
-                name=name, namespace=namespace, job_kind=kind
+                name=name, namespace=namespace, job_kind=job_kind
             )
 
             # Stream new log lines
