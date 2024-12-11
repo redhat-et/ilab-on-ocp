@@ -32,7 +32,7 @@ deploymentSpec:
         env:
         - name: REGISTRY_AUTH_FILE
           value: /mnt/containers/.dockerconfigjson
-        image: quay.io/redhat-et/ilab:1.3
+        image: registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.3.1
 pipelineInfo:
   description: Helper pipeline to the InstructLab pipeline which allows users to seed/import
     a new base model
