@@ -52,3 +52,14 @@ To generate the `standalone.py` script, run the following command ([ruff](https:
 ```bash
 make standalone
 ```
+
+## Developer setup
+
+To collaborate on this repository, please follow these steps:
+
+1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
+2. Run following commands to prepare your local environment
+    ```bash
+    uv sync
+    source .venv/bin/activate
+    ```
