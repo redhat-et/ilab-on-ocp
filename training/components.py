@@ -261,7 +261,7 @@ def pytorch_job_launcher_op(
             mount_path="/input_data", name="input-data", read_only=True
         ),
         models.V1VolumeMount(mount_path="/input_model", name="model", read_only=True),
-        models.V1VolumeMount(mount_path="/output", name="output")
+        models.V1VolumeMount(mount_path="/output", name="output"),
     ]
 
     volume_mounts_worker = [
@@ -269,7 +269,7 @@ def pytorch_job_launcher_op(
             mount_path="/input_data", name="input-data", read_only=True
         ),
         models.V1VolumeMount(mount_path="/input_model", name="model", read_only=True),
-        models.V1VolumeMount(mount_path="/output", name="output", read_only=True)
+        models.V1VolumeMount(mount_path="/output", name="output", read_only=True),
     ]
 
     # Set env variables
