@@ -834,11 +834,11 @@ deploymentSpec:
           \  models.V1VolumeMount(\n            mount_path=\"/input_data\", name=\"\
           input-data\", read_only=True\n        ),\n        models.V1VolumeMount(mount_path=\"\
           /input_model\", name=\"model\", read_only=True),\n        models.V1VolumeMount(mount_path=\"\
-          /output\", name=\"output\")\n    ]\n\n    volume_mounts_worker = [\n   \
-          \     models.V1VolumeMount(\n            mount_path=\"/input_data\", name=\"\
+          /output\", name=\"output\"),\n    ]\n\n    volume_mounts_worker = [\n  \
+          \      models.V1VolumeMount(\n            mount_path=\"/input_data\", name=\"\
           input-data\", read_only=True\n        ),\n        models.V1VolumeMount(mount_path=\"\
           /input_model\", name=\"model\", read_only=True),\n        models.V1VolumeMount(mount_path=\"\
-          /output\", name=\"output\", read_only=True)\n    ]\n\n    # Set env variables\n\
+          /output\", name=\"output\", read_only=True),\n    ]\n\n    # Set env variables\n\
           \    env_vars = [\n        models.V1EnvVar(name=\"NNODES\", value=f\"{nnodes}\"\
           ),\n        models.V1EnvVar(name=\"NPROC_PER_NODE\", value=f\"{nproc_per_node}\"\
           ),\n        models.V1EnvVar(name=\"XDG_CACHE_HOME\", value=\"/tmp\"),\n\
@@ -999,11 +999,11 @@ deploymentSpec:
           \  models.V1VolumeMount(\n            mount_path=\"/input_data\", name=\"\
           input-data\", read_only=True\n        ),\n        models.V1VolumeMount(mount_path=\"\
           /input_model\", name=\"model\", read_only=True),\n        models.V1VolumeMount(mount_path=\"\
-          /output\", name=\"output\")\n    ]\n\n    volume_mounts_worker = [\n   \
-          \     models.V1VolumeMount(\n            mount_path=\"/input_data\", name=\"\
+          /output\", name=\"output\"),\n    ]\n\n    volume_mounts_worker = [\n  \
+          \      models.V1VolumeMount(\n            mount_path=\"/input_data\", name=\"\
           input-data\", read_only=True\n        ),\n        models.V1VolumeMount(mount_path=\"\
           /input_model\", name=\"model\", read_only=True),\n        models.V1VolumeMount(mount_path=\"\
-          /output\", name=\"output\", read_only=True)\n    ]\n\n    # Set env variables\n\
+          /output\", name=\"output\", read_only=True),\n    ]\n\n    # Set env variables\n\
           \    env_vars = [\n        models.V1EnvVar(name=\"NNODES\", value=f\"{nnodes}\"\
           ),\n        models.V1EnvVar(name=\"NPROC_PER_NODE\", value=f\"{nproc_per_node}\"\
           ),\n        models.V1EnvVar(name=\"XDG_CACHE_HOME\", value=\"/tmp\"),\n\
