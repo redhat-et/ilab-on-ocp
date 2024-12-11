@@ -648,7 +648,7 @@ deploymentSpec:
         env:
         - name: XDG_CACHE_HOME
           value: /tmp
-        image: quay.io/redhat-et/ilab:1.3
+        image: registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.3.1
     exec-deletepvc:
       container:
         image: argostub/deletepvc
@@ -747,7 +747,7 @@ deploymentSpec:
           \       path_to_data = \"/input_data/knowledge/data.jsonl\"\n    elif phase_num\
           \ == 2:\n        path_to_model = list_phase1_final_model()\n        path_to_data\
           \ = \"/input_data/skills/data.jsonl\"\n    else:\n        raise RuntimeError(f\"\
-          Unsupported value of {phase_num=}\")\n\n    image = \"quay.io/redhat-et/ilab:1.3\"\
+          Unsupported value of {phase_num=}\")\n\n    image = \"registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.3.1\"\
           \n\n    manifest = inspect.cleandoc(\n        f\"\"\"\n        apiVersion:\
           \ kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n       \
           \   name: {name}\n        spec:\n          nprocPerNode: \\\"{nproc_per_node}\\\
@@ -951,7 +951,7 @@ deploymentSpec:
           \       path_to_data = \"/input_data/knowledge/data.jsonl\"\n    elif phase_num\
           \ == 2:\n        path_to_model = list_phase1_final_model()\n        path_to_data\
           \ = \"/input_data/skills/data.jsonl\"\n    else:\n        raise RuntimeError(f\"\
-          Unsupported value of {phase_num=}\")\n\n    image = \"quay.io/redhat-et/ilab:1.3\"\
+          Unsupported value of {phase_num=}\")\n\n    image = \"registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.3.1\"\
           \n\n    manifest = inspect.cleandoc(\n        f\"\"\"\n        apiVersion:\
           \ kubeflow.org/v1\n        kind: PyTorchJob\n        metadata:\n       \
           \   name: {name}\n        spec:\n          nprocPerNode: \\\"{nproc_per_node}\\\
@@ -1373,7 +1373,7 @@ deploymentSpec:
           value: /tmp
         - name: HF_HOME
           value: /tmp
-        image: quay.io/redhat-et/ilab:1.3
+        image: registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.3.1
         resources:
           accelerator:
             count: '1'
@@ -1509,7 +1509,7 @@ deploymentSpec:
           value: /tmp
         - name: HF_HOME
           value: /tmp
-        image: quay.io/redhat-et/ilab:1.3
+        image: registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.3.1
         resources:
           accelerator:
             count: '1'
@@ -1619,7 +1619,7 @@ deploymentSpec:
           value: /tmp
         - name: HF_HOME
           value: /tmp
-        image: quay.io/redhat-et/ilab:1.3
+        image: registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.3.1
     exec-sdg-to-artifact-op:
       container:
         args:
@@ -2242,7 +2242,7 @@ platforms:
       executors:
         exec-data-processing-op:
           imagePullSecret:
-          - secretName: redhat-et-ilab-botty-pull-secret
+          - {}
           pvcMount:
           - mountPath: /model
             taskOutputParameter:
@@ -2297,7 +2297,7 @@ platforms:
             - configMapKey: model
               envVar: JUDGE_NAME
           imagePullSecret:
-          - secretName: redhat-et-ilab-botty-pull-secret
+          - {}
           pvcMount:
           - mountPath: /output
             taskOutputParameter:
@@ -2325,7 +2325,7 @@ platforms:
             - configMapKey: model
               envVar: JUDGE_NAME
           imagePullSecret:
-          - secretName: redhat-et-ilab-botty-pull-secret
+          - {}
           pvcMount:
           - mountPath: /output
             taskOutputParameter:
@@ -2345,7 +2345,7 @@ platforms:
             - configMapKey: model
               envVar: model
           imagePullSecret:
-          - secretName: redhat-et-ilab-botty-pull-secret
+          - {}
           pvcMount:
           - mountPath: /data
             taskOutputParameter:
