@@ -144,12 +144,12 @@ def pytorch_job_launcher_op(
     job_timeout: int = 86400,
     delete_after_done: bool = False,
 ):
-    import time
     import logging
-    from kubeflow.training import TrainingClient
-    from kubeflow.training.utils import utils as kfto_utils
-    from kubeflow.training import models
     import os
+    import time
+
+    from kubeflow.training import TrainingClient, models
+    from kubeflow.training.utils import utils as kfto_utils
 
     def list_phase1_final_model():
         model_dir = "/output/phase_1/model/hf_format"
@@ -256,18 +256,21 @@ def pytorch_job_launcher_op(
     ]
 
     # Set volume mounts
-    volume_mounts_common = [
+    volume_mounts_master = [
         models.V1VolumeMount(
             mount_path="/input_data", name="input-data", read_only=True
         ),
         models.V1VolumeMount(mount_path="/input_model", name="model", read_only=True),
-    ]
-    volume_mounts_master = volume_mounts_common.append(
         models.V1VolumeMount(mount_path="/output", name="output")
-    )
-    volume_mounts_worker = volume_mounts_common.append(
+    ]
+
+    volume_mounts_worker = [
+        models.V1VolumeMount(
+            mount_path="/input_data", name="input-data", read_only=True
+        ),
+        models.V1VolumeMount(mount_path="/input_model", name="model", read_only=True),
         models.V1VolumeMount(mount_path="/output", name="output", read_only=True)
-    )
+    ]
 
     # Set env variables
     env_vars = [
@@ -337,7 +340,7 @@ def pytorch_job_launcher_op(
     )
     # Save the pytorch job yaml for record keeping and debugging
     with open(pytorchjob_output_yaml.path, "w", encoding="utf-8") as f:
-        f.write(job_template.to_str(), f)
+        f.write(job_template.to_str())
 
     # Run the pytorch job
     logging.info(f"Creating PyTorchJob in namespace: {namespace}")
