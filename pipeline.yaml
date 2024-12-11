@@ -2241,8 +2241,6 @@ platforms:
     deploymentSpec:
       executors:
         exec-data-processing-op:
-          imagePullSecret:
-          - {}
           pvcMount:
           - mountPath: /model
             taskOutputParameter:
@@ -2296,8 +2294,6 @@ platforms:
               envVar: JUDGE_ENDPOINT
             - configMapKey: model
               envVar: JUDGE_NAME
-          imagePullSecret:
-          - {}
           pvcMount:
           - mountPath: /output
             taskOutputParameter:
@@ -2324,8 +2320,6 @@ platforms:
               envVar: JUDGE_ENDPOINT
             - configMapKey: model
               envVar: JUDGE_NAME
-          imagePullSecret:
-          - {}
           pvcMount:
           - mountPath: /output
             taskOutputParameter:
@@ -2344,8 +2338,6 @@ platforms:
               envVar: endpoint
             - configMapKey: model
               envVar: model
-          imagePullSecret:
-          - {}
           pvcMount:
           - mountPath: /data
             taskOutputParameter:
