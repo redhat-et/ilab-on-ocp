@@ -32,6 +32,12 @@ deploymentSpec:
         env:
         - name: REGISTRY_AUTH_FILE
           value: /mnt/containers/.dockerconfigjson
+        - name: XDG_CACHE_HOME
+          value: /tmp
+        - name: XDG_CONFIG_HOME
+          value: /tmp
+        - name: XDG_DATA_HOME
+          value: /tmp
         image: registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.3.1
 pipelineInfo:
   description: Helper pipeline to the InstructLab pipeline which allows users to seed/import

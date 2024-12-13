@@ -468,6 +468,9 @@ def import_base_model_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         use_secret_as_volume(
             importer_task, "7033380-ilab-pull-secret", mount_path="/mnt/containers"
         )
+        importer_task.set_env_variable("XDG_CACHE_HOME", "/tmp")
+        importer_task.set_env_variable("XDG_CONFIG_HOME", "/tmp")
+        importer_task.set_env_variable("XDG_DATA_HOME", "/tmp")
 
     return pipeline
 
