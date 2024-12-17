@@ -10,6 +10,7 @@ from kfp.kubernetes import (
     DeletePVC,
     mount_pvc,
     set_image_pull_policy,
+    set_image_pull_secrets,
     use_config_map_as_env,
     use_secret_as_env,
     use_secret_as_volume,
@@ -22,6 +23,7 @@ JUDGE_SECRET = "judge-server"
 MOCKED_STAGES = ["sdg", "train", "eval"]
 PIPELINE_FILE_NAME = "pipeline.yaml"
 IMPORTER_PIPELINE_FILE_NAME = "importer-pipeline.yaml"
+IMAGE_PULL_SECRET = "redhat-et-ilab-botty-pull-secret"
 STANDALONE_TEMPLATE_FILE_NAME = "standalone.tpl"
 GENERATED_STANDALONE_FILE_NAME = "standalone.py"
 DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
@@ -214,6 +216,8 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         # uncomment if updating image with same tag
         # set_image_pull_policy(sdg_task, "Always")
 
+        set_image_pull_secrets(sdg_task, [IMAGE_PULL_SECRET])
+
         # Training stage
         model_source_s3_task = dsl.importer(
             artifact_uri=sdg_base_model, artifact_class=dsl.Model
@@ -247,6 +251,8 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         data_processing_task.after(model_to_pvc_task, sdg_task)
         data_processing_task.set_caching_options(False)
         data_processing_task.set_env_variable("XDG_CACHE_HOME", "/tmp")
+
+        set_image_pull_secrets(data_processing_task, [IMAGE_PULL_SECRET])
 
         # Upload "skills_processed_data" and "knowledge_processed_data" artifacts to S3 without blocking the rest of the workflow
         skills_processed_data_to_artifact_task = skills_processed_data_to_artifact_op()
@@ -347,6 +353,7 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             JUDGE_CONFIG_MAP,
             dict(endpoint="JUDGE_ENDPOINT", model="JUDGE_NAME"),
         )
+        set_image_pull_secrets(run_mt_bench_task, [IMAGE_PULL_SECRET])
         use_secret_as_env(run_mt_bench_task, JUDGE_SECRET, {"api_key": "JUDGE_API_KEY"})
 
         # uncomment if updating image with same tag
@@ -385,6 +392,7 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
         final_eval_task.set_env_variable("HOME", "/tmp")
         final_eval_task.set_env_variable("HF_HOME", "/tmp")
+        set_image_pull_secrets(final_eval_task, [IMAGE_PULL_SECRET])
 
         # uncomment if updating image with same tag
         # set_image_pull_policy(final_eval_task, "Always")
