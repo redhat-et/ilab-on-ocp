@@ -394,6 +394,7 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         final_eval_task.after(run_mt_bench_task)
         final_eval_task.set_accelerator_type("nvidia.com/gpu")
         final_eval_task.set_accelerator_limit(1)
+        final_eval_task.set_caching_options(False)
 
         output_model_task = pvc_to_model_op(
             pvc_path="/output/phase_2/model/hf_format/candidate_model",

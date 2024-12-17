@@ -1961,8 +1961,7 @@ root:
         taskInfo:
           name: pytorchjob-manifest-op-2
       run-final-eval-op:
-        cachingOptions:
-          enableCache: true
+        cachingOptions: {}
         componentRef:
           name: comp-run-final-eval-op
         dependentTasks:
