@@ -751,32 +751,54 @@ FAILURE = b'#FAILURE#'
 
 def deliver_challenge(connection, authkey):
     import hmac
+    """
+    Send a challenge to the connection for authentication.
+    """
     if not isinstance(authkey, bytes):
-        raise ValueError(
-            "Authkey must be bytes, not {0!s}".format(type(authkey)))
+        raise ValueError("Authkey must be bytes, not {0!s}".format(type(authkey)))
     message = os.urandom(MESSAGE_LENGTH)
     connection.send_bytes(CHALLENGE + message)
-    digest = hmac.new(authkey, message, 'md5').digest()
-    response = connection.recv_bytes(256)        # reject large message
+
+    digest_name = 'md5'  # Default to MD5
+    try:
+        # Attempt HMAC-MD5
+        digest = hmac.new(authkey, message, digest_name).digest()
+    except ValueError:
+        # HMAC-MD5 is unavailable (e.g., FIPS mode); fallback to SHA256
+        digest_name = 'sha256'
+        digest = hmac.new(authkey, message, digest_name).digest()
+
+    response = connection.recv_bytes(256)  # Reject large message
     if response == digest:
         connection.send_bytes(WELCOME)
     else:
         connection.send_bytes(FAILURE)
-        raise AuthenticationError('digest received was wrong')
+        raise AuthenticationError(f"Digest received was wrong (used {digest_name})")
 
 def answer_challenge(connection, authkey):
     import hmac
+    """
+    Respond to a challenge from the connection for authentication.
+    """
     if not isinstance(authkey, bytes):
-        raise ValueError(
-            "Authkey must be bytes, not {0!s}".format(type(authkey)))
-    message = connection.recv_bytes(256)         # reject large message
-    assert message[:len(CHALLENGE)] == CHALLENGE, 'message = %r' % message
+        raise ValueError("Authkey must be bytes, not {0!s}".format(type(authkey)))
+    message = connection.recv_bytes(256)  # Reject large message
+    assert message[:len(CHALLENGE)] == CHALLENGE, f"message = {message!r}"
     message = message[len(CHALLENGE):]
-    digest = hmac.new(authkey, message, 'md5').digest()
+
+    digest_name = 'md5'  # Default to MD5
+    try:
+        # Attempt HMAC-MD5
+        digest = hmac.new(authkey, message, digest_name).digest()
+    except ValueError:
+        # HMAC-MD5 is unavailable (e.g., FIPS mode); fallback to SHA256
+        digest_name = 'sha256'
+        digest = hmac.new(authkey, message, digest_name).digest()
+
     connection.send_bytes(digest)
-    response = connection.recv_bytes(256)        # reject large message
+    response = connection.recv_bytes(256)  # Reject large message
     if response != WELCOME:
-        raise AuthenticationError('digest sent was rejected')
+        raise AuthenticationError(f"Digest sent was rejected (used {digest_name})")
 
 #
 # Support for using xmlrpclib for serialization
