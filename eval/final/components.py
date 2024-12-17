@@ -1,15 +1,13 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error
 
-from kfp.dsl import Artifact, Output, component
+from kfp.dsl import Artifact, Input, Metrics, Output, component
 
-from utils.consts import RHELAI_IMAGE
+from utils.consts import PYTHON_IMAGE, RHELAI_IMAGE
 
 
 @component(base_image=RHELAI_IMAGE, install_kfp_package=False)
 def run_final_eval_op(
-    mmlu_branch_output: Output[Artifact],
-    mt_bench_branch_output: Output[Artifact],
     base_model_dir: str,
     base_branch: str,
     candidate_branch: str,
@@ -20,6 +18,8 @@ def run_final_eval_op(
     candidate_model: str = None,
     taxonomy_path: str = "/input/taxonomy",
     sdg_path: str = "/input/sdg",
+    mmlu_branch_output_path: str = "/output/mmlu_branch",
+    mt_bench_branch_output_path: str = "/output/mt_bench_branch",
 ):
     import json
     import os
@@ -326,8 +326,13 @@ def run_final_eval_op(
             "summary": summary,
         }
 
-        with open(mmlu_branch_output.path, "w", encoding="utf-8") as f:
+        if not os.path.exists(mmlu_branch_output_path):
+            os.makedirs(mmlu_branch_output_path)
+        with open(
+            f"{mmlu_branch_output_path}/mmlu_branch_data.json", "w", encoding="utf-8"
+        ) as f:
             json.dump(mmlu_branch_data, f, indent=4)
+
     else:
         print("No MMLU tasks directories found, skipping MMLU_branch evaluation.")
 
@@ -470,5 +475,41 @@ def run_final_eval_op(
         "summary": summary,
     }
 
-    with open(mt_bench_branch_output.path, "w", encoding="utf-8") as f:
+    if not os.path.exists(mt_bench_branch_output_path):
+        os.makedirs(mt_bench_branch_output_path)
+    with open(
+        f"{mt_bench_branch_output_path}/mt_bench_branch_data.json",
+        "w",
+        encoding="utf-8",
+    ) as f:
         json.dump(mt_bench_branch_data, f, indent=4)
+
+
+@component(base_image=PYTHON_IMAGE, install_kfp_package=False)
+def generate_metrics_report_op(
+    metrics: Output[Metrics],
+):
+    import ast
+    import json
+
+    with open("/output/mt_bench_data.json", "r") as f:
+        mt_bench_data = f.read()
+    mt_bench_data = ast.literal_eval(mt_bench_data)[0]
+
+    metrics.log_metric("mt_bench_best_model", mt_bench_data["model"])
+    metrics.log_metric("mt_bench_best_score", mt_bench_data["overall_score"])
+    metrics.log_metric("mt_bench_best_model_error_rate", mt_bench_data["error_rate"])
+
+    with open("/output/mt_bench_branch/mt_bench_branch_data.json", "r") as f:
+        mt_bench_branch_data = json.loads(f.read())
+
+    metrics.log_metric("mt_bench_branch_score", mt_bench_branch_data["overall_score"])
+    metrics.log_metric(
+        "mt_bench_branch_base_score", mt_bench_branch_data["base_overall_score"]
+    )
+
+    with open("/output/mmlu_branch/mmlu_branch_data.json", "r") as f:
+        mmlu_branch_data = json.loads(f.read())
+
+    metrics.log_metric("mmlu_branch_score", mmlu_branch_data["model_score"])
+    metrics.log_metric("mmlu_branch_base_score", mmlu_branch_data["base_model_score"])
