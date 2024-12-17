@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chatbot
+  labels:
+    app: chatbot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chatbot
+  template:
+    metadata:
+      labels:
+        app: chatbot
+    spec:
+      serviceAccountName: chatbot-sa
+      containers:
+      - name: chatbot-inference
+        image: quay.io/sallyom/chatbot:vllm
+        env:
+          - name: MODEL_NAME
+            # Update this value to the endpoint of a running model server
+            value: mixtral
+          - name: MODEL_ENDPOINT
+            # Update this value to the endpoint of a running model server
+            value: https://mixtral-sallyom.apps.ocp-beta-test.nerc.mghpcc.org
+          - name: MODEL_ENDPOINT_BEARER
+            valueFrom:
+              secretKeyRef:
+                name: judge-server
+                key: api_key
+        ports:
+          - containerPort: 8501
+        securityContext:
+          runAsNonRoot: true
