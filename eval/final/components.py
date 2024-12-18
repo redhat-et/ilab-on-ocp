@@ -1,9 +1,9 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error
 
-from kfp.dsl import Artifact, Output, component
+from kfp.dsl import Artifact, Input, Metrics, Output, component
 
-from utils.consts import RHELAI_IMAGE
+from utils.consts import PYTHON_IMAGE, RHELAI_IMAGE
 
 
 @component(base_image=RHELAI_IMAGE, install_kfp_package=False)
@@ -480,3 +480,36 @@ def run_final_eval_op(
 
     with open(mt_bench_branch_output.path, "w", encoding="utf-8") as f:
         json.dump(mt_bench_branch_data, f, indent=4)
+
+
+@component(base_image=PYTHON_IMAGE, install_kfp_package=False)
+def generate_metrics_report_op(
+    mmlu_branch_output: Input[Artifact],
+    mt_bench_branch_output: Input[Artifact],
+    mt_bench_output: Input[Artifact],
+    metrics: Output[Metrics],
+):
+    import ast
+    import json
+
+    with open(mt_bench_output.path, "r") as f:
+        mt_bench_data = f.read()
+    mt_bench_data = ast.literal_eval(mt_bench_data)[0]
+
+    metrics.log_metric("mt_bench_best_model", mt_bench_data["model"])
+    metrics.log_metric("mt_bench_best_score", mt_bench_data["overall_score"])
+    metrics.log_metric("mt_bench_best_model_error_rate", mt_bench_data["error_rate"])
+
+    with open(mt_bench_branch_output.path, "r") as f:
+        mt_bench_branch_data = json.loads(f.read())
+
+    metrics.log_metric("mt_bench_branch_score", mt_bench_branch_data["overall_score"])
+    metrics.log_metric(
+        "mt_bench_branch_base_score", mt_bench_branch_data["base_overall_score"]
+    )
+
+    with open(mmlu_branch_output.path, "r") as f:
+        mmlu_branch_data = json.loads(f.read())
+
+    metrics.log_metric("mmlu_branch_score", mmlu_branch_data["model_score"])
+    metrics.log_metric("mmlu_branch_base_score", mmlu_branch_data["base_model_score"])

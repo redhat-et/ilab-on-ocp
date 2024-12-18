@@ -73,7 +73,7 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
 
     # Imports for evaluation
-    from eval.final import run_final_eval_op
+    from eval.final import generate_metrics_report_op, run_final_eval_op
     from eval.mt_bench import run_mt_bench_op
 
     @dsl.pipeline(
@@ -429,6 +429,14 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
         model_pvc_delete_task = DeletePVC(pvc_name=model_pvc_task.output)
         model_pvc_delete_task.after(final_eval_task)
+
+        generate_metrics_report_task = generate_metrics_report_op(
+            mmlu_branch_output=final_eval_task.outputs["mmlu_branch_output"],
+            mt_bench_branch_output=final_eval_task.outputs["mt_bench_branch_output"],
+            mt_bench_output=output_mt_bench_task.outputs["mt_bench_output"],
+        )
+        generate_metrics_report_task.after(output_mt_bench_task)
+        generate_metrics_report_task.set_caching_options(False)
 
         return
 

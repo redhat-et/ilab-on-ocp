@@ -30,6 +30,8 @@
 #    train_num_warmup_steps_phase_2: int [Default: 1000.0]
 #    train_save_samples: int [Default: 250000.0]
 #    train_seed: int [Default: 42.0]
+# Outputs:
+#    generate-metrics-report-op-metrics: system.Metrics
 components:
   comp-createpvc:
     executorLabel: exec-createpvc
@@ -266,6 +268,28 @@ components:
           description: Name of the PVC to delete. Supports passing a runtime-generated
             name, such as a name provided by ``kubernetes.CreatePvcOp().outputs['name']``.
           parameterType: STRING
+  comp-generate-metrics-report-op:
+    executorLabel: exec-generate-metrics-report-op
+    inputDefinitions:
+      artifacts:
+        mmlu_branch_output:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        mt_bench_branch_output:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        mt_bench_output:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
   comp-git-clone-op:
     executorLabel: exec-git-clone-op
     inputDefinitions:
@@ -658,6 +682,42 @@ deploymentSpec:
     exec-deletepvc-3:
       container:
         image: argostub/deletepvc
+    exec-generate-metrics-report-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - generate_metrics_report_op
+        command:
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef generate_metrics_report_op(\n    mmlu_branch_output: Input[Artifact],\n\
+          \    mt_bench_branch_output: Input[Artifact],\n    mt_bench_output: Input[Artifact],\n\
+          \    metrics: Output[Metrics],\n):\n    import ast\n    import json\n\n\
+          \    with open(mt_bench_output.path, \"r\") as f:\n        mt_bench_data\
+          \ = f.read()\n    mt_bench_data = ast.literal_eval(mt_bench_data)[0]\n\n\
+          \    metrics.log_metric(\"mt_bench_best_model\", mt_bench_data[\"model\"\
+          ])\n    metrics.log_metric(\"mt_bench_best_score\", mt_bench_data[\"overall_score\"\
+          ])\n    metrics.log_metric(\"mt_bench_best_model_error_rate\", mt_bench_data[\"\
+          error_rate\"])\n\n    with open(mt_bench_branch_output.path, \"r\") as f:\n\
+          \        mt_bench_branch_data = json.loads(f.read())\n\n    metrics.log_metric(\"\
+          mt_bench_branch_score\", mt_bench_branch_data[\"overall_score\"])\n    metrics.log_metric(\n\
+          \        \"mt_bench_branch_base_score\", mt_bench_branch_data[\"base_overall_score\"\
+          ]\n    )\n\n    with open(mmlu_branch_output.path, \"r\") as f:\n      \
+          \  mmlu_branch_data = json.loads(f.read())\n\n    metrics.log_metric(\"\
+          mmlu_branch_score\", mmlu_branch_data[\"model_score\"])\n    metrics.log_metric(\"\
+          mmlu_branch_base_score\", mmlu_branch_data[\"base_model_score\"])\n\n"
+        image: quay.io/modh/odh-generic-data-science-notebook:v3-2024b-20241111
     exec-git-clone-op:
       container:
         args:
@@ -1650,6 +1710,12 @@ pipelineInfo:
   name: instructlab
 root:
   dag:
+    outputs:
+      artifacts:
+        generate-metrics-report-op-metrics:
+          artifactSelectors:
+          - outputArtifactKey: metrics
+            producerSubtask: generate-metrics-report-op
     tasks:
       createpvc:
         cachingOptions:
@@ -1779,6 +1845,29 @@ root:
                 producerTask: createpvc-2
         taskInfo:
           name: deletepvc-3
+      generate-metrics-report-op:
+        cachingOptions: {}
+        componentRef:
+          name: comp-generate-metrics-report-op
+        dependentTasks:
+        - pvc-to-mt-bench-op
+        - run-final-eval-op
+        inputs:
+          artifacts:
+            mmlu_branch_output:
+              taskOutputArtifact:
+                outputArtifactKey: mmlu_branch_output
+                producerTask: run-final-eval-op
+            mt_bench_branch_output:
+              taskOutputArtifact:
+                outputArtifactKey: mt_bench_branch_output
+                producerTask: run-final-eval-op
+            mt_bench_output:
+              taskOutputArtifact:
+                outputArtifactKey: mt_bench_output
+                producerTask: pvc-to-mt-bench-op
+        taskInfo:
+          name: generate-metrics-report-op
       git-clone-op:
         cachingOptions: {}
         componentRef:
@@ -2231,6 +2320,12 @@ root:
         description: Training parameter. Random seed for initializing training.
         isOptional: true
         parameterType: NUMBER_INTEGER
+  outputDefinitions:
+    artifacts:
+      generate-metrics-report-op-metrics:
+        artifactType:
+          schemaTitle: system.Metrics
+          schemaVersion: 0.0.1
 schemaVersion: 2.1.0
 sdkVersion: kfp-2.9.0
 ---
