@@ -167,7 +167,7 @@ def pytorchjob_manifest_op(
     else:
         raise RuntimeError(f"Unsupported value of {phase_num=}")
 
-    image = "registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.3.1"
+    image = "quay.io/redhat-et/ilab:1.3.1"
 
     manifest = inspect.cleandoc(
         f"""
