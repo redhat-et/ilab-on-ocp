@@ -1845,8 +1845,7 @@ root:
         taskInfo:
           name: pvc-to-model-op
       pvc-to-mt-bench-op:
-        cachingOptions:
-          enableCache: true
+        cachingOptions: {}
         componentRef:
           name: comp-pvc-to-mt-bench-op
         dependentTasks:
