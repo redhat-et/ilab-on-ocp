@@ -411,6 +411,8 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             pvc_path="/output/mt_bench_data.json",
         )
         output_mt_bench_task.after(run_mt_bench_task)
+        output_mt_bench_task.set_caching_options(False)
+
         mount_pvc(
             task=output_mt_bench_task,
             pvc_name=output_pvc_task.output,
