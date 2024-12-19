@@ -770,7 +770,7 @@ deploymentSpec:
           \ = 1e-4,\n    num_warmup_steps: int = 800,\n    save_samples: int = 0,\n\
           \    max_batch_len: int = 20000,\n    seed: int = 42,\n    job_timeout:\
           \ int = 86400,\n    delete_after_done: bool = False,\n):\n    import logging\n\
-          \    import os\n    from kubeflow.training import TrainingClient, models\n\
+          \    import os\n\n    from kubeflow.training import TrainingClient, models\n\
           \    from kubeflow.training.utils import utils as kfto_utils\n\n    def\
           \ list_phase1_final_model():\n        model_dir = \"/output/phase_1/model/hf_format\"\
           \n        model_list = os.listdir(model_dir)\n        newest_idx = max(\n\
@@ -878,11 +878,11 @@ deploymentSpec:
           \ namespace: {namespace}\")\n    training_client.create_job(job_template,\
           \ namespace=namespace)\n\n    expected_conditions = [\"Succeeded\", \"Failed\"\
           ]\n    logging.info(f\"Monitoring job until status is any of {expected_conditions}.\"\
-          )\n\n    def get_logs(job):\n        _, _ = training_client.get_job_logs(name=job.metadata.name,\n\
-          \                                               follow=True)\n\n    training_client.wait_for_job_conditions(\n\
-          \        name=name,\n        expected_conditions=set(expected_conditions),\n\
-          \        wait_timeout=job_timeout,\n        timeout=job_timeout,\n     \
-          \   callback=get_logs\n    )\n\n    if delete_after_done:\n        logging.info(\"\
+          )\n\n    def get_logs(job):\n        _, _ = training_client.get_job_logs(name=job.metadata.name,\
+          \ follow=True)\n\n    training_client.wait_for_job_conditions(\n       \
+          \ name=name,\n        expected_conditions=set(expected_conditions),\n  \
+          \      wait_timeout=job_timeout,\n        timeout=job_timeout,\n       \
+          \ callback=get_logs,\n    )\n\n    if delete_after_done:\n        logging.info(\"\
           Deleting job after completion.\")\n        training_client.delete_job(name,\
           \ namespace)\n\n"
         image: quay.io/redhat-et/python
@@ -913,7 +913,7 @@ deploymentSpec:
           \ = 1e-4,\n    num_warmup_steps: int = 800,\n    save_samples: int = 0,\n\
           \    max_batch_len: int = 20000,\n    seed: int = 42,\n    job_timeout:\
           \ int = 86400,\n    delete_after_done: bool = False,\n):\n    import logging\n\
-          \    import os\n    from kubeflow.training import TrainingClient, models\n\
+          \    import os\n\n    from kubeflow.training import TrainingClient, models\n\
           \    from kubeflow.training.utils import utils as kfto_utils\n\n    def\
           \ list_phase1_final_model():\n        model_dir = \"/output/phase_1/model/hf_format\"\
           \n        model_list = os.listdir(model_dir)\n        newest_idx = max(\n\
@@ -1021,11 +1021,11 @@ deploymentSpec:
           \ namespace: {namespace}\")\n    training_client.create_job(job_template,\
           \ namespace=namespace)\n\n    expected_conditions = [\"Succeeded\", \"Failed\"\
           ]\n    logging.info(f\"Monitoring job until status is any of {expected_conditions}.\"\
-          )\n\n    def get_logs(job):\n        _, _ = training_client.get_job_logs(name=job.metadata.name,\n\
-          \                                               follow=True)\n\n    training_client.wait_for_job_conditions(\n\
-          \        name=name,\n        expected_conditions=set(expected_conditions),\n\
-          \        wait_timeout=job_timeout,\n        timeout=job_timeout,\n     \
-          \   callback=get_logs\n    )\n\n    if delete_after_done:\n        logging.info(\"\
+          )\n\n    def get_logs(job):\n        _, _ = training_client.get_job_logs(name=job.metadata.name,\
+          \ follow=True)\n\n    training_client.wait_for_job_conditions(\n       \
+          \ name=name,\n        expected_conditions=set(expected_conditions),\n  \
+          \      wait_timeout=job_timeout,\n        timeout=job_timeout,\n       \
+          \ callback=get_logs,\n    )\n\n    if delete_after_done:\n        logging.info(\"\
           Deleting job after completion.\")\n        training_client.delete_job(name,\
           \ namespace)\n\n"
         image: quay.io/redhat-et/python
