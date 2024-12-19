@@ -5,7 +5,7 @@ from typing import Optional
 
 from kfp import dsl
 
-from utils.consts import RHELAI_IMAGE, TOOLBOX_IMAGE
+from utils.consts import PYTHON_IMAGE, RHELAI_IMAGE, TOOLBOX_IMAGE
 
 
 @dsl.component(
@@ -124,7 +124,7 @@ def knowledge_processed_data_to_artifact_op(
 
 
 # Change base image to the RHOAI python image with kubeflow_training once available
-@dsl.component(base_image="quay.io/redhat-et/ilab:shrey", install_kfp_package=False)
+@dsl.component(base_image=PYTHON_IMAGE, install_kfp_package=False)
 def pytorch_job_launcher_op(
     pytorchjob_output_yaml: dsl.Output[dsl.Artifact],
     model_pvc_name: str,
@@ -132,6 +132,7 @@ def pytorch_job_launcher_op(
     output_pvc_name: str,
     name_suffix: str,
     phase_num: int,
+    base_image: str,
     nproc_per_node: int = 3,
     nnodes: int = 2,
     num_epochs: int = 2,
@@ -146,7 +147,6 @@ def pytorch_job_launcher_op(
 ):
     import logging
     import os
-    import time
 
     from kubeflow.training import TrainingClient, models
     from kubeflow.training.utils import utils as kfto_utils
@@ -172,9 +172,8 @@ def pytorch_job_launcher_op(
 
     resources_per_worker = {"nvidia.com/gpu": nproc_per_node}
 
-    base_image = "registry.stage.redhat.io/rhelai1/instructlab-nvidia-rhel9:1.3.1"
     name = f"train-phase-{phase_num}-{name_suffix.rstrip('-sdg')}"
-    command = ["/bin/bash", "-c", "--"]
+    command = ["/bin/sh", "-c", "--"]
 
     master_args = [
         f"""echo "Running phase {phase_num}"
@@ -349,59 +348,17 @@ def pytorch_job_launcher_op(
     expected_conditions = ["Succeeded", "Failed"]
     logging.info(f"Monitoring job until status is any of {expected_conditions}.")
 
-    def wait_for_job_get_logs(
-        name: str,
-        namespace: str = None,
-        job_kind: str = None,
-        expected_conditions: list = ["Succeeded"],
-        wait_timeout: int = 600,
-        polling_interval: int = 15,
-        timeout: int = 1000,
-    ) -> str:
-        log_lines = set()
-        for _ in range(round(wait_timeout / polling_interval)):
-            # We should get Job only once per cycle and check the statuses.
-            job = training_client.get_job(
-                name=name,
-                namespace=namespace,
-                job_kind=job_kind,
-                timeout=timeout,
-            )
-            # Get Job conditions.
-            conditions = training_client.get_job_conditions(
-                job=job, timeout=timeout, job_kind=job_kind
-            )
-            # Return Job when it reaches expected condition.
-            for expected_condition in expected_conditions:
-                if kfto_utils.has_condition(conditions, expected_condition):
-                    return conditions
+    def get_logs(job):
+        _, _ = training_client.get_job_logs(name=job.metadata.name, follow=True)
 
-            # Get logs dictionary
-            logs_dict, _ = training_client.get_job_logs(
-                name=name, namespace=namespace, job_kind=job_kind
-            )
-
-            # Stream new log lines
-            for key, value in logs_dict.items():
-                if key not in log_lines:
-                    logging.info(key)
-                    log_lines.add(key)
-
-                for line in value.split("\n"):
-                    if line not in log_lines:
-                        logging.info(line)
-                        log_lines.add(line)
-
-            time.sleep(polling_interval)
-
-    wait_for_job_get_logs(
+    training_client.wait_for_job_conditions(
         name=name,
-        namespace=namespace,
-        job_kind="PyTorchJob",
         expected_conditions=set(expected_conditions),
         wait_timeout=job_timeout,
         timeout=job_timeout,
+        callback=get_logs,
     )
+
     if delete_after_done:
         logging.info("Deleting job after completion.")
         training_client.delete_job(name, namespace)
