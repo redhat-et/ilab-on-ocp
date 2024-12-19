@@ -15,6 +15,8 @@ from kfp.kubernetes import (
     use_secret_as_volume,
 )
 
+from utils.consts import RHELAI_IMAGE
+
 TEACHER_CONFIG_MAP = "teacher-server"
 TEACHER_SECRET = "teacher-server"
 JUDGE_CONFIG_MAP = "judge-server"
@@ -51,7 +53,7 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         from training.faked import (
             data_processing_op,
             knowledge_processed_data_to_artifact_op,
-            pytorchjob_manifest_op,
+            pytorch_job_launcher_op,
             skills_processed_data_to_artifact_op,
         )
         from utils.faked import (
@@ -63,7 +65,7 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         from training import (
             data_processing_op,
             knowledge_processed_data_to_artifact_op,
-            pytorchjob_manifest_op,
+            pytorch_job_launcher_op,
             skills_processed_data_to_artifact_op,
         )
         from utils import (
@@ -278,12 +280,13 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         # Training 1
         # Using pvc_create_task.output as PyTorchJob name since dsl.PIPELINE_* global variables do not template/work in KFP v2
         # https://github.com/kubeflow/pipelines/issues/10453
-        training_phase_1 = pytorchjob_manifest_op(
+        training_phase_1 = pytorch_job_launcher_op(
             model_pvc_name=model_pvc_task.output,
             input_pvc_name=sdg_input_pvc_task.output,
             name_suffix=sdg_input_pvc_task.output,
             output_pvc_name=output_pvc_task.output,
             phase_num=1,
+            base_image=RHELAI_IMAGE,
             nproc_per_node=train_nproc_per_node,
             nnodes=train_nnodes,
             num_epochs=train_num_epochs_phase_1,
@@ -298,12 +301,13 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         training_phase_1.set_caching_options(False)
 
         #### Train 2
-        training_phase_2 = pytorchjob_manifest_op(
+        training_phase_2 = pytorch_job_launcher_op(
             model_pvc_name=model_pvc_task.output,
             input_pvc_name=sdg_input_pvc_task.output,
             name_suffix=sdg_input_pvc_task.output,
             output_pvc_name=output_pvc_task.output,
             phase_num=2,
+            base_image=RHELAI_IMAGE,
             nproc_per_node=train_nproc_per_node,
             nnodes=train_nnodes,
             num_epochs=train_num_epochs_phase_2,
