@@ -104,7 +104,6 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         sdg_pipeline: str = "full",  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L122
         sdg_max_batch_len: int = 5000,  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L334
         sdg_sample_size: float = 1.0,  # FIXME: Not present in default config. Not configurable upstream at this point, capability added via https://github.com/instructlab/sdg/pull/432
-        sdg_use_tls: bool = False,
 
         # Training phase
         train_nproc_per_node: int = 2,  # FIXME: Not present in default config. Arbitrary value chosen to demonstrate multi-node multi-gpu capabilities. Needs proper reference architecture justification.
@@ -123,14 +122,12 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         # MT Bench
         mt_bench_max_workers: str = "auto",  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L74
         mt_bench_merge_system_user_message: bool = False,  # https://github.com/instructlab/instructlab/blob/v0.21.2/src/instructlab/model/evaluate.py#L474
-        mt_bench_use_tls: bool = False,
 
         # Final evaluation
         final_eval_max_workers: str = "auto",  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L74
         final_eval_few_shots: int = 5,  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L56
         final_eval_batch_size: str = "auto",  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L52
         final_eval_merge_system_user_message: bool = False,  # https://github.com/instructlab/instructlab/blob/v0.21.2/src/instructlab/model/evaluate.py#L474
-        final_eval_use_tls: bool = False,
 
         # Other options
         k8s_storage_class_name: str = "standard",  # FIXME: https://github.com/kubeflow/pipelines/issues/11396, https://issues.redhat.com/browse/RHOAIRFE-470
@@ -146,7 +143,6 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             sdg_pipeline: SDG parameter. Data generation pipeline to use. Available: 'simple', 'full', or a valid path to a directory of pipeline workflow YAML files. Note that 'full' requires a larger teacher model, Mixtral-8x7b.
             sdg_max_batch_len: SDG parameter. Maximum tokens per gpu for each batch that will be handled in a single step.
             sdg_sample_size: SDG parameter. Represents the sdg skills recipe sampling size as percentage in decimal form.
-            sdg_use_tls: SDG parameter.  Use TLS Certs (defined in the ConfigMap 'teacher-server' under key 'ca.crt') to connect to the Teacher model
 
             train_nproc_per_node: Training parameter. Number of GPUs per each node/worker to use for training.
             train_nnodes: Training parameter. Number of nodes/workers to train on.
@@ -164,13 +160,11 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
             mt_bench_max_workers: MT Bench parameter. Number of workers to use for evaluation with mt_bench or mt_bench_branch. Must be a positive integer or 'auto'.
             mt_bench_merge_system_user_message: MT Bench parameter. Boolean indicating whether to merge system and user messages (required for Mistral based judges)
-            mt_bench_use_tls: MT Bench parameter.  Use TLS Certs (defined in the ConfigMap 'judge-server' under key 'ca.crt') to connect to the Judge model
 
             final_eval_max_workers: Final model evaluation parameter for MT Bench Branch. Number of workers to use for evaluation with mt_bench or mt_bench_branch. Must be a positive integer or 'auto'.
             final_eval_few_shots: Final model evaluation parameter for MMLU. Number of question-answer pairs provided in the context preceding the question used for evaluation.
             final_eval_batch_size: Final model evaluation parameter for MMLU. Batch size for evaluation. Valid values are a positive integer or 'auto' to select the largest batch size that will fit in memory.
             final_eval_merge_system_user_message: Final model evaluation parameter for MT Bench Branch. Boolean indicating whether to merge system and user messages (required for Mistral based judges)
-            mt_bench_use_tls: Final model evaluation parameter.  Use TLS Certs (defined in the ConfigMap 'judge-server' under key 'ca.crt') to connect to the Judge model
 
             k8s_storage_class_name: A Kubernetes StorageClass name for persistent volumes. Selected StorageClass must support RWX PersistentVolumes.
         """
@@ -200,7 +194,6 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             repo_branch=sdg_repo_branch,
             repo_pr=sdg_repo_pr,
             sdg_sampling_size=sdg_sample_size,
-            use_tls=sdg_use_tls,
         )
         sdg_task.set_env_variable("HOME", "/tmp")
         sdg_task.set_env_variable("HF_HOME", "/tmp")
@@ -354,7 +347,6 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             models_folder="/output/phase_2/model/hf_format",
             max_workers=mt_bench_max_workers,
             merge_system_user_message=mt_bench_merge_system_user_message,
-            use_tls=mt_bench_use_tls,
         )
         mount_pvc(
             task=run_mt_bench_task,
@@ -390,7 +382,6 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             merge_system_user_message=final_eval_merge_system_user_message,
             few_shots=final_eval_few_shots,
             batch_size=final_eval_batch_size,
-            use_tls=final_eval_use_tls,
         )
         mount_pvc(
             task=final_eval_task, pvc_name=output_pvc_task.output, mount_path="/output"
@@ -624,10 +615,10 @@ def gen_standalone():
     # The list of executor names to extract details from to generate the standalone script
     executors = {
         "exec-data-processing-op": 'data_processing_op(max_seq_len={MAX_SEQ_LEN}, max_batch_len={MAX_BATCH_LEN}, sdg_path="{DATA_PVC_SDG_PATH}", model_path="{DATA_PVC_MODEL_PATH}", skills_path="{PREPROCESSED_DATA_SKILLS_PATH}", knowledge_path="{PREPROCESSED_DATA_KNOWLEDGE_PATH}")',
-        "exec-sdg-op": 'sdg_op(num_instructions_to_generate={num_instructions_to_generate}, pipeline="{sdg_pipeline}", repo_branch="{exec_git_clone_op_repo_branch or ""}", repo_pr={exec_git_clone_op_repo_pr or 0}, taxonomy_path="{TAXONOMY_DATA_PATH}", sdg_path="{DATA_PVC_SDG_PATH}", sdg_sampling_size={sdg_sampling_size}, use_tls={sdg_use_tls})',
+        "exec-sdg-op": 'sdg_op(num_instructions_to_generate={num_instructions_to_generate}, pipeline="{sdg_pipeline}", repo_branch="{exec_git_clone_op_repo_branch or ""}", repo_pr={exec_git_clone_op_repo_pr or 0}, taxonomy_path="{TAXONOMY_DATA_PATH}", sdg_path="{DATA_PVC_SDG_PATH}", sdg_sampling_size={sdg_sampling_size})',
         "exec-git-clone-op": {},
-        "exec-run-mt-bench-op": 'run_mt_bench_op(best_score_file="{MT_BENCH_SCORES_PATH}",output_path="{MT_BENCH_OUTPUT_PATH}",models_folder="{CANDIDATE_MODEL_PATH_PREFIX}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE}, use_tls={mt_bench_use_tls})',
-        "exec-run-final-eval-op": 'run_final_eval_op(mmlu_branch_output="{MMLU_BRANCH_SCORES_PATH}", mt_bench_branch_output="{MT_BENCH_BRANCH_SCORES_PATH}", candidate_model="{CANDIDATE_MODEL_PATH}", taxonomy_path="{TAXONOMY_PATH}", sdg_path="{DATA_PVC_SDG_PATH}", base_branch="", candidate_branch="", base_model_dir="{DATA_PVC_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE}, few_shots={FEW_SHOTS}, batch_size="{BATCH_SIZE}", use_tls={final_eval_use_tls})',
+        "exec-run-mt-bench-op": 'run_mt_bench_op(best_score_file="{MT_BENCH_SCORES_PATH}",output_path="{MT_BENCH_OUTPUT_PATH}",models_folder="{CANDIDATE_MODEL_PATH_PREFIX}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE})',
+        "exec-run-final-eval-op": 'run_final_eval_op(mmlu_branch_output="{MMLU_BRANCH_SCORES_PATH}", mt_bench_branch_output="{MT_BENCH_BRANCH_SCORES_PATH}", candidate_model="{CANDIDATE_MODEL_PATH}", taxonomy_path="{TAXONOMY_PATH}", sdg_path="{DATA_PVC_SDG_PATH}", base_branch="", candidate_branch="", base_model_dir="{DATA_PVC_MODEL_PATH}", max_workers="{MAX_WORKERS}", merge_system_user_message={MERGE_SYSTEM_USER_MESSAGE}, few_shots={FEW_SHOTS}, batch_size="{BATCH_SIZE}")',
     }
 
     details = {}

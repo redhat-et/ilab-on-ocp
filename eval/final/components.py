@@ -20,7 +20,6 @@ def run_final_eval_op(
     candidate_model: str = None,
     taxonomy_path: str = "/input/taxonomy",
     sdg_path: str = "/input/sdg",
-    use_tls: bool = False,
 ):
     import json
     import os
@@ -35,8 +34,9 @@ def run_final_eval_op(
     judge_api_key = os.getenv("JUDGE_API_KEY", "")
     judge_model_name = os.getenv("JUDGE_NAME")
     judge_endpoint = os.getenv("JUDGE_ENDPOINT")
-    judge_ca_cert = os.getenv("JUDGE_CA_CERT_PATH")
-    judge_http_client = httpx.Client(verify=judge_ca_cert) if use_tls else None
+    judge_ca_cert_path = os.getenv("JUDGE_CA_CERT_PATH")
+    use_tls = os.path.exists(judge_ca_cert_path) and (os.path.getsize(judge_ca_cert_path) > 0)
+    judge_http_client = httpx.Client(verify=judge_ca_cert_path) if use_tls else None
 
     print("Starting Final Eval...")
 

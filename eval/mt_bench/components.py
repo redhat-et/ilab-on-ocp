@@ -17,7 +17,6 @@ def run_mt_bench_op(
     models_folder: str,
     output_path: str = "/output/mt_bench_data.json",
     best_score_file: Optional[str] = None,
-    use_tls: bool = False,
 ) -> NamedTuple("outputs", best_model=str, best_score=float):
     import json
     import os
@@ -30,8 +29,9 @@ def run_mt_bench_op(
     judge_api_key = os.getenv("JUDGE_API_KEY", "")
     judge_model_name = os.getenv("JUDGE_NAME")
     judge_endpoint = os.getenv("JUDGE_ENDPOINT")
-    judge_ca_cert = os.getenv("JUDGE_CA_CERT_PATH")
-    judge_http_client = httpx.Client(verify=judge_ca_cert) if use_tls else None
+    judge_ca_cert_path = os.getenv("JUDGE_CA_CERT_PATH")
+    use_tls = os.path.exists(judge_ca_cert_path) and (os.path.getsize(judge_ca_cert_path) > 0)
+    judge_http_client = httpx.Client(verify=judge_ca_cert_path) if use_tls else None
 
     def launch_vllm(
         model_path: str, gpu_count: int, retries: int = 120, delay: int = 10
