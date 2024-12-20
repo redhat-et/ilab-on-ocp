@@ -3,7 +3,7 @@
 
 from kfp import dsl
 
-from .consts import PYTHON_IMAGE, RHELAI_IMAGE, TOOLBOX_IMAGE
+from .consts import RHELAI_IMAGE, TOOLBOX_IMAGE
 
 
 @dsl.container_component

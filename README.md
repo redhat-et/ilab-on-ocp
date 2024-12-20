@@ -90,6 +90,10 @@ metadata:
 data:
   endpoint: '<YOUR_MIXTRAL_MODEL_ENDPOINT>'
   model: mixtral
+  ca.crt: |  # If using TLS
+    -----BEGIN CERTIFICATE-----
+    <TLS Certificate to Teacher Model>
+    -----END CERTIFICATE-----
 ```
 
 ```yaml
@@ -110,6 +114,10 @@ metadata:
 data:
   endpoint: '<YOUR_PROMETHEUS_MODEL_ENDPOINT>'
   model: prometheus
+  ca.crt: |  # If using TLS
+    -----BEGIN CERTIFICATE-----
+    <TLS Certificate to Judge Model>
+    -----END CERTIFICATE-----
 ```
 
 ```yaml
@@ -121,6 +129,8 @@ data:
   api_key: <YOUR_PROMETHEUS_API_KEY>
 type: Opaque
 ```
+
+**NOTE**: You can find and copy the certs needed for the teacher- and judge-server ConfigMaps in another ConfigMap, `kube-root-ca.crt`, found in the same namespace as the hosted model
 
 
 ### Run the Pipeline

@@ -1,5 +1,6 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error,no-member
+import os
 import typing
 from typing import List, Literal, Optional
 
@@ -9,8 +10,8 @@ from kfp.kubernetes import (
     CreatePVC,
     DeletePVC,
     mount_pvc,
-    set_image_pull_policy,
     use_config_map_as_env,
+    use_config_map_as_volume,
     use_secret_as_env,
     use_secret_as_volume,
 )
@@ -25,6 +26,15 @@ IMPORTER_PIPELINE_FILE_NAME = "importer-pipeline.yaml"
 STANDALONE_TEMPLATE_FILE_NAME = "standalone.tpl"
 GENERATED_STANDALONE_FILE_NAME = "standalone.py"
 DEFAULT_REPO_URL = "https://github.com/instructlab/taxonomy.git"
+
+# Model Serving SSL connection
+SDG_CA_CERT_CM_KEY = "ca.crt"
+SDG_CA_CERT_ENV_VAR_NAME = "SDG_CA_CERT_PATH"
+SDG_CA_CERT_PATH = "/tmp/cert"
+
+JUDGE_CA_CERT_CM_KEY = "ca.crt"
+JUDGE_CA_CERT_ENV_VAR_NAME = "JUDGE_CA_CERT_PATH"
+JUDGE_CA_CERT_PATH = "/tmp/cert"
 
 
 def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
@@ -187,6 +197,13 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             sdg_task, TEACHER_CONFIG_MAP, dict(endpoint="endpoint", model="model")
         )
         use_secret_as_env(sdg_task, TEACHER_SECRET, {"api_key": "api_key"})
+        use_config_map_as_volume(
+            sdg_task, TEACHER_CONFIG_MAP, mount_path=SDG_CA_CERT_PATH
+        )
+        sdg_task.set_env_variable(
+            SDG_CA_CERT_ENV_VAR_NAME, os.path.join(SDG_CA_CERT_PATH, SDG_CA_CERT_CM_KEY)
+        )
+
         sdg_task.after(git_clone_task)
         mount_pvc(
             task=sdg_task,
@@ -349,6 +366,14 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
         use_secret_as_env(run_mt_bench_task, JUDGE_SECRET, {"api_key": "JUDGE_API_KEY"})
 
+        use_config_map_as_volume(
+            run_mt_bench_task, JUDGE_CONFIG_MAP, mount_path=JUDGE_CA_CERT_PATH
+        )
+        run_mt_bench_task.set_env_variable(
+            JUDGE_CA_CERT_ENV_VAR_NAME,
+            os.path.join(JUDGE_CA_CERT_PATH, JUDGE_CA_CERT_CM_KEY),
+        )
+
         # uncomment if updating image with same tag
         # set_image_pull_policy(run_mt_bench_task, "Always")
 
@@ -390,6 +415,14 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         # set_image_pull_policy(final_eval_task, "Always")
 
         use_secret_as_env(final_eval_task, JUDGE_SECRET, {"api_key": "JUDGE_API_KEY"})
+
+        use_config_map_as_volume(
+            final_eval_task, JUDGE_CONFIG_MAP, mount_path=JUDGE_CA_CERT_PATH
+        )
+        final_eval_task.set_env_variable(
+            JUDGE_CA_CERT_ENV_VAR_NAME,
+            os.path.join(JUDGE_CA_CERT_PATH, JUDGE_CA_CERT_CM_KEY),
+        )
 
         final_eval_task.after(run_mt_bench_task)
         final_eval_task.set_accelerator_type("nvidia.com/gpu")
