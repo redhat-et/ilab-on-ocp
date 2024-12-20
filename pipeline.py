@@ -1,5 +1,6 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error,no-member
+import os
 import typing
 from typing import List, Literal, Optional
 
@@ -9,13 +10,11 @@ from kfp.kubernetes import (
     CreatePVC,
     DeletePVC,
     mount_pvc,
-    set_image_pull_policy,
     use_config_map_as_env,
     use_config_map_as_volume,
     use_secret_as_env,
     use_secret_as_volume,
 )
-import os
 
 TEACHER_CONFIG_MAP = "teacher-server"
 TEACHER_SECRET = "teacher-server"
@@ -104,7 +103,6 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         sdg_pipeline: str = "full",  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L122
         sdg_max_batch_len: int = 5000,  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L334
         sdg_sample_size: float = 1.0,  # FIXME: Not present in default config. Not configurable upstream at this point, capability added via https://github.com/instructlab/sdg/pull/432
-
         # Training phase
         train_nproc_per_node: int = 2,  # FIXME: Not present in default config. Arbitrary value chosen to demonstrate multi-node multi-gpu capabilities. Needs proper reference architecture justification.
         train_nnodes: int = 2,  # FIXME: Not present in default config. Arbitrary value chosen to demonstrate multi-node multi-gpu capabilities. Needs proper reference architecture justification.
@@ -122,13 +120,11 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         # MT Bench
         mt_bench_max_workers: str = "auto",  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L74
         mt_bench_merge_system_user_message: bool = False,  # https://github.com/instructlab/instructlab/blob/v0.21.2/src/instructlab/model/evaluate.py#L474
-
         # Final evaluation
         final_eval_max_workers: str = "auto",  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L74
         final_eval_few_shots: int = 5,  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L56
         final_eval_batch_size: str = "auto",  # https://github.com/instructlab/instructlab/blob/v0.21.2/tests/testdata/default_config.yaml#L52
         final_eval_merge_system_user_message: bool = False,  # https://github.com/instructlab/instructlab/blob/v0.21.2/src/instructlab/model/evaluate.py#L474
-
         # Other options
         k8s_storage_class_name: str = "standard",  # FIXME: https://github.com/kubeflow/pipelines/issues/11396, https://issues.redhat.com/browse/RHOAIRFE-470
     ):
@@ -201,8 +197,12 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             sdg_task, TEACHER_CONFIG_MAP, dict(endpoint="endpoint", model="model")
         )
         use_secret_as_env(sdg_task, TEACHER_SECRET, {"api_key": "api_key"})
-        use_config_map_as_volume(sdg_task, TEACHER_CONFIG_MAP, mount_path=SDG_CA_CERT_PATH)
-        sdg_task.set_env_variable(SDG_CA_CERT_ENV_VAR_NAME, os.path.join(SDG_CA_CERT_PATH, SDG_CA_CERT_CM_KEY))
+        use_config_map_as_volume(
+            sdg_task, TEACHER_CONFIG_MAP, mount_path=SDG_CA_CERT_PATH
+        )
+        sdg_task.set_env_variable(
+            SDG_CA_CERT_ENV_VAR_NAME, os.path.join(SDG_CA_CERT_PATH, SDG_CA_CERT_CM_KEY)
+        )
 
         sdg_task.after(git_clone_task)
         mount_pvc(
@@ -366,8 +366,13 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
         use_secret_as_env(run_mt_bench_task, JUDGE_SECRET, {"api_key": "JUDGE_API_KEY"})
 
-        use_config_map_as_volume(run_mt_bench_task, JUDGE_CONFIG_MAP, mount_path=JUDGE_CA_CERT_PATH)
-        run_mt_bench_task.set_env_variable(JUDGE_CA_CERT_ENV_VAR_NAME,  os.path.join(JUDGE_CA_CERT_PATH, JUDGE_CA_CERT_CM_KEY))
+        use_config_map_as_volume(
+            run_mt_bench_task, JUDGE_CONFIG_MAP, mount_path=JUDGE_CA_CERT_PATH
+        )
+        run_mt_bench_task.set_env_variable(
+            JUDGE_CA_CERT_ENV_VAR_NAME,
+            os.path.join(JUDGE_CA_CERT_PATH, JUDGE_CA_CERT_CM_KEY),
+        )
 
         # uncomment if updating image with same tag
         # set_image_pull_policy(run_mt_bench_task, "Always")
@@ -411,8 +416,13 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
 
         use_secret_as_env(final_eval_task, JUDGE_SECRET, {"api_key": "JUDGE_API_KEY"})
 
-        use_config_map_as_volume(final_eval_task, JUDGE_CONFIG_MAP, mount_path=JUDGE_CA_CERT_PATH)
-        final_eval_task.set_env_variable(JUDGE_CA_CERT_ENV_VAR_NAME, os.path.join(JUDGE_CA_CERT_PATH, JUDGE_CA_CERT_CM_KEY))
+        use_config_map_as_volume(
+            final_eval_task, JUDGE_CONFIG_MAP, mount_path=JUDGE_CA_CERT_PATH
+        )
+        final_eval_task.set_env_variable(
+            JUDGE_CA_CERT_ENV_VAR_NAME,
+            os.path.join(JUDGE_CA_CERT_PATH, JUDGE_CA_CERT_CM_KEY),
+        )
 
         final_eval_task.after(run_mt_bench_task)
         final_eval_task.set_accelerator_type("nvidia.com/gpu")

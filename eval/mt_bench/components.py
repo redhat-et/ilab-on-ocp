@@ -1,6 +1,6 @@
 # type: ignore
 # pylint: disable=no-value-for-parameter,import-outside-toplevel,import-error
-from typing import List, NamedTuple, Optional
+from typing import NamedTuple, Optional
 
 from kfp.dsl import component
 
@@ -20,9 +20,9 @@ def run_mt_bench_op(
 ) -> NamedTuple("outputs", best_model=str, best_score=float):
     import json
     import os
-    import httpx
     import subprocess
 
+    import httpx
     import torch
     from instructlab.eval.mt_bench import MTBenchEvaluator
 
@@ -30,7 +30,9 @@ def run_mt_bench_op(
     judge_model_name = os.getenv("JUDGE_NAME")
     judge_endpoint = os.getenv("JUDGE_ENDPOINT")
     judge_ca_cert_path = os.getenv("JUDGE_CA_CERT_PATH")
-    use_tls = os.path.exists(judge_ca_cert_path) and (os.path.getsize(judge_ca_cert_path) > 0)
+    use_tls = os.path.exists(judge_ca_cert_path) and (
+        os.path.getsize(judge_ca_cert_path) > 0
+    )
     judge_http_client = httpx.Client(verify=judge_ca_cert_path) if use_tls else None
 
     def launch_vllm(

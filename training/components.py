@@ -1,7 +1,7 @@
 # type: ignore
 # pylint: disable=import-outside-toplevel,missing-function-docstring
 
-from typing import NamedTuple, Optional
+from typing import Optional
 
 from kfp import dsl
 

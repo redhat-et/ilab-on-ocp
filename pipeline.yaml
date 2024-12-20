@@ -1144,17 +1144,17 @@ deploymentSpec:
           \    few_shots: int,\n    batch_size: str,\n    merge_system_user_message:\
           \ bool,\n    candidate_model: str = None,\n    taxonomy_path: str = \"/input/taxonomy\"\
           ,\n    sdg_path: str = \"/input/sdg\",\n):\n    import json\n    import\
-          \ os\n    import httpx\n    import subprocess\n\n    import torch\n    from\
+          \ os\n    import subprocess\n\n    import httpx\n    import torch\n    from\
           \ instructlab.eval.mmlu import MMLUBranchEvaluator\n    from instructlab.eval.mt_bench\
           \ import MTBenchBranchEvaluator\n    from instructlab.model.evaluate import\
           \ qa_pairs_to_qna_to_avg_scores, sort_score\n\n    judge_api_key = os.getenv(\"\
           JUDGE_API_KEY\", \"\")\n    judge_model_name = os.getenv(\"JUDGE_NAME\"\
           )\n    judge_endpoint = os.getenv(\"JUDGE_ENDPOINT\")\n    judge_ca_cert_path\
           \ = os.getenv(\"JUDGE_CA_CERT_PATH\")\n    use_tls = os.path.exists(judge_ca_cert_path)\
-          \ and (os.path.getsize(judge_ca_cert_path) > 0)\n    judge_http_client =\
-          \ httpx.Client(verify=judge_ca_cert_path) if use_tls else None\n\n    print(\"\
-          Starting Final Eval...\")\n\n    def launch_vllm(\n        model_path: str,\
-          \ gpu_count: int, retries: int = 120, delay: int = 10\n    ) -> tuple:\n\
+          \ and (\n        os.path.getsize(judge_ca_cert_path) > 0\n    )\n    judge_http_client\
+          \ = httpx.Client(verify=judge_ca_cert_path) if use_tls else None\n\n   \
+          \ print(\"Starting Final Eval...\")\n\n    def launch_vllm(\n        model_path:\
+          \ str, gpu_count: int, retries: int = 120, delay: int = 10\n    ) -> tuple:\n\
           \        import subprocess\n        import sys\n        import time\n\n\
           \        import requests\n        from instructlab.model.backends.common\
           \ import free_tcp_ipv4_port\n\n        free_port = free_tcp_ipv4_port(\"\
@@ -1402,13 +1402,13 @@ deploymentSpec:
           \    max_workers: str,\n    models_folder: str,\n    output_path: str =\
           \ \"/output/mt_bench_data.json\",\n    best_score_file: Optional[str] =\
           \ None,\n) -> NamedTuple(\"outputs\", best_model=str, best_score=float):\n\
-          \    import json\n    import os\n    import httpx\n    import subprocess\n\
-          \n    import torch\n    from instructlab.eval.mt_bench import MTBenchEvaluator\n\
+          \    import json\n    import os\n    import subprocess\n\n    import httpx\n\
+          \    import torch\n    from instructlab.eval.mt_bench import MTBenchEvaluator\n\
           \n    judge_api_key = os.getenv(\"JUDGE_API_KEY\", \"\")\n    judge_model_name\
           \ = os.getenv(\"JUDGE_NAME\")\n    judge_endpoint = os.getenv(\"JUDGE_ENDPOINT\"\
           )\n    judge_ca_cert_path = os.getenv(\"JUDGE_CA_CERT_PATH\")\n    use_tls\
-          \ = os.path.exists(judge_ca_cert_path) and (os.path.getsize(judge_ca_cert_path)\
-          \ > 0)\n    judge_http_client = httpx.Client(verify=judge_ca_cert_path)\
+          \ = os.path.exists(judge_ca_cert_path) and (\n        os.path.getsize(judge_ca_cert_path)\
+          \ > 0\n    )\n    judge_http_client = httpx.Client(verify=judge_ca_cert_path)\
           \ if use_tls else None\n\n    def launch_vllm(\n        model_path: str,\
           \ gpu_count: int, retries: int = 120, delay: int = 10\n    ) -> tuple:\n\
           \        import subprocess\n        import sys\n        import time\n\n\
@@ -1528,13 +1528,13 @@ deploymentSpec:
           \ *\n\ndef sdg_op(\n    num_instructions_to_generate: int,\n    pipeline:\
           \ str,\n    repo_branch: Optional[str],\n    repo_pr: Optional[int],\n \
           \   taxonomy_path: str = \"/data/taxonomy\",\n    sdg_path: str = \"/data/sdg\"\
-          ,\n    sdg_sampling_size: float = 1.0,\n):\n    from os import getenv, path\n\
-          \n    import instructlab.sdg\n    import openai\n    import yaml\n    import\
-          \ os\n\n    api_key = getenv(\"api_key\")\n    model = getenv(\"model\"\
+          ,\n    sdg_sampling_size: float = 1.0,\n):\n    import os\n    from os import\
+          \ getenv, path\n\n    import instructlab.sdg\n    import openai\n    import\
+          \ yaml\n\n    api_key = getenv(\"api_key\")\n    model = getenv(\"model\"\
           )\n    endpoint = getenv(\"endpoint\")\n\n    sdg_ca_cert_path = getenv(\"\
           SDG_CA_CERT_PATH\")\n    use_tls = os.path.exists(sdg_ca_cert_path) and\
-          \ (os.path.getsize(sdg_ca_cert_path) > 0)\n    if use_tls:\n        import\
-          \ httpx\n\n        custom_http_client = httpx.Client(verify=sdg_ca_cert_path)\n\
+          \ (\n        os.path.getsize(sdg_ca_cert_path) > 0\n    )\n    if use_tls:\n\
+          \        import httpx\n\n        custom_http_client = httpx.Client(verify=sdg_ca_cert_path)\n\
           \        client = openai.OpenAI(\n            base_url=endpoint, api_key=api_key,\
           \ http_client=custom_http_client\n        )\n    else:\n        client =\
           \ openai.OpenAI(base_url=endpoint, api_key=api_key)\n\n    taxonomy_base\

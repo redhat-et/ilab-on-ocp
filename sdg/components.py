@@ -37,19 +37,21 @@ def sdg_op(
     sdg_path: str = "/data/sdg",
     sdg_sampling_size: float = 1.0,
 ):
+    import os
     from os import getenv, path
 
     import instructlab.sdg
     import openai
     import yaml
-    import os
 
     api_key = getenv("api_key")
     model = getenv("model")
     endpoint = getenv("endpoint")
 
     sdg_ca_cert_path = getenv("SDG_CA_CERT_PATH")
-    use_tls = os.path.exists(sdg_ca_cert_path) and (os.path.getsize(sdg_ca_cert_path) > 0)
+    use_tls = os.path.exists(sdg_ca_cert_path) and (
+        os.path.getsize(sdg_ca_cert_path) > 0
+    )
     if use_tls:
         import httpx
 
