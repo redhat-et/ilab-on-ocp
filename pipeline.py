@@ -83,7 +83,7 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
         )
 
     # Imports for evaluation
-    from eval.final import run_final_eval_op
+    from eval.final import generate_metrics_report_op, run_final_eval_op
     from eval.mt_bench import run_mt_bench_op
 
     @dsl.pipeline(
@@ -452,16 +452,28 @@ def ilab_pipeline_wrapper(mock: List[Literal[MOCKED_STAGES]]):
             mount_path="/output",
         )
 
-        output_pvc_delete_task = DeletePVC(pvc_name=output_pvc_task.output)
-        output_pvc_delete_task.after(
-            output_model_task, output_mt_bench_task, final_eval_task
-        )
-
         sdg_pvc_delete_task = DeletePVC(pvc_name=sdg_input_pvc_task.output)
         sdg_pvc_delete_task.after(final_eval_task)
 
         model_pvc_delete_task = DeletePVC(pvc_name=model_pvc_task.output)
         model_pvc_delete_task.after(final_eval_task)
+
+        generate_metrics_report_task = generate_metrics_report_op()
+        generate_metrics_report_task.after(output_mt_bench_task, final_eval_task)
+        generate_metrics_report_task.set_caching_options(False)
+        mount_pvc(
+            task=generate_metrics_report_task,
+            pvc_name=output_pvc_task.output,
+            mount_path="/output",
+        )
+
+        output_pvc_delete_task = DeletePVC(pvc_name=output_pvc_task.output)
+        output_pvc_delete_task.after(
+            output_model_task,
+            output_mt_bench_task,
+            final_eval_task,
+            generate_metrics_report_task,
+        )
 
         return
 
